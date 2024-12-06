@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saltup"
+version = "0.2"
+description = "add flavor to your AI projects"
+readme = "README.md"
+requires-python = ">=3.6"
+authors = [
+    { name = "Marco Garzola", email = "" }
+]
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "cmsisdsp",
+    "pillow",
+    "opencv-python",
+    "boto3"
+]
+

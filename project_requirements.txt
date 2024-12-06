@@ -1,0 +1,16 @@
+numpy
+pandas
+matplotlib
+seaborn
+Pillow
+tensorflow
+boto3
+librosa
+wave
+scipy
+IPython
+cmsisdsp
+soundfile
+scikit-learn
+opencv-python
+pytest
