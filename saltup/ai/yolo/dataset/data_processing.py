@@ -11,11 +11,153 @@ from typing import Iterable, Union, List, Dict, Optional
 from saltup.utils import configure_logging
 
 
-def read_yolo_label(label_file: str) -> list:
-    """Parse YOLO format labels from a text file.
+def setup_yolo_directories(root_dir):
+    """
+    Creates YOLO Darknet directory structure if it doesn't exist.
+    
+    Args:
+        root_dir: Root directory for the dataset
+        
+    Returns:
+        dict: Dictionary containing paths to created directories
+    """
+    # Create main directories
+    directories = {
+        'images': {
+            'train': os.path.join(root_dir, 'images', 'train'),
+            'val': os.path.join(root_dir, 'images', 'val'),
+            'test': os.path.join(root_dir, 'images', 'test')
+        },
+        'labels': {
+            'train': os.path.join(root_dir, 'labels', 'train'),
+            'val': os.path.join(root_dir, 'labels', 'val'),
+            'test': os.path.join(root_dir, 'labels', 'test')
+        }
+    }
+    
+    # Create directories if they don't exist
+    for category in directories.values():
+        for dir_path in category.values():
+            os.makedirs(dir_path, exist_ok=True)
+            
+    return directories
+
+
+def get_yolo_paths(root_dir):
+    """
+    Gets directory paths for a dataset in YOLO Darknet format.
+    
+    Args:
+        root_dir: Dataset root directory
+        
+    Returns:
+        tuple: (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir)
+        
+    Raises:
+        FileNotFoundError: If root directory or any required YOLO Darknet subdirectories don't exist
+    """
+    # Verify root directory exists
+    if not os.path.exists(root_dir):
+        raise FileNotFoundError(f"Root directory {root_dir} does not exist")
+    
+    # Build YOLO Darknet paths
+    train_images_dir = os.path.join(root_dir, 'images', 'train')
+    train_labels_dir = os.path.join(root_dir, 'labels', 'train')
+    val_images_dir = os.path.join(root_dir, 'images', 'val')
+    val_labels_dir = os.path.join(root_dir, 'labels', 'val')
+    
+    # Verify required YOLO Darknet directories exist
+    required_dirs = [
+        (train_images_dir, "Train Images"),
+        (train_labels_dir, "Train Labels"), 
+        (val_images_dir, "Validation Images"),
+        (val_labels_dir, "Validation Labels")
+    ]
+    
+    for dir_path, dir_name in required_dirs:
+        if not os.path.exists(dir_path):
+            raise FileNotFoundError(f"{dir_name} directory not found at {dir_path}")
+    
+    return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir
+
+
+def verify_yolo_structure(root_dir):
+    """
+    Verifies the directory structure and validates image-label pairs in a YOLO Darknet dataset.
+    
+    Args:
+        root_dir: Dataset root directory
+        
+    Returns:
+        dict: Dataset structure statistics containing:
+            - Per split (train/val):
+                - Number of images
+                - Number of labels
+                - Number of matched pairs
+                - Lists of unmatched images and labels
+    """
+    train_images_dir, train_labels_dir, val_images_dir, val_labels_dir = get_yolo_paths(root_dir)
+    
+    stats = {
+        'train': {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []},
+        'val': {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []}
+    }
+    
+    # Helper function to check image-label correspondences
+    def check_matches(images_dir, labels_dir, split):
+        image_files = {os.path.splitext(f)[0] for f in os.listdir(images_dir) 
+                      if f.endswith(('.jpg', '.jpeg', '.png'))}
+        label_files = {os.path.splitext(f)[0] for f in os.listdir(labels_dir) 
+                      if f.endswith('.txt')}
+        
+        stats[split]['images'] = len(image_files)
+        stats[split]['labels'] = len(label_files)
+        stats[split]['matched'] = len(image_files & label_files)
+        stats[split]['unmatched_images'] = list(image_files - label_files)
+        stats[split]['unmatched_labels'] = list(label_files - image_files)
+    
+    # Verify both training and validation sets
+    check_matches(train_images_dir, train_labels_dir, 'train')
+    check_matches(val_images_dir, val_labels_dir, 'val')
+    
+    return stats
+
+def print_yolo_stats(root_dir):
+    """
+    Prints detailed statistics about YOLO Darknet dataset structure.
+    
+    Args:
+        root_dir: Dataset root directory
+    """
+    stats = verify_yolo_structure(root_dir)
+    
+    print("\n=== YOLO Darknet Dataset Statistics ===")
+    for split in ['train', 'val']:
+        print(f"\n{split.upper()} Set:")
+        print(f"- Total images: {stats[split]['images']}")
+        print(f"- Total labels: {stats[split]['labels']}")
+        print(f"- Matched pairs: {stats[split]['matched']}")
+        
+        if stats[split]['unmatched_images']:
+            print(f"- Images without labels ({len(stats[split]['unmatched_images'])}):")
+            for img in stats[split]['unmatched_images'][:5]:
+                print(f"  * {img}")
+            if len(stats[split]['unmatched_images']) > 5:
+                print("    ...")
+                
+        if stats[split]['unmatched_labels']:
+            print(f"- Labels without images ({len(stats[split]['unmatched_labels'])}):")
+            for lbl in stats[split]['unmatched_labels'][:5]:
+                print(f"  * {lbl}")
+            if len(stats[split]['unmatched_labels']) > 5:
+                print("    ...")
+
+
+def read_label(label_file: str) -> list:
+    """Parse YOLO Darknet format labels from a text file.
 
     Args:
-        label_file (str): Path to the YOLO label file
+        label_file (str): Path to the YOLO Darknet label file
 
     Returns:
         list: List of tuples containing (class_id, x, y, width, height) for each bounding box
@@ -34,8 +176,8 @@ def read_yolo_label(label_file: str) -> list:
     return labels
 
 
-def write_yolo_label(label_file: str, labels: Iterable[Union[list, tuple]], file_mode: str = 'w') -> None:
-   """Write object detection labels in YOLO format.
+def write_label(label_file: str, labels: Iterable[Union[list, tuple]], file_mode: str = 'w') -> None:
+   """Write object detection labels in YOLO Darknet format.
 
    Args:
        label_file: Path to output label file
@@ -49,19 +191,19 @@ def write_yolo_label(label_file: str, labels: Iterable[Union[list, tuple]], file
            file.write(f'{" ".join(map(str, label))}\n')
 
 
-def replace_yolo_label_class(
+def replace_label_class(
    old_class_id: int,
    new_class_id: int, 
    label_dir: str = None, 
    filepath_list: list = None,
    verbose: bool = False 
 ) -> tuple[int, list]:
-   """Replace specified class ID in YOLO label files with a new ID.
+   """Replace specified class ID in YOLO Darknet label files with a new ID.
 
    Args:
        old_class_id: Original class ID to replace
        new_class_id: New class ID to assign
-       label_dir: Directory containing YOLO labels (used if filepath_list not provided)
+       label_dir: Directory containing YOLO Darknet labels (used if filepath_list not provided)
        filepath_list: List of specific label files to process (overrides label_dir)
        verbose: Enable detailed progress output with tqdm
 
@@ -128,11 +270,11 @@ def replace_yolo_label_class(
    return modified_count, modified_files
 
 
-def shift_yolo_class_ids(label_folder: str, shift_value: int, output_folder: str = None) -> None:
-    """Shift all class IDs in YOLO label files by a constant value.
+def shift_class_ids(label_folder: str, shift_value: int, output_folder: str = None) -> None:
+    """Shift all class IDs in YOLO Darknet label files by a constant value.
 
     Args:
-        label_folder: Input directory containing YOLO labels
+        label_folder: Input directory containing YOLO Darknet labels
         shift_value: Integer value to add to all class IDs
         output_folder: Output directory for modified labels. If None, modifies in-place
     """
@@ -169,11 +311,11 @@ def shift_yolo_class_ids(label_folder: str, shift_value: int, output_folder: str
             print(f"Processed {filename}: saved to {output_file}")
 
 
-def convert_yolo_to_coco_annotations_file(image_dir: str, label_dir: str, classes: list[str], output_json: str):
+def convert_to_coco_annotations_file(image_dir: str, label_dir: str, classes: list[str], output_json: str):
     """
-    Convert object detection annotations from YOLO to COCO JSON format.
+    Convert object detection annotations from YOLO Darknet to COCO JSON format.
     
-    YOLO format: class_id x_center y_center width height (normalized coordinates)
+    YOLO Darknet format: class_id x_center y_center width height (normalized coordinates)
     COCO format: {
         "images": [{id, file_name, width, height}],
         "annotations": [{id, image_id, category_id, bbox, area, iscrowd}],
@@ -182,8 +324,8 @@ def convert_yolo_to_coco_annotations_file(image_dir: str, label_dir: str, classe
 
     Args:
         image_dir (str): Directory containing source images
-        label_dir (str): Directory containing YOLO .txt annotation files 
-        classes (list[str]): List of class names matching YOLO indices
+        label_dir (str): Directory containing YOLO Darknet .txt annotation files 
+        classes (list[str]): List of class names matching YOLO Darknet indices
         output_json (str): Path for output COCO JSON file
     """
     from saltup.ai.yolo.bbox_utils import yolo_to_coco_bbox
@@ -218,17 +360,17 @@ def convert_yolo_to_coco_annotations_file(image_dir: str, label_dir: str, classe
                 "height": img_height
             })
 
-            # Load the corresponding YOLO label file
+            # Load the corresponding YOLO Darknet label file
             label_filename = os.path.splitext(img_filename)[0] + ".txt"
             label_path = os.path.join(label_dir, label_filename)
 
             if os.path.exists(label_path):
-                # Use read_yolo_label to get the boxes
-                yolo_boxes = read_yolo_label(label_path)
+                # Use read_label to get the boxes
+                yolo_boxes = read_label(label_path)
                 
                 for yolo_box in yolo_boxes:
                     x, y, w, h, class_id = yolo_box
-                    # Convert YOLO bbox to COCO bbox
+                    # Convert YOLO Darknet bbox to COCO bbox
                     coco_bbox = yolo_to_coco_bbox([x, y, w, h], img_width, img_height)
                     area = coco_bbox[2] * coco_bbox[3]  # width * height
 
@@ -239,7 +381,7 @@ def convert_yolo_to_coco_annotations_file(image_dir: str, label_dir: str, classe
                         "bbox": coco_bbox,
                         "area": area,
                         "iscrowd": 0,
-                        "segmentation": []  # Empty list since YOLO does not use segmentation
+                        "segmentation": []  # Empty list since YOLO Darknet does not use segmentation
                     })
                     ann_id += 1
 
@@ -258,35 +400,37 @@ def convert_yolo_to_coco_annotations_file(image_dir: str, label_dir: str, classe
         print("Conversion failed")
 
 
-def split_dataset(class_to_images, min_images_per_class, split_ratio=0.8) -> list:
-    """Split dataset into training, validation, and test sets while maintaining class distribution.
+def split_dataset(class_to_images: dict, min_images_per_class: int, split_ratio: float=0.8, val_split_ratio: float=0.5) -> tuple:
+    """Split dataset into training, validation, and test sets with balanced class distribution.
 
     Args:
-        class_to_images (dict): Mapping of class IDs to image paths
-        min_images_per_class (int): Maximum number of images to use per class (0 for no limit)
-        split_ratio (float): Ratio for training set size (remaining split equally between val/test)
+        class_to_images (dict): Dictionary mapping class IDs to lists of image paths
+        min_images_per_class (int): Maximum images to use per class (0 means no limit)
+        split_ratio (float): Proportion of data between training and validation set (0.0-1.0)
+        val_split_ratio (float): Proportion of data between the validation and test set(0.0-1.0)
 
     Returns:
-        tuple: Lists of (image_path, label_path) tuples for train, validation, and test sets
+        tuple: Three lists of image paths for train, validation, and test sets
+        
+    Examples:
+        >>> class_data = {0: ['img1.jpg', 'img2.jpg'], 1: ['img3.jpg', 'img4.jpg']}
+        >>> train, val, test = split_dataset(class_data, min_images_per_class=2)
     """
     train_set, val_test_set = set(), set()
 
     for class_id, images in class_to_images.items():
         random.shuffle(images)
-        if min_images_per_class != 0:
-            limit = min(min_images_per_class, len(images))
-        else:
-            limit = len(images)
+        limit = min(min_images_per_class, len(images)) if min_images_per_class else len(images)
 
-        # Determine training and val/test counts
+        # Split into training and remaining sets
         train_count = int(limit * split_ratio)
         train_set.update(images[:train_count])
         val_test_set.update(images[train_count:limit])
 
-    # Split val_test_set into validation and test sets (50% each)
+    # Further split remaining data into validation and test sets
     val_test_list = list(val_test_set)
     random.shuffle(val_test_list)
-    mid_point = len(val_test_list) // 2
+    mid_point = int(len(val_test_list) * val_split_ratio)
     val_set = val_test_list[:mid_point]
     test_set = val_test_list[mid_point:]
 
@@ -395,7 +539,11 @@ def _image_per_class_id(labels_dir: str, images_dir: str) -> dict:
     return class_to_images
 
 
-def counts_labels(labels_dir: str, format_type: str = 'yolo', class_names: list = None, verbose: bool = False) -> tuple:
+def counts_labels(
+    labels_dir: str, 
+    format_type: str = 'yolo', 
+    class_names: list = None, 
+    verbose: bool = False) -> tuple:
     """
     Counts the occurrences of each label in the specified dataset annotation files and the number of annotated images.
 
@@ -478,6 +626,7 @@ def counts_labels(labels_dir: str, format_type: str = 'yolo', class_names: list 
         label_counts = {class_names[class_id]: count for class_id, count in label_counts.items()}
 
     return dict(label_counts), num_annotated_images
+
 
 def create_symlinks_by_class(
     imgs_dirpath: str, 
