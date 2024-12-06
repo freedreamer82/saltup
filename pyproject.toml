@@ -9,7 +9,7 @@ description = "add flavor to your AI projects"
 readme = "README.md"
 requires-python = ">=3.6"
 authors = [
-    { name = "Marco Garzola", email = "" }
+    { name = "Marco Garzola" }
 ]
 license = { text = "MIT" }
 dependencies = [
