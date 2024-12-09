@@ -10,7 +10,8 @@ from typing import Union, Optional
 import logging
 import sys
 from tqdm import tqdm
-
+import sys
+from contextlib import contextmanager
 
 class LoggerManager:
     """
@@ -150,3 +151,20 @@ if __name__ == "__main__":
     
     # Back to normal logging
     logger.info("Process completed!")
+    
+
+
+@contextmanager
+def LogFile(filename):
+   stdout = sys.stdout
+   with open(filename, 'a') as f:
+       class TeeStdout:
+           def write(self, data):
+               f.write(data)
+               stdout.write(data)
+           def flush(self):
+               f.flush()
+               stdout.flush()
+       sys.stdout = TeeStdout()
+       yield
+       sys.stdout = stdout
