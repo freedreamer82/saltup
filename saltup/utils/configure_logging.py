@@ -151,9 +151,8 @@ if __name__ == "__main__":
     
     # Back to normal logging
     logger.info("Process completed!")
-    
 
-
+# TODO
 @contextmanager
 def LogFile(filename):
    stdout = sys.stdout

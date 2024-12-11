@@ -122,6 +122,7 @@ def verify_yolo_structure(root_dir):
     
     return stats
 
+
 def print_yolo_stats(root_dir):
     """
     Prints detailed statistics about YOLO Darknet dataset structure.
@@ -328,7 +329,7 @@ def convert_to_coco_annotations_file(image_dir: str, label_dir: str, classes: li
         classes (list[str]): List of class names matching YOLO Darknet indices
         output_json (str): Path for output COCO JSON file
     """
-    from saltup.ai.yolo.bbox_utils import yolo_to_coco_bbox
+    from saltup.ai.object_detection.dataset.bbox_utils import yolo_to_coco_bbox
     
     images = []
     annotations = []
@@ -731,6 +732,7 @@ def _extract_unique_classes(lbl_files: List[Path]) -> List[str]:
                 line.split()[0] for line in f
             )
     return list(unique_classes)
+
 
 def _create_labels_map(
     lbl_files: List[Path], 

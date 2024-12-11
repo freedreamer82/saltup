@@ -445,14 +445,14 @@ def plot_image_with_boxes(image_file:str, label_file:str):
         image_file (str): path to the image
         label_file (str): path to the label
     """
-    from saltup.ai.yolo.dataset.data_processing import read_yolo_label
+    from saltup.ai.object_detection.dataset.yolo_darknet import read_label
     
     # Read image
     image = cv2.imread(image_file)
     # Read image dimensions
     image_height, image_width, _ = image.shape
     # Read YOLO label file
-    boxes = read_yolo_label(label_file)
+    boxes = read_label(label_file)
     # Draw bounding boxes
     for box in boxes:
         xc, yc, w, h, class_id = box
