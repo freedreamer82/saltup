@@ -1,6 +1,4 @@
 import pytest
-import os
-from pathlib import Path
 from saltup.utils.misc import match_patterns, count_files, unify_files
 from saltup.utils.configure_logging import LoggerManager, get_logger
 

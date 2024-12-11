@@ -1,12 +1,11 @@
 import pytest
 import os
-from pathlib import Path
 import numpy as np
-from saltup.ai.yolo.bbox_utils import (
+from saltup.ai.object_detection.dataset.bbox_utils import (
     yolo_to_coco_bbox, coco_to_yolo_bbox
 )
-from saltup.ai.yolo.dataset.data_processing import (
-    read_yolo_label, write_yolo_label, create_symlinks_by_class, replace_yolo_label_class, shift_yolo_class_ids
+from saltup.ai.object_detection.dataset.yolo_darknet import (
+    read_label, write_label, create_symlinks_by_class, replace_label_class, shift_class_ids
 )
 
 class TestBBoxUtils:
@@ -71,8 +70,8 @@ class TestDataProcessing:
         label_file = tmp_path / "test.txt"
         sample_labels = [[0, 0.5, 0.5, 0.2, 0.3], [1, 0.3, 0.4, 0.1, 0.2]]
         
-        write_yolo_label(str(label_file), sample_labels)
-        read_labels = read_yolo_label(str(label_file))
+        write_label(str(label_file), sample_labels)
+        read_labels = read_label(str(label_file))
         
         assert len(read_labels) == len(sample_labels)
         for read, expected in zip(read_labels, sample_labels):
@@ -125,7 +124,7 @@ class TestDataProcessing:
     def test_replace_yolo_label_class(self, sample_dataset, tmp_path):
         imgs_dir, lbls_dir = sample_dataset
         # Replace class 1 with class 3
-        modified_count, modified_files = replace_yolo_label_class(1, 3, str(lbls_dir))
+        modified_count, modified_files = replace_label_class(1, 3, str(lbls_dir))
         
         # Verify results
         assert modified_count == 2  # Two files with class 1
@@ -138,7 +137,7 @@ class TestDataProcessing:
                 assert "1" not in content.split()  # Class 1 shold not exists
                 assert "3" in content.split()   # Shold be replaced with 3
     
-    def test_shift_yolo_class_ids(self, tmp_path):
+    def test_shift_class_ids(self, tmp_path):
         # Setup test directory
         label_folder = tmp_path / "labels"
         output_folder = tmp_path / "output"
@@ -155,7 +154,7 @@ class TestDataProcessing:
                 f.write(content)
         
         # Shift class IDs by 2
-        shift_yolo_class_ids(str(label_folder), 2, str(output_folder))
+        shift_class_ids(str(label_folder), 2, str(output_folder))
         
         # Verify results
         assert output_folder.exists()
