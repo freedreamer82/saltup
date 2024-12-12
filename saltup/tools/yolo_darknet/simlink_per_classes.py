@@ -3,7 +3,7 @@ import sys
 import argparse
 
 from saltup.utils import configure_logging
-from saltup.ai.yolo.dataset.data_processing import create_symlinks_by_class
+from saltup.ai.object_detection.dataset.yolo_darknet import create_symlinks_by_class
 
 def parse_args() -> argparse.Namespace:
     """

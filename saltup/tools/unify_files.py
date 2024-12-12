@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
-import os
 import sys
-import logging
-import shutil
 import argparse
-from typing import Union, Optional, List, Tuple
-from tqdm import tqdm
 
 from saltup.utils import configure_logging
 from saltup.utils.misc import unify_files

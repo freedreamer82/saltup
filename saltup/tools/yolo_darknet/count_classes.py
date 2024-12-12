@@ -4,7 +4,7 @@ import argparse
 from collections import Counter
 from tqdm import tqdm
 
-from saltup.ai.yolo.dataset.data_processing import counts_labels
+from saltup.ai.object_detection.dataset.yolo_darknet import counts_labels
 
 
 def get_agrs():
