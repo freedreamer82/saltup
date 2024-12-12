@@ -2,5 +2,6 @@ __pycache__
 build
 saltup.egg-info
 
+*.vscode
 *.code-workspace
 custom_yolo_fpn*
