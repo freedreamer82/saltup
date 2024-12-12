@@ -1,27 +1,12 @@
 import numpy as np
 import cv2
 
-from saltup.ai.object_detection.preprocessing.base_preproccesing import BasePreprocessing
+from saltup.ai.object_detection.preprocessing.preproccesing import Preprocessing
 
 
-class AnchorsBasedPreprocess(BasePreprocessing):
+class AnchorsBasedPreprocess(Preprocessing):
 
-    def _validate_input(self, img: np.ndarray) -> None:
-        """Validate input image.
-
-        Args:
-            img: Input image to validate
-
-        Raises:
-            ValueError: If image is None, invalid or not grayscale
-            TypeError: If image is not numpy array
-        """
-        super()._validate_input(img)  # Call parent validation
-
-        if len(img.shape) != 2:
-            raise ValueError("Input must be grayscale (2D array)")
-
-    def process(self, img: np.ndarray, target_shape: tuple) -> np.ndarray:
+    def __call__(self, img: np.ndarray, target_shape: tuple, normalize_method = None) -> np.ndarray:
         """Preprocess grayscale image for model input.
 
         Applies the following steps:
@@ -63,7 +48,10 @@ class AnchorsBasedPreprocess(BasePreprocessing):
                          interpolation=cv2.INTER_LINEAR)
 
         # Normalize and add dimensions
-        img = img / 255.0  # Normalize to [0,1]
+        if normalize_method:
+            img = normalize_method(img)
+        else:
+            img = img / 255.0  # Default Normalization
         img = np.expand_dims(img, axis=-1)  # Add channel dimension
         img = np.expand_dims(img, axis=0)  # Add batch dimension
 

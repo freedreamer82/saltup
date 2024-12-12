@@ -1,5 +1,5 @@
 from enum import IntEnum
-from saltup.ai.object_detection.preprocessing import BasePreprocessing
+from saltup.ai.object_detection.preprocessing import Preprocessing
 from saltup.ai.object_detection.preprocessing.impl import (
     AnchorsBasedPreprocess,
     DamoPreprocessing,
@@ -15,7 +15,7 @@ class PreprocessingType(IntEnum):
 
 class PreprocessingFactory:
     @staticmethod
-    def create(processor_type: PreprocessingType) -> BasePreprocessing:
+    def create(processor_type: PreprocessingType) -> Preprocessing:
         processors = {
             PreprocessingType.ANCHORS_BASED: AnchorsBasedPreprocess,
             PreprocessingType.ULTRALITICS: UltraliticsPreprocess,

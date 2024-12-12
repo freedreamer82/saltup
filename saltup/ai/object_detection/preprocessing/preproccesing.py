@@ -4,7 +4,7 @@ import numpy as np
 from saltup.utils.configure_logging import get_logger
 
 
-class BasePreprocessing(ABC):
+class Preprocessing(ABC):
     """Abstract base class for image preprocessing pipelines."""
     
     def _validate_input(self, img: np.ndarray) -> None:
@@ -23,7 +23,7 @@ class BasePreprocessing(ABC):
             raise TypeError("Input must be numpy array")
 
     @abstractmethod
-    def process(self):
+    def __call__(self):
         """Execute preprocessing pipeline.
 
         Must be implemented by subclasses to define specific preprocessing steps.

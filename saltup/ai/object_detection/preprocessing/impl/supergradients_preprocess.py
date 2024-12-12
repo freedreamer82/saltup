@@ -2,7 +2,7 @@ from enum import IntEnum, auto
 import numpy as np
 import cv2
 
-from saltup.ai.object_detection.preprocessing.base_preproccesing import BasePreprocessing
+from saltup.ai.object_detection.preprocessing import Preprocessing
 
 
 class SupergradPreprocessType(IntEnum):
@@ -16,7 +16,7 @@ class SupergradPreprocessType(IntEnum):
     QAT = 1
 
 
-class SupergradPreprocess(BasePreprocessing):
+class SupergradPreprocess(Preprocessing):
     """Preprocessing pipeline for Supergradient object detection models.
     
     Implements two preprocessing pipelines for different model types:
@@ -50,9 +50,9 @@ class SupergradPreprocess(BasePreprocessing):
         Uses grey padding (value 114) which is optimal for neural networks.
 
         Args:
-            image: Source image in BGR format
-            final_width: Desired container width in pixels
-            final_height: Desired container height in pixels
+            image: Input image in BGR format
+            final_width: Target width in pixels
+            final_height: Target height in pixels
             img_position: Anchor point for image placement (TOP_LEFT or CENTER)
 
         Returns:
@@ -93,28 +93,41 @@ class SupergradPreprocess(BasePreprocessing):
 
         return grey_image
 
-    def preprocess(self, img: np.ndarray, target_shape: tuple) -> np.ndarray:
-        """Execute standard preprocessing pipeline.
-        
-        Converts BGR to RGB, resizes with padding, and normalizes to [0,1] range.
-        Produces tensor in NCHW format suitable for neural network input.
+    def preprocess(self, img: np.ndarray, target_shape: tuple, normalize_method: callable = None) -> np.ndarray:
+        """Apply standard preprocessing pipeline.
+
+        Steps:
+        1. Converts BGR to RGB
+        2. Resize and pad image
+        3. Apply normalization. By default normalized to [0,1], otherwise you can provide a custom normalization method.
+        4. Convert to NCHW format
 
         Args:
-            img: Source image in BGR format
-            target_shape: Desired dimensions as (height, width)
-        
+            img: Input image in BGR format
+            target_shape: Desired (height, width)
+            normalize_method: Optional custom normalization function
+
         Returns:
-            np.ndarray: Normalized tensor in NCHW format, range [0,1]
+            np.ndarray: Normalized tensor in NCHW format
         """
-        img = self.resize_image_and_black_container_rgb(
+        image_data = self.resize_image_and_black_container_rgb(
             img,
             final_height=target_shape[0],
             final_width=target_shape[1],
             img_position=self.ImagePosition.TOP_LEFT
         )
-        img = np.array(img) / 255.0  # Normalize
-        img = np.transpose(img, (2, 0, 1))  # HWC to CHW format (channel first)
-        return np.expand_dims(img, axis=0).astype(np.float32)
+        # Normalize
+        if normalize_method:
+            image_data = normalize_method(image_data)
+        else:
+            image_data = image_data / 255.0   # Default Normalization
+
+        # Format conversion
+        image_data = np.transpose(image_data, (2, 0, 1))  # HWC to CHW format (channel first)
+        
+        # Add batch dimension
+        image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
+        return image_data
 
     def preprocess_qat(self, img: np.ndarray, target_shape: tuple) -> np.ndarray:
         """Execute QAT preprocessing pipeline.
@@ -136,27 +149,29 @@ class SupergradPreprocess(BasePreprocessing):
             img_position=self.ImagePosition.TOP_LEFT
         )
 
-    def process(
+    def __call__(
         self, 
         img: np.ndarray, 
         target_shape: tuple, 
-        type: SupergradPreprocessType = SupergradPreprocessType.BASE
+        type: SupergradPreprocessType = SupergradPreprocessType.BASE,
+        **kwargs
     ) -> np.ndarray:
-        """Select and apply appropriate preprocessing pipeline.
-        
-        Main entry point that routes to either standard or QAT pipeline
-        based on specified type.
+        """Execute preprocessing pipeline.
 
         Args:
-            img: Source image in BGR format
-            target_shape: Desired dimensions as (height, width)
-            type: Pipeline selection (BASE or QAT)
-            
+            img: Input image in BGR format
+            target_shape: Desired (height, width)
+            type: Preprocessing strategy to use
+            **kwargs: Additional arguments for preprocessing
+
         Returns:
-            np.ndarray: Processed image tensor in format matching selected pipeline
+            Processed image tensor according to selected pipeline
+
+        Raises:
+            ValueError: For invalid input image
         """
         self._validate_input(img)
         
         if type == SupergradPreprocessType.QAT:
             return self.preprocess_qat(img, target_shape)
-        return self.preprocess(img, target_shape)
+        return self.preprocess(img, target_shape, kwargs)

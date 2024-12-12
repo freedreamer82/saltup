@@ -2,10 +2,10 @@ from typing import Tuple, Dict, Optional, Union, Any
 import numpy as np
 import cv2
 
-from saltup.ai.object_detection.preprocessing.base_preproccesing import BasePreprocessing
+from saltup.ai.object_detection.preprocessing import Preprocessing
 
 
-class UltraliticsPreprocess(BasePreprocessing):
+class UltraliticsPreprocess(Preprocessing):
     """Preprocessing pipeline for Ultralytic models with letterboxing."""
     
     def __init__(
@@ -88,9 +88,10 @@ class UltraliticsPreprocess(BasePreprocessing):
 
         return img
 
-    def process(
+    def __call__(
         self,
         img: np.ndarray,
+        normalize_method: callable = None,
         **kwargs: Any
     ) -> Union[np.ndarray, Dict]:
         """Execute preprocessing pipeline with optional parameter overrides.
@@ -118,8 +119,13 @@ class UltraliticsPreprocess(BasePreprocessing):
             # Process image
             processed_img = self.letterbox(img)
             
+            # Normalize
+            if normalize_method:
+                image_data = normalize_method(processed_img)
+            else:
+                image_data = np.array(processed_img) / 255.0  # Default Normalization
+            
             # Convert to model input format
-            image_data = np.array(processed_img) / 255.0    # Normalize
             image_data = np.transpose(image_data, (2, 0, 1))    # HWC to CHW format (channel first)
             image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
             
