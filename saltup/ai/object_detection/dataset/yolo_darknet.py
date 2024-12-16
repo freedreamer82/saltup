@@ -6,17 +6,16 @@ import shutil
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict, Counter
-from typing import Iterable, Union, List, Dict, Optional
+from typing import Iterable, Union, List, Dict, Optional, Tuple
 
 from saltup.utils import configure_logging
 
 
-def setup_yolo_directories(root_dir):
-    """
-    Creates YOLO Darknet directory structure if it doesn't exist.
+def create_dataset_structure(root_dir: str):
+    """Creates YOLO Darknet directory structure if it doesn't exist.
     
     Args:
-        root_dir: Root directory for the dataset
+        root_dir (str): Root directory for the dataset
         
     Returns:
         dict: Dictionary containing paths to created directories
@@ -43,18 +42,17 @@ def setup_yolo_directories(root_dir):
     return directories
 
 
-def get_yolo_paths(root_dir):
-    """
-    Gets directory paths for a dataset in YOLO Darknet format.
+def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
+    """Get directory paths for dataset in YOLO format.
     
     Args:
         root_dir: Dataset root directory
         
     Returns:
-        tuple: (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir)
+        Tuple of (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir)
         
     Raises:
-        FileNotFoundError: If root directory or any required YOLO Darknet subdirectories don't exist
+        FileNotFoundError: If required directories don't exist
     """
     # Verify root directory exists
     if not os.path.exists(root_dir):
@@ -81,22 +79,21 @@ def get_yolo_paths(root_dir):
     return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir
 
 
-def verify_yolo_structure(root_dir):
-    """
-    Verifies the directory structure and validates image-label pairs in a YOLO Darknet dataset.
+def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, List[str]]]]:
+    """Verify directory structure and validate image-label pairs.
     
     Args:
         root_dir: Dataset root directory
         
     Returns:
-        dict: Dataset structure statistics containing:
-            - Per split (train/val):
-                - Number of images
-                - Number of labels
-                - Number of matched pairs
-                - Lists of unmatched images and labels
+        Dict containing per-split statistics:
+            images: Number of images
+            labels: Number of labels
+            matched: Number of matched pairs
+            unmatched_images: List of images without labels
+            unmatched_labels: List of labels without images
     """
-    train_images_dir, train_labels_dir, val_images_dir, val_labels_dir = get_yolo_paths(root_dir)
+    train_images_dir, train_labels_dir, val_images_dir, val_labels_dir = get_dataset_paths(root_dir)
     
     stats = {
         'train': {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []},
@@ -123,35 +120,49 @@ def verify_yolo_structure(root_dir):
     return stats
 
 
-def print_yolo_stats(root_dir):
-    """
-    Prints detailed statistics about YOLO Darknet dataset structure.
+def analyze_dataset(root_dir: str, class_names: Optional[List[str]] = None) -> None:
+    """Analyze dataset structure and content.
     
     Args:
         root_dir: Dataset root directory
+        class_names: Optional list of class names to map class IDs
     """
-    stats = verify_yolo_structure(root_dir)
+    structure = validate_dataset_structure(root_dir)
     
-    print("\n=== YOLO Darknet Dataset Statistics ===")
+    print("\n=== YOLO Dataset Analysis ===")
+    
+    # Dataset structure analysis
     for split in ['train', 'val']:
-        print(f"\n{split.upper()} Set:")
-        print(f"- Total images: {stats[split]['images']}")
-        print(f"- Total labels: {stats[split]['labels']}")
-        print(f"- Matched pairs: {stats[split]['matched']}")
+        print(f"\n{split.upper()} Set Structure:")
+        print(f"- Total images: {structure[split]['images']}")
+        print(f"- Total labels: {structure[split]['labels']}")
+        print(f"- Matched pairs: {structure[split]['matched']}")
         
-        if stats[split]['unmatched_images']:
-            print(f"- Images without labels ({len(stats[split]['unmatched_images'])}):")
-            for img in stats[split]['unmatched_images'][:5]:
+        if structure[split]['unmatched_images']:
+            print(f"- Images without labels ({len(structure[split]['unmatched_images'])}):")
+            for img in structure[split]['unmatched_images'][:5]:
                 print(f"  * {img}")
-            if len(stats[split]['unmatched_images']) > 5:
+            if len(structure[split]['unmatched_images']) > 5:
                 print("    ...")
                 
-        if stats[split]['unmatched_labels']:
-            print(f"- Labels without images ({len(stats[split]['unmatched_labels'])}):")
-            for lbl in stats[split]['unmatched_labels'][:5]:
+        if structure[split]['unmatched_labels']:
+            print(f"- Labels without images ({len(structure[split]['unmatched_labels'])}):")
+            for lbl in structure[split]['unmatched_labels'][:5]:
                 print(f"  * {lbl}")
-            if len(stats[split]['unmatched_labels']) > 5:
+            if len(structure[split]['unmatched_labels']) > 5:
                 print("    ...")
+        
+        # Object count analysis
+        labels_dir = os.path.join(root_dir, 'labels', split)
+        if os.path.exists(labels_dir):
+            counts, total_images = count_objects(labels_dir, class_names)
+            
+            print(f"\n{split.upper()} Set Objects:")
+            print(f"- Total annotated images: {total_images}")
+            print("- Objects per class:")
+            for class_id, count in counts.items():
+                class_name = class_id if isinstance(class_id, str) else f"Class {class_id}"
+                print(f"  * {class_name}: {count}")
 
 
 def read_label(label_file: str) -> list:
@@ -178,18 +189,29 @@ def read_label(label_file: str) -> list:
 
 
 def write_label(label_file: str, labels: Iterable[Union[list, tuple]], file_mode: str = 'w') -> None:
-   """Write object detection labels in YOLO Darknet format.
+    """Write object detection labels in YOLO format.
 
-   Args:
-       label_file: Path to output label file
-       labels: Sequence of (class_id, x_center, y_center, width, height) tuples 
-              where coordinates are normalized to [0-1]
-       file_mode: 'w' to overwrite file, 'a' to append
-   """
-   # TODO: Validate label format and coordinate ranges (?)
-   with open(label_file, file_mode) as file:
-       for label in labels:
-           file.write(f'{" ".join(map(str, label))}\n')
+    Args:
+        label_file: Path to output label file
+        labels: Sequence of (class_id, x_center, y_center, width, height) tuples 
+               where coordinates are normalized to [0-1]
+        file_mode: 'w' to overwrite file, 'a' to append
+
+    Raises:
+        ValueError: If coordinates are not normalized [0-1] or invalid format
+    """
+    with open(label_file, file_mode) as file:
+        for label in labels:
+            if len(label) != 5:
+                raise ValueError("Each label must have 5 values: class_id, x, y, w, h")
+                
+            class_id, x, y, w, h = label
+            
+            # Validate coordinates
+            if not all(0 <= coord <= 1 for coord in (x, y, w, h)):
+                raise ValueError("Coordinates must be normalized [0-1]")
+            
+            file.write(f'{" ".join(map(str, label))}\n')
 
 
 def replace_label_class(
@@ -275,15 +297,16 @@ def shift_class_ids(label_folder: str, shift_value: int, output_folder: str = No
     """Shift all class IDs in YOLO Darknet label files by a constant value.
 
     Args:
-        label_folder: Input directory containing YOLO Darknet labels
+        label_folder: Input directory containing labels
         shift_value: Integer value to add to all class IDs
         output_folder: Output directory for modified labels. If None, modifies in-place
     """
+    logger = configure_logging.get_logger(__name__)
+    
     if output_folder is None:
         output_folder = label_folder
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    os.makedirs(output_folder, exist_ok=True)
 
     for filename in os.listdir(label_folder):
         if filename.endswith(".txt"):
@@ -297,7 +320,7 @@ def shift_class_ids(label_folder: str, shift_value: int, output_folder: str = No
             for line in lines:
                 parts = line.strip().split()
                 if len(parts) < 5:
-                    print(f"Skipping invalid line in {filename}: {line}")
+                    logger.warning(f"Skipping invalid line in {filename}: {line}")
                     continue
 
                 # Adjust the class ID
@@ -309,12 +332,11 @@ def shift_class_ids(label_folder: str, shift_value: int, output_folder: str = No
             with open(output_file, "w") as outfile:
                 outfile.write("\n".join(updated_lines))
 
-            print(f"Processed {filename}: saved to {output_file}")
+            logger.info(f"Processed {filename}: saved to {output_file}")
 
 
 def convert_to_coco_annotations_file(image_dir: str, label_dir: str, classes: list[str], output_json: str):
-    """
-    Convert object detection annotations from YOLO Darknet to COCO JSON format.
+    """Convert object detection annotations from YOLO Darknet to COCO JSON format.
     
     YOLO Darknet format: class_id x_center y_center width height (normalized coordinates)
     COCO format: {
@@ -401,98 +423,66 @@ def convert_to_coco_annotations_file(image_dir: str, label_dir: str, classes: li
         print("Conversion failed")
 
 
-def split_dataset(class_to_images: dict, min_images_per_class: int, split_ratio: float=0.8, val_split_ratio: float=0.5) -> tuple:
-    """Split dataset into training, validation, and test sets with balanced class distribution.
-
+def split_dataset(
+    class_to_images: Dict[int, List], 
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.2,
+    test_ratio: float = 0.1,
+    max_images_per_class: Optional[int] = None
+) -> Tuple[List, List, List]:
+    """Split dataset with balanced class distribution.
+    
     Args:
-        class_to_images (dict): Dictionary mapping class IDs to lists of image paths
-        min_images_per_class (int): Maximum images to use per class (0 means no limit)
-        split_ratio (float): Proportion of data between training and validation set (0.0-1.0)
-        val_split_ratio (float): Proportion of data between the validation and test set(0.0-1.0)
+        class_to_images: Map of class IDs to image paths
+        train_ratio: Training set proportion (taken as absolute value)
+        val_ratio: Validation set proportion (taken as absolute value)  
+        test_ratio: Test set proportion (taken as absolute value)
+        max_images_per_class: Optional maximum images per class (None = no limit)
 
     Returns:
-        tuple: Three lists of image paths for train, validation, and test sets
-        
-    Examples:
-        >>> class_data = {0: ['img1.jpg', 'img2.jpg'], 1: ['img3.jpg', 'img4.jpg']}
-        >>> train, val, test = split_dataset(class_data, min_images_per_class=2)
+        Lists of paths for train/val/test sets
     """
-    train_set, val_test_set = set(), set()
+    train_ratio, val_ratio, test_ratio = map(abs, [train_ratio, val_ratio, test_ratio])
+    if not abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-10:
+        raise ValueError("Split ratios must sum to 1.0")
+        
+    if max_images_per_class is not None and max_images_per_class < 0:
+        raise ValueError("max_images_per_class must be positive or None")
+
+    train_set, remaining = set(), set()
 
     for class_id, images in class_to_images.items():
         random.shuffle(images)
-        limit = min(min_images_per_class, len(images)) if min_images_per_class else len(images)
-
+        limit = min(max_images_per_class, len(images)) if max_images_per_class else len(images)
+        
         # Split into training and remaining sets
-        train_count = int(limit * split_ratio)
+        train_count = int(limit * train_ratio)
         train_set.update(images[:train_count])
-        val_test_set.update(images[train_count:limit])
+        remaining.update(images[train_count:limit])
 
-    # Further split remaining data into validation and test sets
-    val_test_list = list(val_test_set)
-    random.shuffle(val_test_list)
-    mid_point = int(len(val_test_list) * val_split_ratio)
-    val_set = val_test_list[:mid_point]
-    test_set = val_test_list[mid_point:]
-
-    return list(train_set), list(val_set), list(test_set)
-
-
-def create_subfolders_and_move_files(train_set: list, val_set: list, test_set: list, images_dir: str, labels_dir: str):
-    """Create train/val/test subdirectories and move files while preventing duplicates.
-
-    Args:
-        train_set (list): List of (image_path, label_path) for training set
-        val_set (list): List of (image_path, label_path) for validation set
-        test_set (list): List of (image_path, label_path) for test set
-        images_dir (str): Root directory for images
-        labels_dir (str): Root directory for labels
-    """
-    subdirs = {
-        "train": {"images": os.path.join(images_dir, 'train'), "labels": os.path.join(labels_dir, 'train')},
-        "val": {"images": os.path.join(images_dir, 'val'), "labels": os.path.join(labels_dir, 'val')},
-        "test": {"images": os.path.join(images_dir, 'test'), "labels": os.path.join(labels_dir, 'test')}
-    }
-
-    # Create subdirectories if they don't already exist
-    for key in subdirs:
-        os.makedirs(subdirs[key]["images"], exist_ok=True)
-        os.makedirs(subdirs[key]["labels"], exist_ok=True)
-
-    # Set to track files that have already been moved
-    moved_files = set()
-
-    # Helper function to move an image and label to the respective folders if not already moved
-    def move_file(image_path, label_path, subdir):
-        # Check if the file has already been moved
-        if image_path not in moved_files and label_path not in moved_files:
-            image_dest = os.path.join(subdirs[subdir]["images"], os.path.basename(image_path))
-            label_dest = os.path.join(subdirs[subdir]["labels"], os.path.basename(label_path))
-
-            # Move image and label files to the destination
-            shutil.move(image_path, image_dest)
-            shutil.move(label_path, label_dest)
-
-            # Mark as moved
-            moved_files.add(image_path)
-            moved_files.add(label_path)
-
-    # Move files into respective directories without duplicating
-    for image_path, label_path in train_set:
-        move_file(image_path, label_path, "train")
-    for image_path, label_path in val_set:
-        move_file(image_path, label_path, "val")
-    for image_path, label_path in test_set:
-        move_file(image_path, label_path, "test")
+    # Split remaining between validation and test
+    remaining = list(remaining)
+    random.shuffle(remaining)
+    val_proportion = val_ratio / (val_ratio + test_ratio)
+    split_idx = int(len(remaining) * val_proportion)
+    
+    return list(train_set), remaining[:split_idx], remaining[split_idx:]
 
 
-def split_yolo_dataset(labels_dir, images_dir, min_images_per_class=0, train_ratio=0.8):
+def split_and_organize_dataset(
+    labels_dir: str,
+    images_dir: str, 
+    max_images_per_class: int = 0,
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.2,
+    test_ratio: float = 0.1
+) -> None:
     """Split YOLO dataset into train/val/test sets and organize into subdirectories.
 
     Args:
         labels_dir (str): Directory containing YOLO label files
         images_dir (str): Directory containing image files
-        min_images_per_class (int): Maximum number of images to use per class (0 for no limit)
+        max_images_per_class (int): Maximum number of images to use per class (0 for no limit)
         train_ratio (float): Ratio for training set size (remaining split equally between val/test)
     """
     class_to_images = _image_per_class_id(labels_dir, images_dir)
@@ -501,132 +491,89 @@ def split_yolo_dataset(labels_dir, images_dir, min_images_per_class=0, train_rat
     #if min_images_per_class is None:
         #min_images_per_class = min(len(images) for images in class_to_images.values())
 
-    # Split the dataset into training, validation, and test sets
-    train_set, val_set, test_set = split_dataset(class_to_images, min_images_per_class, train_ratio)
+     # Split dataset
+    train_set, val_set, test_set = split_dataset(
+        class_to_images,
+        max_images_per_class,
+        train_ratio,
+        val_ratio,
+        test_ratio
+    )
 
     print(f"Training set size: {len(train_set)} images")
     print(f"Validation set size: {len(val_set)} images")
     print(f"Test set size: {len(test_set)} images")
 
-    # Create subfolders and move files without duplicates
-    create_subfolders_and_move_files(train_set, val_set, test_set, images_dir, labels_dir)
+    # Create subfolders
+    subdirs = {
+        "train": {"images": os.path.join(images_dir, 'train'), 
+                 "labels": os.path.join(labels_dir, 'train')},
+        "val": {"images": os.path.join(images_dir, 'val'),
+                "labels": os.path.join(labels_dir, 'val')},
+        "test": {"images": os.path.join(images_dir, 'test'),
+                 "labels": os.path.join(labels_dir, 'test')}
+    }
+
+    for paths in subdirs.values():
+        os.makedirs(paths["images"], exist_ok=True)
+        os.makedirs(paths["labels"], exist_ok=True)
+
+    # Move files
+    moved_files = set()
+    for dataset, split_name in [(train_set, "train"), 
+                              (val_set, "val"), 
+                              (test_set, "test")]:
+        for image_path, label_path in dataset:
+            if image_path not in moved_files and label_path not in moved_files:
+                image_dest = os.path.join(subdirs[split_name]["images"], 
+                                        os.path.basename(image_path))
+                label_dest = os.path.join(subdirs[split_name]["labels"], 
+                                        os.path.basename(label_path))
+
+                shutil.move(image_path, image_dest)
+                shutil.move(label_path, label_dest)
+                moved_files.update([image_path, label_path])
 
 
-def _image_per_class_id(labels_dir: str, images_dir: str) -> dict:
-    """Group images by their class IDs from YOLO labels.
+def count_objects(
+    labels_dir: str,
+    class_names: list = None,
+    verbose: bool = False
+) -> tuple[Dict[Union[int, str], int], int]:
+    """Count labels instances and annotated images in YOLO dataset.
 
     Args:
-        labels_dir (str): Directory containing YOLO label files
-        images_dir (str): Directory containing image files
+        labels_dir: Path to directory containing YOLO label files
+        class_names: Optional list of class names to map IDs to names
+        verbose: Enable progress output
 
     Returns:
-        dict: Dictionary mapping class IDs to lists of (image_path, label_path) tuples
+        Tuple of:
+            Dict mapping class ID/name to labels count
+            Number of annotated images
     """
-    class_to_images = defaultdict(list)
-
-    for label_file in os.listdir(labels_dir):
-        if label_file.endswith('.txt'):
-            image_file = label_file.replace('.txt', '.jpg')  # Assuming images are .jpg files
-            image_path = os.path.join(images_dir, image_file)
-            label_path = os.path.join(labels_dir, label_file)
-
-            # Check if the corresponding image exists in the images directory
-            if os.path.exists(image_path):
-                with open(label_path, 'r') as f:
-                    classes_in_image = set(int(line.split()[0]) for line in f)  # Extract class IDs
-                    for class_id in classes_in_image:
-                        class_to_images[class_id].append((image_path, label_path))
-
-    return class_to_images
-
-
-def counts_labels(
-    labels_dir: str, 
-    format_type: str = 'yolo', 
-    class_names: list = None, 
-    verbose: bool = False) -> tuple:
-    """
-    Counts the occurrences of each label in the specified dataset annotation files and the number of annotated images.
-
-    Parameters:
-        labels_dir (str): Path to the directory containing annotation label files.
-        format_type (str): The format of the annotation files. Supported values are:
-                           - 'yolo' for YOLO format (default).
-                           - 'coco' for COCO JSON format.
-        class_names (list, optional): A list of class names where the index corresponds to the class ID.
-                                      If provided, the output dictionary will use class names instead of numeric IDs.
-        verbose (bool): If True, displays progress information during processing (default: False).
-
-    Returns:
-        tuple:
-            dict: A dictionary where keys are class IDs (or class names if `class_names` is provided) 
-                  and values are the counts of occurrences.
-            int: The total number of annotated images.
-
-    Raises:
-        ValueError: If an unsupported format type is provided.
-    """
-
-    # Initialize a counter for label occurrences
     label_counts = Counter()
-    num_annotated_images = 0
-    format_type = format_type.lower()  # Ensure the format type is case-insensitive
+    
+    txt_label_files = [
+        os.path.join(root, file)
+        for root, _, files in os.walk(labels_dir)
+        for file in files if file.endswith('.txt')
+    ]
+    
+    txt_label_files = tqdm(txt_label_files, desc='Processing YOLO labels', disable=not verbose)
+    for label_file in txt_label_files:
+        with open(label_file, 'r') as file:
+            for line in file:
+                class_id = int(line.split()[0])
+                label_counts[class_id] += 1
 
-    # Process labels based on the specified annotation format
-    if format_type == 'yolo':
-        # YOLO format: Each file corresponds to one image
-        txt_label_files = [
-            os.path.join(root, file)
-            for root, _, files in os.walk(labels_dir)
-            for file in files if file.endswith('.txt')
-        ]
-        num_annotated_images = len(txt_label_files)  # Each label file corresponds to one annotated image
-
-        if verbose:
-            txt_label_files = tqdm(txt_label_files, desc='Processing YOLO label files')
-
-        for label_file in txt_label_files:
-            with open(label_file, 'r') as file:
-                for line in file:
-                    # Parse the class ID (first element on each line)
-                    class_id = int(line.split()[0])
-                    label_counts[class_id] += 1
-
-    elif format_type == 'coco':
-        # COCO format: A single JSON file contains multiple annotations
-        json_label_files = [
-            os.path.join(root, file)
-            for root, _, files in os.walk(labels_dir)
-            for file in files if file.endswith('.json')
-        ]
-
-        for count, label_file in enumerate(json_label_files, start=1):
-            with open(label_file, 'r') as file:
-                data = json.load(file)
-
-                # Count unique image IDs from the "annotations" key
-                image_ids = set(annotation['image_id'] for annotation in data.get("annotations", []))
-                num_annotated_images += len(image_ids)  # Update the total count of annotated images
-
-                annotations = data.get("annotations", [])
-                if verbose:
-                    if len(json_label_files) > 1:
-                        desc = f"Processing {count}/{len(json_label_files)} COCO label files"
-                    else:
-                        desc = "Processing COCO labels"
-                    annotations = tqdm(annotations, desc=desc)
-
-                for annotation in annotations:
-                    class_id = annotation['category_id']
-                    label_counts[class_id] += 1
-    else:
-        raise ValueError("Unsupported format type. Use 'yolo' or 'coco'.")
-
-    # Replace class IDs with class names if provided
     if class_names:
-        label_counts = {class_names[class_id]: count for class_id, count in label_counts.items()}
+        label_counts = {
+            class_names[class_id]: count 
+            for class_id, count in label_counts.items()
+        }
 
-    return dict(label_counts), num_annotated_images
+    return dict(label_counts), len(txt_label_files)
 
 
 def create_symlinks_by_class(
@@ -635,8 +582,7 @@ def create_symlinks_by_class(
     dest_dir: str, 
     class_names: Optional[List[str]] = None
 ) -> None:
-    """
-    Create symbolic links for images and labels organized by class.
+    """Create symbolic links for images and labels organized by class.
 
     Args:
         imgs_dirpath (str): Path to directory containing images
@@ -715,31 +661,27 @@ def create_symlinks_by_class(
     logger.info(f"Created {symlink_count} symlinks across {len(class_names)} classes")
 
 
-def _extract_unique_classes(lbl_files: List[Path]) -> List[str]:
-    """
-    Extract unique classes from YOLO label files.
+def _extract_unique_classes(label_files: List[Path]) -> List[str]:
+    """Extract unique classes from label files.
 
     Args:
-        lbl_files (List[Path]): List of label file paths
+        label_files: List of label file paths
 
     Returns:
-        List[str]: Unique class names
+        List of unique class names
     """
-    unique_classes = set()
-    for lbl_file in lbl_files:
-        with lbl_file.open('r') as f:
-            unique_classes.update(
-                line.split()[0] for line in f
-            )
-    return list(unique_classes)
+    return list({
+        line.split()[0]
+        for file in label_files
+        for line in file.open()
+    })
 
 
 def _create_labels_map(
     lbl_files: List[Path], 
     class_names: List[str]
 ) -> Dict[Path, Dict[str, int]]:
-    """
-    Create a map of label files to their class distributions.
+    """Create a map of label files to their class distributions.
 
     Args:
         lbl_files (List[Path]): List of label file paths
@@ -759,3 +701,30 @@ def _create_labels_map(
     
     return labels_map
 
+
+def _image_per_class_id(labels_dir: str, images_dir: str) -> dict:
+    """Group images by their class IDs from YOLO labels.
+
+    Args:
+        labels_dir (str): Directory containing YOLO label files
+        images_dir (str): Directory containing image files
+
+    Returns:
+        dict: Dictionary mapping class IDs to lists of (image_path, label_path) tuples
+    """
+    class_to_images = defaultdict(list)
+
+    for label_file in os.listdir(labels_dir):
+        if label_file.endswith('.txt'):
+            image_file = label_file.replace('.txt', '.jpg')  # Assuming images are .jpg files
+            image_path = os.path.join(images_dir, image_file)
+            label_path = os.path.join(labels_dir, label_file)
+
+            # Check if the corresponding image exists in the images directory
+            if os.path.exists(image_path):
+                with open(label_path, 'r') as f:
+                    classes_in_image = set(int(line.split()[0]) for line in f)  # Extract class IDs
+                    for class_id in classes_in_image:
+                        class_to_images[class_id].append((image_path, label_path))
+
+    return class_to_images
