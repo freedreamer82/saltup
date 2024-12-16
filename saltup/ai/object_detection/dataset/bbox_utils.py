@@ -540,3 +540,34 @@ def plot_image_with_boxes(image_file: str, label_file: str):
     plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     plt.axis('off')
     plt.show()
+    
+from tensorflow.keras import backend as K
+
+def process_boxes(box_xy, box_wh):
+    """
+    Concatinate xw and wh arrays.
+
+    Args:
+        box_xy (tensor): containing the center coordinates of the boxes.
+        box_wh (tensor): containing the width and height of the boxes.
+
+    Returns:
+        corners (tensor): containing the corner coordinates of the boxes in (xmin, ymin, xmax, ymax) format.
+        centers (tensor): containing the center coordinates and width and height of the boxes in (x, y, w, h) format.
+    """
+    box_mins = box_xy - (box_wh / 2.)
+    
+    box_maxes = box_xy + (box_wh / 2.)
+    corners = K.concatenate([
+        box_mins[..., 1:2],  # y_min
+        box_mins[..., 0:1],  # x_min
+        box_maxes[..., 1:2], # y_max
+        box_maxes[..., 0:1]  # x_max
+        ])
+    centers = K.concatenate([
+        box_xy[..., 1:2],  # y
+        box_xy[..., 0:1],  # x
+        box_wh[..., 1:2],  # h
+        box_wh[..., 0:1],  # w
+        ])
+    return corners, centers
