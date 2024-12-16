@@ -1,0 +1,53 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Corpo della saliera - spostato più in alto e a sinistra -->
+  <g transform="rotate(-150, 35, 35)">
+    <!-- Tappo con dettagli -->
+    <rect x="17" y="0" width="36" height="8" fill="#A0A0A0" rx="2"/>
+    <rect x="19" y="2" width="32" height="4" fill="#C0C0C0" rx="1"/>
+    
+    <!-- Corpo principale con forma più caratteristica -->
+    <path d="M20 8 L17 60 C17 63 53 63 53 60 L50 8" fill="#F5F5F5"/>
+    <path d="M20 8 L17 60 C17 63 53 63 53 60 L50 8" fill="none" stroke="#A9A9A9" stroke-width="2"/>
+    
+    <!-- Base arrotondata -->
+    <path d="M17 60 C17 67 53 67 53 60" fill="#F5F5F5" stroke="#A9A9A9" stroke-width="2"/>
+    
+    <!-- Pattern di fori per il sale -->
+    <circle cx="28" cy="15" r="1.5" fill="#808080"/>
+    <circle cx="35" cy="15" r="1.5" fill="#808080"/>
+    <circle cx="42" cy="15" r="1.5" fill="#808080"/>
+    <circle cx="25" cy="20" r="1.5" fill="#808080"/>
+    <circle cx="32" cy="20" r="1.5" fill="#808080"/>
+    <circle cx="39" cy="20" r="1.5" fill="#808080"/>
+    <circle cx="46" cy="20" r="1.5" fill="#808080"/>
+    <circle cx="28" cy="25" r="1.5" fill="#808080"/>
+    <circle cx="35" cy="25" r="1.5" fill="#808080"/>
+    <circle cx="42" cy="25" r="1.5" fill="#808080"/>
+  </g>
+  
+  <!-- Sale che cade - mantenuto nella stessa posizione -->
+  <!-- Prima fila -->
+  <path d="M15 75 L16 76 L15 77 L14 76 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M22 77 L23 78 L22 79 L21 78 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M18 79 L19 80 L18 81 L17 80 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  
+  <!-- Seconda fila -->
+  <path d="M13 82 L14 83 L13 84 L12 83 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M20 84 L21 85 L20 86 L19 85 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M25 83 L26 84 L25 85 L24 84 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  
+  <!-- Terza fila -->
+  <path d="M16 87 L17 88 L16 89 L15 88 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M23 89 L24 90 L23 91 L22 90 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M12 90 L13 91 L12 92 L11 91 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  
+  <!-- Quarta fila -->
+  <path d="M19 92 L20 93 L19 94 L18 93 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M14 94 L15 95 L14 96 L13 95 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M24 95 L25 96 L24 97 L23 96 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  
+  <!-- Quinta fila -->
+  <path d="M17 97 L18 98 L17 99 L16 98 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M21 96 L22 97 L21 98 L20 97 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+  <path d="M15 98 L16 99 L15 100 L14 99 Z" fill="#FFFFFF" stroke="#E8E8E8" stroke-width="0.5"/>
+</svg>
