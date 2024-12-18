@@ -3,6 +3,6 @@
 # Saltup
 # Add flavor to your AI projects
 
-<img src="./misc/salt-shaker.svg" width="100" height="100" alt="Salt Shaker">
+<img src="./docs/salt-shaker.svg" width="100" height="100" alt="Salt Shaker">
 
 </div>
