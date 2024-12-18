@@ -4,9 +4,6 @@ import argparse
 from collections import Counter
 from tqdm import tqdm
 
-from saltup.ai.object_detection.dataset.yolo_darknet import counts_labels
-
-
 def get_agrs():
     parser = argparse.ArgumentParser(description="Count occurrences of each class in dataset annotations.")
     parser.add_argument('labels_dir', type=str, help='Path to the directory containing annotation label files.')
@@ -26,8 +23,22 @@ def main(args):
     """
 
     # Count label occurrences and annotated images based on the provided arguments
-    class_counts, num_images = counts_labels(args.labels_dir, format_type=args.format, 
-                                             class_names=args.class_names, verbose=args.verbose)
+    if format == 'yolo':
+        from saltup.ai.object_detection.dataset.yolo_darknet import count_objects
+        class_counts, num_images = count_objects(
+            labels_dir=args.labels_dir, 
+            class_names=args.class_names,
+            verbose=args.verbose
+        )
+    elif format == 'coco':
+        from saltup.ai.object_detection.dataset.coco import count_annotations
+        class_counts, num_images = count_annotations(
+            args.labels_dir, 
+            class_names=args.class_names,
+            verbose=args.verbose
+        )
+    else:  
+        raise ValueError(f"Unsupported annotation format: {args.format}")
 
     # Print the results
     print(f"Number of annotated images: {num_images}")
