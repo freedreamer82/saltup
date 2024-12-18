@@ -8,9 +8,9 @@ from collections import defaultdict
 
 from saltup.ai.object_detection.dataset.coco import (
     create_dataset_structure, validate_dataset_structure,
-    read_coco_annotations, write_coco_annotations,
-    replace_label_class, shift_class_ids,
-    analyze_dataset, convert_coco_to_yolo_annotations,
+    read_annotations, write_annotations,
+    replace_annotations_class, shift_class_ids,
+    analyze_dataset, convert_coco_to_yolo_labels,
     split_dataset, split_and_organize_dataset,
     count_annotations
 )
@@ -86,11 +86,11 @@ class TestCOCODataset:
         json_path = tmp_path / "annotations.json"
         
         # Test writing
-        write_coco_annotations(sample_coco_data, str(json_path))
+        write_annotations(sample_coco_data, str(json_path))
         assert json_path.exists()
         
         # Test reading
-        loaded_data = read_coco_annotations(str(json_path))
+        loaded_data = read_annotations(str(json_path))
         assert loaded_data == sample_coco_data
         
         # Verify structure
@@ -101,11 +101,11 @@ class TestCOCODataset:
     def test_replace_label_class(self, tmp_path, sample_coco_data):
         """Test replacing category IDs in annotations."""
         json_path = tmp_path / "annotations.json"
-        write_coco_annotations(sample_coco_data, str(json_path))
+        write_annotations(sample_coco_data, str(json_path))
         
         old_class_id = 1
         new_class_id = 3
-        modified_count, modified_data = replace_label_class(
+        modified_count, modified_data = replace_annotations_class(
             old_class_id, new_class_id, str(json_path)
         )
         
@@ -121,7 +121,7 @@ class TestCOCODataset:
     def test_shift_class_ids(self, tmp_path, sample_coco_data):
         """Test shifting all category IDs by a constant value."""
         json_path = tmp_path / "annotations.json"
-        write_coco_annotations(sample_coco_data, str(json_path))
+        write_annotations(sample_coco_data, str(json_path))
         
         shift_value = 10
         shifted_data = shift_class_ids(str(json_path), shift_value)
@@ -192,7 +192,7 @@ class TestCOCODataset:
             json.dump(sample_coco_data, f, indent=3)
 
         # Convert annotations
-        yolo_annotations = convert_coco_to_yolo_annotations(
+        yolo_annotations = convert_coco_to_yolo_labels(
             str(coco_json),
             str(output_dir)
         )
@@ -221,7 +221,7 @@ class TestCOCODataset:
     def test_count_annotations(self, tmp_path, sample_coco_data):
         """Test counting annotations and annotated images."""
         json_path = tmp_path / "annotations.json"
-        write_coco_annotations(sample_coco_data, str(json_path))
+        write_annotations(sample_coco_data, str(json_path))
         
         # Test without class names
         counts, total_images = count_annotations(str(json_path))
@@ -243,7 +243,7 @@ class TestCOCODataset:
             (root_dir / "images" / img['file_name']).touch()
             
         ann_file = root_dir / "annotations" / "annotations.json"
-        write_coco_annotations(sample_coco_data, str(ann_file))
+        write_annotations(sample_coco_data, str(ann_file))
         
         split_and_organize_dataset(
             str(root_dir),

@@ -335,7 +335,7 @@ def shift_class_ids(label_folder: str, shift_value: int, output_folder: str = No
             logger.info(f"Processed {filename}: saved to {output_file}")
 
 
-def convert_to_coco_annotations_file(image_dir: str, label_dir: str, classes: list[str], output_json: str):
+def convert_to_coco_annotations(image_dir: str, label_dir: str, classes: list[str], output_json: str):
     """Convert object detection annotations from YOLO Darknet to COCO JSON format.
     
     YOLO Darknet format: class_id x_center y_center width height (normalized coordinates)

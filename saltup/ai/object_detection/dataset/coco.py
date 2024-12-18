@@ -81,7 +81,7 @@ def validate_dataset_structure(root_dir: str) -> Dict:
                                           if f.endswith(('.jpg', '.jpeg', '.png'))])
 
         if os.path.exists(ann_file):
-            annotations = read_coco_annotations(ann_file)
+            annotations = read_annotations(ann_file)
             stats[split]['annotations'] = len(
                 annotations.get('annotations', []))
 
@@ -128,7 +128,7 @@ def analyze_dataset(root_dir: str, class_names: List[str] = None):
         print(f"- Average annotations per image: {avg_ann:.2f}")
 
 
-def read_coco_annotations(json_path: str) -> Dict:
+def read_annotations(json_path: str) -> Dict:
     """Read COCO format annotations from JSON file.
 
     Args:
@@ -141,7 +141,7 @@ def read_coco_annotations(json_path: str) -> Dict:
         return json.load(f)
 
 
-def write_coco_annotations(annotations: Dict, output_path: str) -> None:
+def write_annotations(annotations: Dict, output_path: str) -> None:
     """Write annotations in COCO format to JSON file.
 
     Args:
@@ -152,7 +152,7 @@ def write_coco_annotations(annotations: Dict, output_path: str) -> None:
         json.dump(annotations, f, indent=4)
 
 
-def replace_label_class(
+def replace_annotations_class(
     old_class_id: int,
     new_class_id: int,
     coco_json: str,  
@@ -256,7 +256,7 @@ def shift_class_ids(
     return shifted_data
 
 
-def convert_coco_to_yolo_annotations(
+def convert_coco_to_yolo_labels(
     coco_json: str,
     output_dir: str = None
 ) -> Dict[str, List]:
@@ -450,7 +450,8 @@ def split_and_organize_dataset(
     print(f"Training set: {len(train_anns['images'])} images")
     print(f"Validation set: {len(val_anns['images'])} images")
     print(f"Test set: {len(test_anns['images'])} images")
-    
+
+
 def count_annotations(
     coco_json: str,
     class_names: Optional[List[str]] = None,
