@@ -425,48 +425,58 @@ def convert_to_coco_annotations_file(image_dir: str, label_dir: str, classes: li
 
 def split_dataset(
     class_to_images: Dict[int, List], 
-    train_ratio: float = 0.7,
-    val_ratio: float = 0.2,
-    test_ratio: float = 0.1,
+    split_ratio: float=0.8, 
+    split_val_ratio: float=0.5,
     max_images_per_class: Optional[int] = None
 ) -> Tuple[List, List, List]:
-    """Split dataset with balanced class distribution.
-    
+    """Split dataset into train, validation and test sets.
+
+    First splits data into training and remaining sets using split_ratio.
+    Then divides remaining data into validation/test using split_val_ratio.
+    Images are randomly selected up to optional max_images_per_class limit.
+
     Args:
-        class_to_images: Map of class IDs to image paths
-        train_ratio: Training set proportion (taken as absolute value)
-        val_ratio: Validation set proportion (taken as absolute value)  
-        test_ratio: Test set proportion (taken as absolute value)
-        max_images_per_class: Optional maximum images per class (None = no limit)
+        class_to_images: Dict mapping class IDs to lists of (image_path, label_path) tuples
+        split_ratio: Proportion for training set (0.0-1.0) 
+        split_val_ratio: Proportion for validation vs test split (0.0-1.0)
+        max_images_per_class: Max images per class (None = no limit)
 
     Returns:
-        Lists of paths for train/val/test sets
+        Tuple of (train, validation, test) lists containing (image_path, label_path) pairs
+
+    Raises:
+        ValueError: If ratios not in [0,1] or max_images_per_class negative
+   
+    Examples:
+        >>> class_data = {0: ['img1.jpg', 'img2.jpg'], 1: ['img3.jpg', 'img4.jpg']}
+        >>> train, val, test = split_dataset(class_data, min_images_per_class=2)
     """
-    train_ratio, val_ratio, test_ratio = map(abs, [train_ratio, val_ratio, test_ratio])
-    if not abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-10:
-        raise ValueError("Split ratios must sum to 1.0")
+    split_ratio, split_val_ratio = map(abs, [split_ratio, split_val_ratio])
+    if not all(e >= 0.0 and e <= 1.0 for e in [split_ratio, split_val_ratio]):
+        raise ValueError("Split ratios must be in range [0, 1]")
         
     if max_images_per_class is not None and max_images_per_class < 0:
         raise ValueError("max_images_per_class must be positive or None")
-
-    train_set, remaining = set(), set()
+    
+    train_set, val_test_set = set(), set()
 
     for class_id, images in class_to_images.items():
         random.shuffle(images)
         limit = min(max_images_per_class, len(images)) if max_images_per_class else len(images)
-        
-        # Split into training and remaining sets
-        train_count = int(limit * train_ratio)
-        train_set.update(images[:train_count])
-        remaining.update(images[train_count:limit])
 
-    # Split remaining between validation and test
-    remaining = list(remaining)
-    random.shuffle(remaining)
-    val_proportion = val_ratio / (val_ratio + test_ratio)
-    split_idx = int(len(remaining) * val_proportion)
-    
-    return list(train_set), remaining[:split_idx], remaining[split_idx:]
+        # Split into training and remaining sets
+        train_count = int(limit * split_ratio)
+        train_set.update(images[:train_count])
+        val_test_set.update(images[train_count:limit])
+
+    # Further split remaining data into validation and test sets
+    val_test_list = list(val_test_set)
+    random.shuffle(val_test_list)
+    mid_point = int(len(val_test_list) * split_val_ratio)
+    val_set = val_test_list[:mid_point]
+    test_set = val_test_list[mid_point:]
+
+    return list(train_set), list(val_set), list(test_set)
 
 
 def split_and_organize_dataset(
@@ -477,21 +487,26 @@ def split_and_organize_dataset(
     val_ratio: float = 0.2,
     test_ratio: float = 0.1
 ) -> None:
-    """Split YOLO dataset into train/val/test sets and organize into subdirectories.
+    """Split YOLO dataset into train/val/test directories.
+
+    Randomly splits dataset according to provided ratios and organizes files
+    into standard YOLO directory structure.
 
     Args:
-        labels_dir (str): Directory containing YOLO label files
-        images_dir (str): Directory containing image files
-        max_images_per_class (int): Maximum number of images to use per class (0 for no limit)
-        train_ratio (float): Ratio for training set size (remaining split equally between val/test)
+        labels_dir: YOLO label files directory (.txt)
+        images_dir: Image files directory (.jpg/.jpeg)
+        max_images_per_class: Max images per class (0 = no limit)
+        train_ratio: Training set proportion (e.g. 0.7)
+        val_ratio: Validation set proportion (e.g. 0.2) 
+        test_ratio: Test set proportion (e.g. 0.1)
+
+    Note:
+        - Moves files to train/val/test subdirs (not copied)
+        - train_ratio + val_ratio + test_ratio should equal 1.0
     """
     class_to_images = _image_per_class_id(labels_dir, images_dir)
     
-    # Determine the minimum image count across all classes if not provided
-    #if min_images_per_class is None:
-        #min_images_per_class = min(len(images) for images in class_to_images.values())
-
-     # Split dataset
+    # Split dataset
     train_set, val_set, test_set = split_dataset(
         class_to_images,
         max_images_per_class,
@@ -638,7 +653,7 @@ def create_symlinks_by_class(
     symlink_count = 0
     for lbl_file in labels_map:
         # Get actual paths for image and label files
-        img_file = imgs_path / lbl_file.with_suffix(".jpg").name
+        img_file = Path(_find_matching_image(lbl_file.stem, str(imgs_path)))
         lbl_file = lbls_path / lbl_file.name
 
         for class_name in labels_map[lbl_file]:
@@ -661,6 +676,50 @@ def create_symlinks_by_class(
     logger.info(f"Created {symlink_count} symlinks across {len(class_names)} classes")
 
 
+def find_image_label_pairs(labels_dir: str, images_dir: str) -> Tuple[List[str], List[List[str]], List[str]]:
+    """Find matching image-label pairs and identify unmatched labels.
+    
+    Args:
+        labels_dir: Directory containing label files (.txt)
+        images_dir: Directory containing image files (.jpg/.jpeg)
+        
+    Returns:
+        Tuple containing:
+        - List of matched image paths
+        - List of parsed labels for matched images  
+        - List of label paths with no matching image
+        
+    Raises:
+        FileNotFoundError: If either directory doesn't exist
+    """
+    # Validate directories
+    if not os.path.exists(labels_dir):
+        raise FileNotFoundError(f"Labels directory not found: {labels_dir}")
+    if not os.path.exists(images_dir):
+        raise FileNotFoundError(f"Images directory not found: {images_dir}")
+
+    matched_images = []
+    matched_labels = []
+    unmatched_labels = []
+
+    # Find matches for each label file
+    for label_file in os.listdir(labels_dir):
+        if not label_file.endswith('.txt'):
+            continue
+            
+        base_name = os.path.splitext(label_file)[0]
+        label_path = os.path.join(labels_dir, label_file)
+        image_path = _find_matching_image(base_name, images_dir)
+        
+        if image_path:
+            matched_images.append(image_path)
+            matched_labels.append(read_label(label_path))
+        else:
+            unmatched_labels.append(label_path)
+
+    return matched_images, matched_labels, unmatched_labels
+
+
 def _extract_unique_classes(label_files: List[Path]) -> List[str]:
     """Extract unique classes from label files.
 
@@ -671,35 +730,47 @@ def _extract_unique_classes(label_files: List[Path]) -> List[str]:
         List of unique class names
     """
     return list({
-        line.split()[0]
+        int(label[0])
         for file in label_files
-        for line in file.open()
+        for label in read_label(str(file))
     })
 
 
 def _create_labels_map(
-    lbl_files: List[Path], 
-    class_names: List[str]
-) -> Dict[Path, Dict[str, int]]:
-    """Create a map of label files to their class distributions.
+   lbl_files: List[Path], 
+   class_names: Optional[List[str]] = None
+) -> Dict[Path, Dict[Union[str, int], int]]:
+   """Create mapping between label files and their class counts.
 
-    Args:
-        lbl_files (List[Path]): List of label file paths
-        class_names (List[str]): List of class names
+   Maps each label file to a dictionary tracking how many times each class appears.
+   Class identifiers can be either numeric IDs or names if class_names is provided.
 
-    Returns:
-        Dict[Path, Dict[str, int]]: Map of label files to class counts
-    """
-    labels_map = {}
-    for lbl_file in lbl_files:
-        labels_map[lbl_file] = defaultdict(int)
-        with lbl_file.open('r') as f:
-            for line in f:
-                class_id = line.split()[0]
-                if class_id in class_names:
-                    labels_map[lbl_file][class_id] += 1
-    
-    return labels_map
+   Args:
+       lbl_files: List of YOLO format label file paths
+       class_names: Optional list to map class IDs to names. None means use numeric IDs
+
+   Returns:
+       Dictionary mapping each label file to its class distribution count.
+       Inner dictionary maps either class names (str) or IDs (int) to counts
+
+   Example returned structure:
+       {
+           Path('img1.txt'): {'person': 2, 'car': 1},  # with class_names
+           Path('img2.txt'): {0: 2, 1: 1}              # without class_names
+       }
+   """
+   labels_map = {}
+   for lbl_file in lbl_files:
+       labels_map[lbl_file] = defaultdict(int)
+       labels = read_label(str(lbl_file))
+       for label in labels:
+           class_id = int(label[0])
+           if class_names:
+               labels_map[lbl_file][class_names[class_id]] += 1
+           else:
+               labels_map[lbl_file][class_id] += 1
+   
+   return labels_map
 
 
 def _image_per_class_id(labels_dir: str, images_dir: str) -> dict:
@@ -716,15 +787,46 @@ def _image_per_class_id(labels_dir: str, images_dir: str) -> dict:
 
     for label_file in os.listdir(labels_dir):
         if label_file.endswith('.txt'):
-            image_file = label_file.replace('.txt', '.jpg')  # Assuming images are .jpg files
-            image_path = os.path.join(images_dir, image_file)
+            base_name = os.path.splitext(label_file)[0]
             label_path = os.path.join(labels_dir, label_file)
-
-            # Check if the corresponding image exists in the images directory
-            if os.path.exists(image_path):
-                with open(label_path, 'r') as f:
-                    classes_in_image = set(int(line.split()[0]) for line in f)  # Extract class IDs
-                    for class_id in classes_in_image:
-                        class_to_images[class_id].append((image_path, label_path))
+            image_path = _find_matching_image(base_name, images_dir)
+            
+            # Process only if we found a matching image
+            if image_path:
+                labels = read_label(label_path)
+                classes_in_image = set(int(label[0]) for label in labels)
+                for class_id in classes_in_image:
+                    class_to_images[class_id].append((image_path, label_path))
 
     return class_to_images
+
+
+def _find_matching_image(base_name: str, images_dir: str) -> Optional[str]:
+    """Find matching image file for a given base name.
+    
+    Args:
+        base_name: Base name without extension
+        images_dir: Directory containing images
+        
+    Returns:
+        Full path to matching image if found, None otherwise
+    """
+    for ext in ('.jpg', '.jpeg'):
+        image_path = os.path.join(images_dir, f"{base_name}{ext}")
+        if os.path.exists(image_path):
+            return image_path
+    return None
+
+
+def _find_matching_label(base_name: str, labels_dir: str) -> Optional[str]:
+    """Find matching label file for a given base name.
+    
+    Args:
+        base_name: Base name without extension
+        labels_dir: Directory containing YOLO labels
+        
+    Returns:
+        Full path to matching label if found, None otherwise
+    """
+    label_path = os.path.join(labels_dir, f"{base_name}.txt")
+    return label_path if os.path.exists(label_path) else None
