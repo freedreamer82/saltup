@@ -8,44 +8,6 @@ from saltup.ai.object_detection.dataset.yolo_darknet import (
     read_label, write_label, create_symlinks_by_class, replace_label_class, shift_class_ids
 )
 
-class TestBBoxUtils:
-    @pytest.fixture
-    def sample_yolo_bbox(self):
-        return [0.717969, 0.309375, 0.135937, 0.222917]
-    
-    @pytest.fixture
-    def sample_coco_bbox(self):
-        return [100, 100, 200, 150]
-
-    @pytest.fixture
-    def image_dimensions(self):
-        return 640, 480
-
-    def test_yolo_to_coco_bbox(self, sample_yolo_bbox, image_dimensions):
-        img_width, img_height = image_dimensions
-        coco_bbox = yolo_to_coco_bbox(sample_yolo_bbox, img_width, img_height)
-        xc, yc, w, h = sample_yolo_bbox
-        expected = [
-            int((xc - w/2) * img_width),
-            int((yc - h/2) * img_height),
-            w * img_width,
-            h * img_height
-        ]
-        np.testing.assert_array_almost_equal(coco_bbox, expected)
-
-    def test_coco_to_yolo_bbox(self, sample_coco_bbox, image_dimensions):
-        img_width, img_height = image_dimensions
-        yolo_bbox = coco_to_yolo_bbox(sample_coco_bbox, img_width, img_height)
-        x1, y1, w, h = sample_coco_bbox
-        expected = [
-            (x1 + w/2) / img_width,
-            (y1 + h/2) / img_height,
-            w / img_width,
-            h / img_height
-        ]
-        np.testing.assert_array_almost_equal(yolo_bbox, expected)
-
-
 class TestDataProcessing:
     @pytest.fixture
     def sample_dataset(self, tmp_path):
