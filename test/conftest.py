@@ -1,6 +1,12 @@
 import pytest
 import tempfile
 import shutil
+from pathlib import Path
+
+@pytest.fixture(scope="session")
+def root_dir():
+    """Fixture che fornisce il percorso della directory root dei test."""
+    return Path(__file__).parent
 
 @pytest.fixture(scope="session")
 def test_data_dir():

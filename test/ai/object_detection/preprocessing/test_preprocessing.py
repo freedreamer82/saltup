@@ -210,10 +210,10 @@ class TestUltraliticsPreprocess:
         return np.zeros((100, 150, 3), dtype=np.uint8)
     
     @pytest.fixture
-    def reference_result(self):
+    def reference_result(self, root_dir):
         """Load reference test data."""
         # Specify correct path relative to test file
-        path = os.path.join(os.path.dirname(__file__), 'results/result_process_with_overrides_2.npz')
+        path = os.path.join(str(root_dir), 'results/result_process_with_overrides_2.npz')
         data = np.load(path)
         return data['arr_0']  # Access specific array from npz
 
