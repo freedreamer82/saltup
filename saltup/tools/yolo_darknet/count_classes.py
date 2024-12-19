@@ -23,14 +23,14 @@ def main(args):
     """
 
     # Count label occurrences and annotated images based on the provided arguments
-    if format == 'yolo':
+    if args.format == 'yolo':
         from saltup.ai.object_detection.dataset.yolo_darknet import count_objects
         class_counts, num_images = count_objects(
             labels_dir=args.labels_dir, 
             class_names=args.class_names,
             verbose=args.verbose
         )
-    elif format == 'coco':
+    elif args.format == 'coco':
         from saltup.ai.object_detection.dataset.coco import count_annotations
         class_counts, num_images = count_annotations(
             args.labels_dir, 
