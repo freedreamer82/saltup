@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
+import tensorflow as tf
 
 from saltup.utils.configure_logging import get_logger
 
@@ -14,10 +15,12 @@ class Postprocessing(ABC):
             model_output: model output to validate
 
         Raises:
-            ValueError: If image is None or invalid
+            ValueError: If model output is None or invalid
         """
         if model_output is None:
             raise ValueError("model output cannot be None")
+        if not isinstance(model_output, (np.ndarray, tf.Tensor)):
+            raise TypeError("Input must be numpy or tensorflow array")
 
     @abstractmethod
     def __call__(self):

@@ -4,9 +4,9 @@ from saltup.ai.object_detection.dataset.bbox_utils import calculate_iou
 from saltup.ai.object_detection.postprocessing import Postprocessing
 
 
-class SupergradPostprocess(Postprocessing):
+class UltralyticsPostprocess(Postprocessing):
     """
-    Class to postprocess the output of a supergrad-yolo model.
+    Class to postprocess the output of a YOLO model.
 
     Steps:
     1. Extract class scores and bounding boxes from the model output.
@@ -24,9 +24,9 @@ class SupergradPostprocess(Postprocessing):
                     image_height:int=480, 
                     image_width:int=640,
                     confidence_thr:float=0.5, 
-                    iou_threshold:float=0.5) -> list[list]:      
+                    iou_threshold:float=0.5) -> list[list]:       
         """
-        Postprocess the output from the supergradient-yolo model.
+        Postprocess the output from the ultralytics-yolo model.
 
         Args:
             model_output (np.ndarray): Output matrix from the model.
@@ -41,35 +41,30 @@ class SupergradPostprocess(Postprocessing):
         Returns:
             list[list]: List of predicted bounding boxes in the image.
         """
-        class_score = model_output[1].squeeze(0)
-        bboxes = model_output[0].squeeze(0)
-        rows = class_score.shape[0]
+        model_output = model_output[0].astype(float)
+        model_output = model_output.transpose()
+
         boxes = []
-        x_factor = image_width / model_input_width
-        y_factor = image_height / model_input_height
-        for i in range(rows):
-            # Extract the class scores from the current row
-            classes_scores = class_score[i]
-            # Find the maximum score among the class scores
-            prob = np.max(classes_scores)
-            
-            # If the maximum score is above the confidence threshold
-            if prob >= confidence_thr:
-                # Get the class ID with the highest score
-                class_id = np.argmax(classes_scores)
-                label = classes_name[class_id]
-                # Extract the bounding box coordinates from the current row
-                x1, y1, x2, y2 = bboxes[i][0], bboxes[i][1], bboxes[i][2], bboxes[i][3]
+        for row in model_output:
+            prob = row[4:].max()
+            if prob < confidence_thr:  # Use the confidence threshold set in the class
+                continue
+            class_id = row[4:].argmax()
+            label = classes_name[class_id]
+            xc, yc, w, h = row[:4]
+            x1 = (xc - w/2) / model_input_width * image_width
+            y1 = (yc - h/2) / model_input_height * image_height
+            x2 = (xc + w/2) / model_input_width * image_width
+            y2 = (yc + h/2) / model_input_height * image_height
 
-                boxes.append([x1, y1, x2, y2, label, prob])
+            boxes.append([x1, y1, x2, y2, label, prob])
 
-        if len(boxes) != 0:
-            boxes.sort(key=lambda x: x[5], reverse=True)  # Sort by confidence
-            result = []
-            # Apply the non-max supression
-            while len(boxes) > 0:
-                result.append(boxes[0])
-                boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
+        boxes.sort(key=lambda x: x[5], reverse=True)  # Sort by confidence
+        result = []
+        # Apply the non-max supression
+        while len(boxes) > 0:
+            result.append(boxes[0])
+            boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
         return result
 
     def __call__(self,
@@ -97,5 +92,8 @@ class SupergradPostprocess(Postprocessing):
         Returns:
             list[list]: List of predicted bounding boxes in the image.
         """
-        return self.postprocess(model_output, classes_name, model_input_height, model_input_width, image_height, image_width, confidence_thr, iou_threshold)
+        return self.postprocess(model_output, classes_name, model_input_height, model_input_width,image_height, image_width,  confidence_thr, iou_threshold)
+
+
+
 

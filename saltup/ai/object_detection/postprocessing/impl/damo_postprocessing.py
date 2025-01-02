@@ -4,7 +4,7 @@ from saltup.ai.object_detection.dataset.bbox_utils import calculate_iou
 from saltup.ai.object_detection.postprocessing import Postprocessing
 
 
-class DamoPostprocessing(Postprocessing):
+class DamoPostprocess(Postprocessing):
     """
     Class to postprocess the output of a YOLO model.
 
@@ -18,13 +18,13 @@ class DamoPostprocessing(Postprocessing):
 
     def postprocess(self,
                     model_output:np.ndarray,
-                    classes_name:list[str], 
-                    model_input_height:int, 
-                    model_input_width:int, 
-                    image_height:int, 
-                    image_width:int,
-                    confidence_thr:float, 
-                    iou_threshold:float) -> list[list]:       
+                    classes_name:list[str]=['red', 'blue', 'green', 'yellow'], 
+                    model_input_height:int=480, 
+                    model_input_width:int=640, 
+                    image_height:int=480, 
+                    image_width:int=640,
+                    confidence_thr:float=0.5, 
+                    iou_threshold:float=0.5) -> list[list]:       
         """
         Postprocess the output from the damo-yolo model.
 
@@ -44,6 +44,7 @@ class DamoPostprocessing(Postprocessing):
         class_scores = model_output[0].squeeze(0)
         bboxes = model_output[1].squeeze(0)
         rows = class_scores.shape[0]
+        print(rows)
         boxes = []
 
         x_factor = image_width / model_input_width
@@ -74,19 +75,19 @@ class DamoPostprocessing(Postprocessing):
         result = []
         while len(boxes) > 0:
             result.append(boxes[0])
-            boxes = [box for box in boxes if calculate_iou(box, boxes[0]) < iou_threshold]
+            boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
 
         return result
 
     def __call__(self,
                 model_output:np.ndarray,
-                classes_name:list[str], 
-                model_input_height:int, 
-                model_input_width:int, 
-                image_height:int, 
-                image_width:int,
-                confidence_thr:float, 
-                iou_threshold:float) -> list[list]:          
+                classes_name:list[str]=['red', 'blue', 'green', 'yellow'], 
+                model_input_height:int=480, 
+                model_input_width:int=640, 
+                image_height:int=480, 
+                image_width:int=640,
+                confidence_thr:float=0.5, 
+                iou_threshold:float=0.5) -> list[list]:           
         """
         Directly invoking the postprocess method.
 
@@ -103,7 +104,7 @@ class DamoPostprocessing(Postprocessing):
         Returns:
             list[list]: List of predicted bounding boxes in the image.
         """
-        return self.postprocess(model_output, image_height, image_width, classes_name, model_input_height, model_input_width, confidence_thr, iou_threshold)
+        return self.postprocess(model_output, classes_name, model_input_height, model_input_width, image_height, image_width, confidence_thr, iou_threshold)
 
 
 
