@@ -1,7 +1,7 @@
 from enum import IntEnum
 from saltup.ai.object_detection.postprocessing import Postprocessing
 from saltup.ai.object_detection.postprocessing.impl import (
-    #AnchorsBasedPostprocess,
+    AnchorsBasedPostprocess,
     DamoPostprocess,
     SupergradPostprocess,
     UltralyticsPostprocess
@@ -17,7 +17,7 @@ class PostprocessingFactory:
     @staticmethod
     def create(processor_type: PostprocessingType) -> Postprocessing:
         processors = {
-            #PostprocessingType.ANCHORS_BASED: AnchorsBasedPostprocess,
+            PostprocessingType.ANCHORS_BASED: AnchorsBasedPostprocess,
             PostprocessingType.ULTRALITICS: UltralyticsPostprocess,
             PostprocessingType.SUPERGRAD: SupergradPostprocess,
             PostprocessingType.DAMO: DamoPostprocess
