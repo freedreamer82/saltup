@@ -1,4 +1,4 @@
-#from saltup.ai.object_detection.postprocessing.impl.anchors_based_postprocessing import AnchorsBasedPostprocess
+from saltup.ai.object_detection.postprocessing.impl.anchors_based_postprocessing import AnchorsBasedPostprocess
 from saltup.ai.object_detection.postprocessing.impl.damo_postprocessing import DamoPostprocess
 from saltup.ai.object_detection.postprocessing.impl.supergrad_postprocessing import SupergradPostprocess
 from saltup.ai.object_detection.postprocessing.impl.ultralytics_postprocessing import UltralyticsPostprocess

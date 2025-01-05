@@ -8,7 +8,7 @@ from saltup.ai.object_detection.postprocessing import (
     Postprocessing
 )
 from saltup.ai.object_detection.postprocessing.impl import (
-    #AnchorsBasedPostprocess,
+    AnchorsBasedPostprocess,
     DamoPostprocess,
     SupergradPostprocess,
     UltralyticsPostprocess
@@ -99,8 +99,12 @@ class TestDamoPostprocess:
         confidence_thr = 0.5 
         iou_threshold = 0.5
         
-        result = processor(sample_input, classes_name, model_input_height, 
-                           model_input_width,image_height, image_width,  confidence_thr, iou_threshold)
+        try:
+            result = processor(sample_input, classes_name, model_input_height, 
+                            model_input_width, image_height, image_width, confidence_thr, iou_threshold)
+        except Exception as e:
+            print(f"Error during processing: {e}")
+            raise
 
         assert isinstance(result, list)
         if len(result) != 0:
@@ -119,7 +123,7 @@ class TestSupergradPostprocess:
     def sample_input(self):
         """Create an example tensor."""
         # Generate the first tensor with scores between 0 and 1
-        scores = np.random.rand(1, 10, 4)  # Random values between 0 and 1
+        scores = np.random.uniform(0.5, 1, (1, 10, 4)) # Random values between 0 and 1
 
         # Generate the second tensor with bounding box values between 0 and max pixel coordonate value
         bboxes = np.random.randint(0, 20, (1, 10, 4))  # Random integers between 0 and max pixel coordonate value
@@ -142,7 +146,7 @@ class TestSupergradPostprocess:
         iou_threshold = 0.5
         
         result = processor(sample_input, classes_name, model_input_height, 
-                           model_input_width,image_height, image_width,  confidence_thr, iou_threshold)
+                            model_input_width, image_height, image_width, confidence_thr, iou_threshold)
 
         assert isinstance(result, list)
         if len(result) != 0:
@@ -184,6 +188,45 @@ class TestUltralyticsPostprocess:
         
         result = processor(sample_input, classes_name, model_input_height, 
                            model_input_width,image_height, image_width,  confidence_thr, iou_threshold)
+
+        assert isinstance(result, list)
+        if len(result) != 0:
+            for bbox in result:
+                assert len(bbox) == 6
+
+
+class TestAnchorsBasedPostprocess:
+    """Test the AnchorsBased Postprocessing implementation."""
+
+    @pytest.fixture
+    def processor(self):
+        return AnchorsBasedPostprocess()
+
+    @pytest.fixture
+    def sample_input(self):
+        """Create an example tensor."""
+
+        model_output = np.random.uniform(-2, 12, (1, 15, 20, 5, 9))  
+
+        return model_output
+
+    def test_process_valid_input(self, processor, sample_input):
+        """Test processing of valid model ouput."""
+        
+        
+        classes_name = ['red', 'blue', 'green', 'yellow']
+        assert sample_input.shape[-1] == len(classes_name) + 5
+        model_input_height = 120 
+        model_input_width = 160 
+        image_height = 120 
+        image_width = 160
+        confidence_thr = 0.5 
+        iou_threshold = 0.5
+        max_output_boxes = 6
+        anchors = [0.14,0.19, 0.13,0.52, 0.16,0.31, 0.45,0.62, 0.28,0.38]
+        
+        result = processor(sample_input, classes_name, anchors, model_input_height, model_input_width, image_height, 
+                                image_width, max_output_boxes, confidence_thr, iou_threshold)
 
         assert isinstance(result, list)
         if len(result) != 0:
