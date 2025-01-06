@@ -1,46 +1,55 @@
 import onnx
 import os
-import cv2
-import random
-import shutil
 import numpy as np
 import onnxruntime
+from saltup.ai.quantization.quantization import Quantize
 
 from onnxruntime.quantization import quantize_dynamic, quantize_static, CalibrationDataReader, QuantType, QuantFormat
 
 
-def quantize_onnx_model_dynamic(input_model_path:str, output_model_path:str, per_channel:bool=False):
-    """quantize an onnx model
+class OnnxDynamicQuantize(Quantize):
+    
+    
+    def dynamic_quantize_model(self, input_model_path:str, output_model_path:str, per_channel:bool=False)-> None:
+        """quantize an onnx model in dynamic mode
 
-    Args:
-        input_model_path (str): path of the input model
-        output_model_path (str): path of the output model
-    """
-    # Load the ONNX model
-    #model = onnx.load(input_model_path)
+        Args:
+            input_model_path (str): path of the input model
+            output_model_path (str): path of the output model
+        """
+        # Load the ONNX model
+        #model = onnx.load(input_model_path)
+        
+        # Verify the model
+        #onnx.checker.check_model(model)
+        
+        # Perform dynamic quantization
+        quantize_dynamic(
+        model_input=input_model_path,
+        model_output=output_model_path,
+        per_channel=per_channel,  # Set to True if you want per-channel quantization (usually for Conv layers)
+        weight_type=QuantType.QUInt8  # Quantize weights to uint8
+        )
+        
+        print(f"Quantized model saved to: {output_model_path}")
+        
+        # Optional: Compare model sizes
+        original_size = os.path.getsize(input_model_path) / (1024 * 1024)
+        quantized_size = os.path.getsize(output_model_path) / (1024 * 1024)
+        
+        print(f"Original model size: {original_size:.2f} MB")
+        print(f"Quantized model size: {quantized_size:.2f} MB")
+        print(f"Size reduction: {(1 - quantized_size/original_size) * 100:.2f}%")
     
-    # Verify the model
-    #onnx.checker.check_model(model)
-    
-    # Perform dynamic quantization
-    quantize_dynamic(
-    model_input=input_model_path,
-    model_output=output_model_path,
-    per_channel=per_channel,  # Set to True if you want per-channel quantization (usually for Conv layers)
-    weight_type=QuantType.QUInt8  # Quantize weights to uint8
-    )
-    
-    print(f"Quantized model saved to: {output_model_path}")
-    
-    # Optional: Compare model sizes
-    original_size = os.path.getsize(input_model_path) / (1024 * 1024)
-    quantized_size = os.path.getsize(output_model_path) / (1024 * 1024)
-    
-    print(f"Original model size: {original_size:.2f} MB")
-    print(f"Quantized model size: {quantized_size:.2f} MB")
-    print(f"Size reduction: {(1 - quantized_size/original_size) * 100:.2f}%")
-    
+    def __call__(self, input_model_path:str, output_model_path:str, per_channel:bool=False) -> None:          
+        """quantize an onnx model in dynamic mode
 
+        Args:
+            input_model_path (str): path of the input model
+            output_model_path (str): path of the output model
+        """
+        
+        return self.dynamic_quantize_model(input_model_path, output_model_path, per_channel)
 
 class yolo_calibration_data_reader(CalibrationDataReader):
     def __init__(self, calibration_image_folder: str, model_path: str, preprocess_function):
@@ -112,60 +121,98 @@ class yolo_calibration_data_reader(CalibrationDataReader):
         """Reset the iterator."""
         self.enum_data = None
 
-
-def quantize_yolo_model_to_onnx(
-    model_path:str,
-    output_path:str,
-    calibration_data_path:str,
-    preprocess_function:str,
-    preprocess_kwargs:dict=None,
-    quant_format=QuantFormat.QOperator,
-    activation_type=QuantType.QUInt8,
-    weight_type=QuantType.QInt8,
-    nodes_to_exclude:list[str]=None,
-    per_channel:bool=False,
-    reduce_range:bool=True,
-) -> None:
+class OnnxStaticQuantize(Quantize):
     """
     Quantizes a model in ONNX format with static quantization.
-
-    Parameters:
-        model_path (str): Path to the input and output ONNX model (the same path for both).
-        output_path (str): Path to save the quantized ONNX model.
-        calibration_data_path (str): Path to the directory containing calibration images.
-        preprocess_function (callable): Function to preprocess calibration images.
-        quant_format (QuantFormat): Quantization format (default: QOperator).
-        activation_type (QuantType): Activation quantization type (default: QUInt8).
-        weight_type (QuantType): Weight quantization type (default: QInt8).
-        nodes_to_exclude (list, optional): List of nodes to exclude from quantization.
-        per_channel (bool): Whether to use per-channel quantization (default: False).
-        reduce_range (bool): Whether to reduce the range for quantization (default: True).
-
     """
-
-
-    # Create the calibration data reader instance
-    dr = yolo_calibration_data_reader(calibration_data_path, model_path, preprocess_function, preprocess_kwargs)
     
-    # Perform static quantization
-    quantize_static(
-        input_path=model_path,
-        output_path=output_path,
-        calibration_data_reader=dr,
-        quant_format=quant_format,
-        activation_type=activation_type,
-        weight_type=weight_type,
-        nodes_to_exclude=nodes_to_exclude,
-        per_channel=per_channel,
-        reduce_range=reduce_range
-    )
-    
-    print(f"Quantized model saved to: {output_path}")
+    def static_quantize_model(self,
+                                model_path:str,
+                                output_path:str,
+                                calibration_data_path:str,
+                                preprocess_function:str,
+                                preprocess_kwargs:dict=None,
+                                quant_format=QuantFormat.QOperator,
+                                activation_type=QuantType.QUInt8,
+                                weight_type=QuantType.QInt8,
+                                nodes_to_exclude:list[str]=None,
+                                per_channel:bool=False,
+                                reduce_range:bool=True,
+                            ) -> None:
+        """
+        method quantizing a model in ONNX format with static quantization.
 
-    # Optional: Compare model sizes
-    original_size = os.path.getsize(model_path) / (1024 * 1024)
-    quantized_size = os.path.getsize(output_path) / (1024 * 1024)
+        Args:
+            model_path (str): Path to the input and output ONNX model (the same path for both).
+            output_path (str): Path to save the quantized ONNX model.
+            calibration_data_path (str): Path to the directory containing calibration images.
+            preprocess_function (callable): Function to preprocess calibration images.
+            quant_format (QuantFormat): Quantization format (default: QOperator).
+            activation_type (QuantType): Activation quantization type (default: QUInt8).
+            weight_type (QuantType): Weight quantization type (default: QInt8).
+            nodes_to_exclude (list, optional): List of nodes to exclude from quantization.
+            per_channel (bool): Whether to use per-channel quantization (default: False).
+            reduce_range (bool): Whether to reduce the range for quantization (default: True).
 
-    print(f"Original model size: {original_size:.2f} MB")
-    print(f"Quantized model size: {quantized_size:.2f} MB")
-    print(f"Size reduction: {(1 - quantized_size / original_size) * 100:.2f}%")
+        """
+
+
+        # Create the calibration data reader instance
+        dr = yolo_calibration_data_reader(calibration_data_path, model_path, preprocess_function, preprocess_kwargs)
+        
+        # Perform static quantization
+        quantize_static(
+            input_path=model_path,
+            output_path=output_path,
+            calibration_data_reader=dr,
+            quant_format=quant_format,
+            activation_type=activation_type,
+            weight_type=weight_type,
+            nodes_to_exclude=nodes_to_exclude,
+            per_channel=per_channel,
+            reduce_range=reduce_range
+        )
+        
+        print(f"Quantized model saved to: {output_path}")
+
+        # Optional: Compare model sizes
+        original_size = os.path.getsize(model_path) / (1024 * 1024)
+        quantized_size = os.path.getsize(output_path) / (1024 * 1024)
+
+        print(f"Original model size: {original_size:.2f} MB")
+        print(f"Quantized model size: {quantized_size:.2f} MB")
+        print(f"Size reduction: {(1 - quantized_size / original_size) * 100:.2f}%")
+
+    def __call__(self,
+                model_path:str,
+                output_path:str,
+                calibration_data_path:str,
+                preprocess_function:str,
+                preprocess_kwargs:dict=None,
+                quant_format=QuantFormat.QOperator,
+                activation_type=QuantType.QUInt8,
+                weight_type=QuantType.QInt8,
+                nodes_to_exclude:list[str]=None,
+                per_channel:bool=False,
+                reduce_range:bool=True,
+            ) -> None:          
+        """
+        Directly invoking the quantization method.
+
+        Quantizes a model in ONNX format with static quantization.
+
+        Args:
+            model_path (str): Path to the input and output ONNX model (the same path for both).
+            output_path (str): Path to save the quantized ONNX model.
+            calibration_data_path (str): Path to the directory containing calibration images.
+            preprocess_function (callable): Function to preprocess calibration images.
+            quant_format (QuantFormat): Quantization format (default: QOperator).
+            activation_type (QuantType): Activation quantization type (default: QUInt8).
+            weight_type (QuantType): Weight quantization type (default: QInt8).
+            nodes_to_exclude (list, optional): List of nodes to exclude from quantization.
+            per_channel (bool): Whether to use per-channel quantization (default: False).
+            reduce_range (bool): Whether to reduce the range for quantization (default: True).
+
+        """
+        return self.static_quantize_model(model_path, output_path, calibration_data_path, preprocess_function, preprocess_kwargs,
+                                quant_format, activation_type, weight_type, nodes_to_exclude, per_channel, reduce_range)

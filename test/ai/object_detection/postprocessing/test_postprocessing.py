@@ -49,7 +49,7 @@ class TestPostprocessingFactory:
     def test_valid_processor_creation(self):
         """Test creation of all valid processor types."""
         valid_types = [
-            #(PostprocessingType.ANCHORS_BASED, AnchorsBasedPostprocess),
+            (PostprocessingType.ANCHORS_BASED, AnchorsBasedPostprocess),
             (PostprocessingType.ULTRALITICS, UltralyticsPostprocess),
             (PostprocessingType.SUPERGRAD, SupergradPostprocess),
             (PostprocessingType.DAMO, DamoPostprocess)
