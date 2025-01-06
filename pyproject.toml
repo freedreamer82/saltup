@@ -17,6 +17,8 @@ dependencies = [
     "cmsisdsp",
     "pillow",
     "opencv-python",
-    "boto3"
+    "boto3",
+    "onnx",
+    "onnxruntime"
 ]
 
