@@ -86,7 +86,7 @@ class TestDamoPostprocess:
         
         return model_output_simulation
 
-    def test_process_valid_input(self, processor, sample_input):
+    def test_process_random_input(self, processor, sample_input):
         """Test processing of valid model ouput."""
         assert sample_input[0].shape[-1] == 4
         assert sample_input[1].shape[-1] == 4
@@ -111,6 +111,30 @@ class TestDamoPostprocess:
             for bbox in result:
                 assert len(bbox) == 6
 
+    @pytest.fixture
+    def real_output(self):
+        damo_model_output = np.load(os.path.join('..', '..', '..', 'results','damo_output.npy'))
+        return damo_model_output
+    
+    def test_process_real_input(self, processor, real_output):
+        """Test processing of valid model ouput."""
+        assert real_output[0].shape[-1] == 4
+        assert real_output[1].shape[-1] == 4
+        classes_name = ['red', 'blue', 'green', 'yellow']
+        model_input_height = 480 
+        model_input_width = 640 
+        image_height = 480 
+        image_width = 640
+        confidence_thr = 0.5 
+        iou_threshold = 0.5
+        
+        result = processor(real_output, classes_name, model_input_height, 
+                            model_input_width, image_height, image_width, confidence_thr, iou_threshold)
+
+        assert isinstance(result, list)
+        if len(result) != 0:
+            for bbox in result:
+                assert len(bbox) == 6
 
 class TestSupergradPostprocess:
     """Test the Supergrad Postprocessing implementation."""
@@ -133,7 +157,7 @@ class TestSupergradPostprocess:
         
         return model_output
 
-    def test_process_valid_input(self, processor, sample_input):
+    def test_process_random_input(self, processor, sample_input):
         """Test processing of valid model ouput."""
         assert sample_input[0].shape[-1] == 4
         assert sample_input[1].shape[-1] == 4
@@ -146,6 +170,31 @@ class TestSupergradPostprocess:
         iou_threshold = 0.5
         
         result = processor(sample_input, classes_name, model_input_height, 
+                            model_input_width, image_height, image_width, confidence_thr, iou_threshold)
+
+        assert isinstance(result, list)
+        if len(result) != 0:
+            for bbox in result:
+                assert len(bbox) == 6
+    
+    @pytest.fixture
+    def real_output(self):
+        supergrad_model_output = np.load(os.path.join('..', '..', '..', 'results','supergrad_output.npy'))
+        return supergrad_model_output
+    
+    def test_process_real_input(self, processor, real_output):
+        """Test processing of valid model ouput."""
+        assert real_output[0].shape[-1] == 4
+        assert real_output[1].shape[-1] == 4
+        classes_name = ['red', 'blue', 'green', 'yellow']
+        model_input_height = 480 
+        model_input_width = 640 
+        image_height = 480 
+        image_width = 640
+        confidence_thr = 0.5 
+        iou_threshold = 0.5
+        
+        result = processor(real_output, classes_name, model_input_height, 
                             model_input_width, image_height, image_width, confidence_thr, iou_threshold)
 
         assert isinstance(result, list)
@@ -175,7 +224,7 @@ class TestUltralyticsPostprocess:
         
         return model_output
 
-    def test_process_valid_input(self, processor, sample_input):
+    def test_process_random_input(self, processor, sample_input):
         """Test processing of valid model ouput."""
         assert sample_input[0].shape[0] == 8
         classes_name = ['red', 'blue', 'green', 'yellow']
@@ -193,7 +242,32 @@ class TestUltralyticsPostprocess:
         if len(result) != 0:
             for bbox in result:
                 assert len(bbox) == 6
+    
+    @pytest.fixture
+    def real_output(self):
+        ultralytics_model_output = np.load(os.path.join('..', '..', '..', 'results', 'ultralytics_ouput.npy'))
+        ultralytics_model_output = ultralytics_model_output.squeeze(0)
+        return ultralytics_model_output
+    
+    def test_process_real_input(self, processor, real_output):
+        """Test processing of valid model ouput."""
+        assert real_output[0].shape[0] == 8
+        
+        classes_name = ['red', 'blue', 'green', 'yellow']
+        model_input_height = 480 
+        model_input_width = 640 
+        image_height = 480 
+        image_width = 640
+        confidence_thr = 0.5
+        iou_threshold = 0.5
+        
+        result = processor(real_output, classes_name, model_input_height, 
+                            model_input_width, image_height, image_width, confidence_thr, iou_threshold)
 
+        assert isinstance(result, list)
+        if len(result) != 0:
+            for bbox in result:
+                assert len(bbox) == 6
 
 class TestAnchorsBasedPostprocess:
     """Test the AnchorsBased Postprocessing implementation."""
@@ -226,6 +300,35 @@ class TestAnchorsBasedPostprocess:
         anchors = [0.14,0.19, 0.13,0.52, 0.16,0.31, 0.45,0.62, 0.28,0.38]
         
         result = processor(sample_input, classes_name, anchors, model_input_height, model_input_width, image_height, 
+                                image_width, max_output_boxes, confidence_thr, iou_threshold)
+
+        assert isinstance(result, list)
+        if len(result) != 0:
+            for bbox in result:
+                assert len(bbox) == 6
+                
+    @pytest.fixture
+    def real_output(self):
+        anchorsBased_model_output = np.load(os.path.join('..', '..', '..', 'results', 'anchorsBased_output.npy'))
+        return anchorsBased_model_output
+    
+    def test_process_real_input(self, processor, real_output):
+        """Test processing of valid model ouput."""
+        
+        classes_name = ['red', 'blue', 'green', 'yellow']
+        
+        assert real_output.shape[-1] == len(classes_name) + 5
+        
+        model_input_height = 160 
+        model_input_width = 160 
+        image_height = 160 
+        image_width = 160
+        confidence_thr = 0.5 
+        iou_threshold = 0.5
+        max_output_boxes = 6
+        anchors = [0.14,0.19, 0.13,0.52, 0.16,0.31, 0.45,0.62, 0.28,0.38]
+        
+        result = processor(real_output, classes_name, anchors, model_input_height, model_input_width, image_height, 
                                 image_width, max_output_boxes, confidence_thr, iou_threshold)
 
         assert isinstance(result, list)

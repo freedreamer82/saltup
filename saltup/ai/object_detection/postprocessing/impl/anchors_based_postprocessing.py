@@ -1,5 +1,5 @@
 import numpy as np
-from tensorflow.keras import backend as K
+from tensorflow.python.keras import backend as K
 import tensorflow as tf
 from saltup.ai.object_detection.dataset.bbox_utils import calculate_iou, process_boxes
 from saltup.ai.object_detection.postprocessing import Postprocessing
@@ -195,9 +195,9 @@ class AnchorsBasedPostprocess(Postprocessing):
                                                             iou_threshold=iou_threshold,
                                                             classes_ids=list(range(0, num_classes)))
         classes = classes.numpy()
-        print(f'classes: {classes}')
+        #print(f'classes: {classes}')
         scores = scores.numpy()
-        print(f'scores: {scores}')
+        #print(f'scores: {scores}')
         my_boxes = my_boxes.numpy()
         boxes = boxes.numpy()
         result = []

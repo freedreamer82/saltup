@@ -19,6 +19,7 @@ dependencies = [
     "opencv-python",
     "boto3",
     "onnx",
-    "onnxruntime"
+    "onnxruntime",
+    "tensorflow"
 ]
 
