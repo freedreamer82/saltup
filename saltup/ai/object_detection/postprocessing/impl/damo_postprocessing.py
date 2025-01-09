@@ -73,7 +73,7 @@ class DamoPostprocess(Postprocessing):
 
         # Apply non-max suppression
         result = []
-        while len(boxes) > 0:
+        while len(boxes) > 0 and len(result) < len(boxes):
             result.append(boxes[0])
             boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
 

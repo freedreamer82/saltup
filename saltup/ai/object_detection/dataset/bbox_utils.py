@@ -541,7 +541,7 @@ def plot_image_with_boxes(image_file: str, label_file: str):
     plt.axis('off')
     plt.show()
     
-from tensorflow.keras import backend as K
+from tensorflow.python.keras import backend as K
 
 def process_boxes(box_xy, box_wh):
     """

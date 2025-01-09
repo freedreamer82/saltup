@@ -67,7 +67,7 @@ class SupergradPostprocess(Postprocessing):
             boxes.sort(key=lambda x: x[5], reverse=True)  # Sort by confidence
             result = []
             # Apply the non-max supression
-            while len(boxes) > 0:
+            while len(boxes) > 0 and len(result) < len(boxes):
                 result.append(boxes[0])
                 boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
         return result
