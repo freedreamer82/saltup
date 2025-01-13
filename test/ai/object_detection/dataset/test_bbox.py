@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from saltup.ai.object_detection.dataset.bbox_utils import (
+from saltup.ai.object_detection.utils.bbox import (
     yolo_to_coco_bbox, coco_to_yolo_bbox, pascalvoc_to_yolo_bbox,
     corners_to_center_format, corners_to_topleft_format,
     center_to_corners_format, center_to_topleft_format,
