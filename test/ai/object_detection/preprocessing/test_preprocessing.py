@@ -162,10 +162,10 @@ class TestSupergradPreprocess:
     def test_process_qat_pipeline(self, processor, sample_image):
         """Test QAT preprocessing pipeline."""
         target_shape = (224, 224)
+        processor.preprocess_type = SupergradPreprocessType.QAT
         result = processor(
             sample_image,
             target_shape,
-            type=SupergradPreprocessType.QAT
         )
 
         assert isinstance(result, np.ndarray)
