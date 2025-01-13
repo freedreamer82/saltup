@@ -473,13 +473,13 @@ def calculate_iou(box1: Union[List, Tuple], box2: Union[List, Tuple], format: BB
     Args:
         box1: First bounding box coordinates
         box2: Second bounding box coordinates
-        format: Format of the input boxes, either "corners" (x1,y1,x2,y2) or "center" (xc,yc,w,h)
+        format: Format of the input boxes, either "corners" (x1,y1,x2,y2), "center" (xc,yc,w,h) or "topleft" (x1,y1,w,h)
 
     Returns:
         float: IoU value between 0 and 1
 
     Raises:
-        ValueError: If format is not "corners" or "center"
+        ValueError: If format is not "corners", "center" or "topleft"
     """
     if not isinstance(format, BBoxFormat):
         raise TypeError("Format must be a  BBoxFormat")

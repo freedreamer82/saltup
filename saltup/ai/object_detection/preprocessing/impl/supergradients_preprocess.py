@@ -8,9 +8,9 @@ from saltup.ai.object_detection.preprocessing import Preprocessing
 class SupergradPreprocessType(IntEnum):
     """Supergradient model preprocessing types.
     
-    Defines preprocessing pipelines:
+    Available pipelines:
         BASE: Standard pipeline with image normalization
-        QAT: Quantization-aware training without normalization
+        QAT: Quantization-aware training pipeline without normalization
     """
     BASE = 0
     QAT = 1
@@ -19,12 +19,12 @@ class SupergradPreprocessType(IntEnum):
 class SupergradPreprocess(Preprocessing):
     """Preprocessing pipeline for Supergradient object detection models.
     
-    Implements two preprocessing pipelines for different model types:
-    - Standard pipeline (BASE): Includes resizing, padding, and normalization
+    Supports two preprocessing pipelines:
+    - Standard (BASE): Includes resizing, padding, and normalization
     - Quantization-aware training (QAT): Similar to BASE but preserves original pixel values
     
-    Each pipeline maintains aspect ratio during resizing and uses consistent padding
-    for maintaining spatial dimensions.
+    Both pipelines preserve aspect ratio during resizing and use consistent padding
+    for spatial dimensions.
     """
     
     class ImagePosition(IntEnum):
@@ -36,6 +36,21 @@ class SupergradPreprocess(Preprocessing):
         """
         TOP_LEFT = auto()  # Align to origin
         CENTER = auto()    # Align to center
+        
+    def __init__(
+        self,
+        preprocess_type: SupergradPreprocessType = SupergradPreprocessType.BASE, 
+        normalize_method: callable = None
+    ):
+        """Initialize preprocessy
+
+        Args:
+            normalize_method: Optional custom normalization function 
+                           (defaults to standard [0,1] normalization)
+        """
+        super().__init__()
+        self.preprocess_type = preprocess_type
+        self.normalize_method = normalize_method if normalize_method else super().standard_normalize
     
     def resize_image_and_black_container_rgb(
         self, 
@@ -61,20 +76,20 @@ class SupergradPreprocess(Preprocessing):
         Raises:
             ValueError: If img_position is invalid
         """
-        # Convert color space
+        # Convert to RGB colorspace
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         h, w = image_rgb.shape[:2]
 
-        # Preserve aspect ratio
+        # Calculate size preserving aspect ratio
         aspect_ratio = min(final_width / w, final_height / h)
         new_width = int(w * aspect_ratio)
         new_height = int(h * aspect_ratio)
 
-        # High-quality downsampling
+        # Resize with high-quality algorithm
         resized_image = cv2.resize(image_rgb, (new_width, new_height), 
                                  interpolation=cv2.INTER_AREA)
 
-        # Initialize container with neural network optimized grey value
+        # Create padded container with standardized grey
         grey_image = 114 * np.ones((final_height, final_width, 3), 
                                  dtype=np.uint8)
         
@@ -93,7 +108,7 @@ class SupergradPreprocess(Preprocessing):
 
         return grey_image
 
-    def preprocess(self, img: np.ndarray, target_shape: tuple, normalize_method: callable = None) -> np.ndarray:
+    def preprocess(self, img: np.ndarray, target_shape: tuple) -> np.ndarray:
         """Apply standard preprocessing pipeline.
 
         Steps:
@@ -105,7 +120,6 @@ class SupergradPreprocess(Preprocessing):
         Args:
             img: Input image in BGR format
             target_shape: Desired (height, width)
-            normalize_method: Optional custom normalization function
 
         Returns:
             np.ndarray: Normalized tensor in NCHW format
@@ -116,14 +130,11 @@ class SupergradPreprocess(Preprocessing):
             final_width=target_shape[1],
             img_position=self.ImagePosition.TOP_LEFT
         )
-        # Normalize
-        if normalize_method:
-            image_data = normalize_method(image_data)
-        else:
-            image_data = image_data / 255.0   # Default Normalization
+        # Apply normalization
+        image_data = self.normalize_method(image_data)
 
-        # Format conversion
-        image_data = np.transpose(image_data, (2, 0, 1))  # HWC to CHW format (channel first)
+        # Reorder channels (HWC -> NCHW)
+        image_data = np.transpose(image_data, (2, 0, 1))
         
         # Add batch dimension
         image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
@@ -152,26 +163,22 @@ class SupergradPreprocess(Preprocessing):
     def __call__(
         self, 
         img: np.ndarray, 
-        target_shape: tuple, 
-        type: SupergradPreprocessType = SupergradPreprocessType.BASE,
-        **kwargs
+        target_shape: tuple
     ) -> np.ndarray:
         """Execute preprocessing pipeline.
 
         Args:
-            img: Input image in BGR format
-            target_shape: Desired (height, width)
-            type: Preprocessing strategy to use
-            **kwargs: Additional arguments for preprocessing
+            img: Input BGR image
+            target_shape: Target dimensions as (height, width)
 
         Returns:
-            Processed image tensor according to selected pipeline
+            np.ndarray: Processed image tensor ready for model input
 
         Raises:
             ValueError: For invalid input image
         """
         self._validate_input(img)
         
-        if type == SupergradPreprocessType.QAT:
+        if self.preprocess_type == SupergradPreprocessType.QAT:
             return self.preprocess_qat(img, target_shape)
-        return self.preprocess(img, target_shape, kwargs)
+        return self.preprocess(img, target_shape)
