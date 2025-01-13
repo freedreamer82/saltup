@@ -15,7 +15,8 @@ class UltraliticsPreprocess(Preprocessing):
         scale_fill: bool = False,
         scale_up: bool = True,
         center: bool = False,
-        stride: int = 32
+        stride: int = 32,
+        normalize_method: callable = None
     ):
         """Initialize preprocessing parameters.
         
@@ -26,6 +27,7 @@ class UltraliticsPreprocess(Preprocessing):
             scale_up (bool): If True, allow scaling up. If False, only scale down.
             center (bool): If True, center the placed image. If False, place image in top-left corner.
             stride (int): Stride of the model (e.g., 32 for YOLOv5).
+            normalize_method (callable): Custom normalization function (optional)
         """
         self.target_shape = target_shape
         self.auto = auto
@@ -33,6 +35,7 @@ class UltraliticsPreprocess(Preprocessing):
         self.scale_up = scale_up
         self.center = center
         self.stride = stride
+        self.normalize_method = normalize_method if normalize_method else super().standard_normalize
 
     def letterbox(self, img: np.ndarray, shape_override: Optional[Tuple[int, int]] = None) -> Tuple[np.ndarray, Dict]:
         """Resize image to target shape and adds padding if needed while preserving aspect ratio.
@@ -91,17 +94,25 @@ class UltraliticsPreprocess(Preprocessing):
     def __call__(
         self,
         img: np.ndarray,
-        normalize_method: callable = None,
         **kwargs: Any
     ) -> Union[np.ndarray, Dict]:
-        """Execute preprocessing pipeline with optional parameter overrides.
+        """
+        Execute complete preprocessing pipeline.
+        
+        Pipeline steps:
+        1. Input validation
+        2. Parameter override handling
+        3. Letterboxing and resizing
+        4. Pixel normalization
+        5. Channel reordering (HWC → CHW)
+        6. Batch dimension addition
         
         Args:
-            img: Input image in BGR format
-            **kwargs: Override any class parameter (target_shape, auto, scale_fill, etc.)
+            img: Input BGR image
+            **kwargs: Optional parameter overrides for this call
 
         Returns:
-            Processed image tensor
+            np.ndarray: Processed tensor ready for model input
         """
         self._validate_input(img)
         
@@ -120,10 +131,7 @@ class UltraliticsPreprocess(Preprocessing):
             processed_img = self.letterbox(img)
             
             # Normalize
-            if normalize_method:
-                image_data = normalize_method(processed_img)
-            else:
-                image_data = np.array(processed_img) / 255.0  # Default Normalization
+            image_data = self.normalize_method(processed_img)
             
             # Convert to model input format
             image_data = np.transpose(image_data, (2, 0, 1))    # HWC to CHW format (channel first)

@@ -5,17 +5,21 @@ from saltup.utils.configure_logging import get_logger
 
 
 class Preprocessing(ABC):
-    """Abstract base class for image preprocessing pipelines."""
+    """Abstract base class for image preprocessing pipelines.
     
+    Provides common validation and normalization functionality for 
+    implementing custom preprocessing pipelines.
+    """
+        
     def _validate_input(self, img: np.ndarray) -> None:
-        """Validate input image.
+        """Validate the input image format and type.
         
         Args:
             img: Input image to validate
 
         Raises:
-            ValueError: If image is None or invalid
-            TypeError: If image is not numpy array
+            ValueError: If image is None
+            TypeError: If image is not a numpy array
         """
         if img is None:
             raise ValueError("Input image cannot be None")
@@ -24,9 +28,10 @@ class Preprocessing(ABC):
 
     @abstractmethod
     def __call__(self):
-        """Execute preprocessing pipeline.
+        """Execute the preprocessing pipeline.
 
-        Must be implemented by subclasses to define specific preprocessing steps.
+        This abstract method must be implemented by subclasses to define
+        their specific preprocessing steps and transformations.
 
         Raises:
             NotImplementedError: If called directly on base class
@@ -36,3 +41,16 @@ class Preprocessing(ABC):
         )
         raise NotImplementedError(
             "Preprocessing method must be implemented in subclass.")
+        
+    @staticmethod
+    def standard_normalize(img: np.ndarray) -> np.ndarray:
+        """
+        Standard image normalization to [0,1] range.
+
+        Args:
+            img: Input image array
+
+        Returns:
+            np.ndarray: Normalized image as float32 in range [0,1]
+        """
+        return img.astype(np.float32) / 255.0

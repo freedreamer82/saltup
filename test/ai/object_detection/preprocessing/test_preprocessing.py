@@ -94,8 +94,8 @@ class TestAnchorsBasedPreprocess:
             return (img - 128.0) / 128.0
 
         target_shape = (224, 224)
-        result = processor(sample_image, target_shape,
-                           normalize_method=custom_norm)
+        processor.normalize_method = custom_norm
+        result = processor(sample_image, target_shape)
 
         assert isinstance(result, np.ndarray)
         assert result.dtype == np.float32
