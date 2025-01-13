@@ -6,7 +6,7 @@ from saltup.ai.object_detection.utils.bbox import (
     corners_to_center_format, corners_to_topleft_format,
     center_to_corners_format, center_to_topleft_format,
     topleft_to_center_format, normalize_bbox, absolute_bbox,
-    calculate_iou, is_normalized, BBoxFormat, NotationFormat
+    compute_iou, is_normalized, BBoxFormat, NotationFormat
 )
 
 class TestBBoxUtils:
@@ -180,21 +180,21 @@ class TestBBoxUtils:
         """Test IoU calculation between bounding boxes."""
         # Perfect overlap
         box1 = [0, 0, 1, 1]
-        np.testing.assert_almost_equal(calculate_iou(box1, box1, format=BBoxFormat.CORNERS), 1.0)
+        np.testing.assert_almost_equal(compute_iou(box1, box1, format=BBoxFormat.CORNERS), 1.0)
         
         # No overlap
         box2 = [2, 2, 3, 3]
-        assert calculate_iou(box1, box2, format=BBoxFormat.CORNERS) == 0.0
+        assert compute_iou(box1, box2, format=BBoxFormat.CORNERS) == 0.0
         
         # Partial overlap
         box3 = [0.5, 0.5, 1.5, 1.5]
-        iou = calculate_iou(box1, box3, format=BBoxFormat.CORNERS)
+        iou = compute_iou(box1, box3, format=BBoxFormat.CORNERS)
         assert 0 < iou < 1
         
         # Test with center format
         center_box1 = [0.5, 0.5, 1, 1]  # center_x, center_y, w, h
         center_box2 = [0.5, 0.5, 1, 1]
-        np.testing.assert_almost_equal(calculate_iou(center_box1, center_box2, format=BBoxFormat.CENTER), 1.0)
+        np.testing.assert_almost_equal(compute_iou(center_box1, center_box2, format=BBoxFormat.CENTER), 1.0)
 
     def test_is_normalized(self, sample_boxes):
         """Test bbox normalization check."""

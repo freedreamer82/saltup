@@ -470,7 +470,11 @@ def absolute_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, for
     raise ValueError(f"Unsupported format: {format}. Must be 'corners', 'topleft', or 'center'")
 
 
-def calculate_iou(box1: Union[List, Tuple], box2: Union[List, Tuple], format: BBoxFormat = BBoxFormat.CORNERS) -> float:
+def compute_iou(
+    box1: Union[List, Tuple], 
+    box2: Union[List, Tuple], 
+    format: BBoxFormat = BBoxFormat.CORNERS
+) -> float:
     """
     Calculate Intersection over Union (IoU) between two bounding boxes.
 
