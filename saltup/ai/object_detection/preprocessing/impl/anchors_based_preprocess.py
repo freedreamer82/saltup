@@ -3,7 +3,6 @@ import cv2
 
 from saltup.ai.object_detection.preprocessing.preproccesing import Preprocessing
 
-
 class AnchorsBasedPreprocess(Preprocessing):
     """
     Preprocessing pipeline for anchor-based object detection models.
@@ -102,13 +101,17 @@ class AnchorsBasedPreprocess(Preprocessing):
         # Handle square padding if needed
         if input_height == input_width and self.apply_padding:
             max_dim = max(height, width)
-            padded = np.full((max_dim, max_dim), 114, dtype=np.uint8)
-            padded[0:height, 0:width] = img  # Place at top-left
+            if is_single_channel:
+                padded = np.full((max_dim, max_dim), 114, dtype=np.uint8)
+                padded[0:height, 0:width] = img
+            else:
+                padded = np.full((max_dim, max_dim, channels), 114, dtype=np.uint8)
+                padded[0:height, 0:width, :] = img
             img = padded
 
         # Scale to target dimensions
         img = cv2.resize(img, (input_width, input_height),
-                         interpolation=cv2.INTER_LINEAR)
+                       interpolation=cv2.INTER_LINEAR)
 
         # Normalize pixel values
         img = self.normalize_method(img)
