@@ -47,6 +47,7 @@ class SupergradPostprocess(Postprocessing):
         boxes = []
         x_factor = image_width / model_input_width
         y_factor = image_height / model_input_height
+        
         for i in range(rows):
             # Extract the class scores from the current row
             classes_scores = class_score[i]
@@ -63,13 +64,12 @@ class SupergradPostprocess(Postprocessing):
 
                 boxes.append([x1, y1, x2, y2, label, prob])
 
-        if len(boxes) != 0:
-            boxes.sort(key=lambda x: x[5], reverse=True)  # Sort by confidence
-            result = []
-            # Apply the non-max supression
-            while len(boxes) > 0 and len(result) < len(boxes):
-                result.append(boxes[0])
-                boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
+        boxes.sort(key=lambda x: x[5], reverse=True)  # Sort by confidence
+        result = []
+        # Apply the non-max supression
+        while len(boxes) > 0 and len(result) < len(boxes):
+            result.append(boxes[0])
+            boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
         return result
 
     def __call__(self,

@@ -44,7 +44,6 @@ class DamoPostprocess(Postprocessing):
         class_scores = model_output[0].squeeze(0)
         bboxes = model_output[1].squeeze(0)
         rows = class_scores.shape[0]
-        print(rows)
         boxes = []
 
         x_factor = image_width / model_input_width
