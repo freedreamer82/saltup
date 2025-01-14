@@ -14,8 +14,8 @@ class PreprocessingFactory:
             from saltup.ai.object_detection.preprocessing.impl import AnchorsBasedPreprocess
             return AnchorsBasedPreprocess()
         elif processor_type == PreprocessingType.ULTRALITICS:
-            from saltup.ai.object_detection.preprocessing.impl import UltraliticsPreprocess
-            return UltraliticsPreprocess()
+            from saltup.ai.object_detection.preprocessing.impl import UltralyticsPreprocess
+            return UltralyticsPreprocess()
         elif processor_type == PreprocessingType.SUPERGRAD:
             from saltup.ai.object_detection.preprocessing.impl import SupergradPreprocess
             return SupergradPreprocess()
