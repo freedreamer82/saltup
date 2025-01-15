@@ -540,3 +540,245 @@ def plot_image_with_boxes(image_file: str, label_file: str):
     plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     plt.axis('off')
     plt.show()
+
+import json
+import xml.etree.ElementTree as ET
+
+
+# # examples:
+# yolo_bboxes = BBox.from_yolo_file("path/to/yolo_annotation.txt", img_width=640, img_height=480)
+# for bbox in yolo_bboxes:
+#     print(bbox.to_coco())  # Converti in formato COCO
+# # Carica bounding box da un file COCO
+# coco_bboxes = BBox.from_coco_file("path/to/coco_annotation.json", image_id=42)
+# for bbox in coco_bboxes:
+#     print(bbox.to_pascal_voc())  # Converti in formato Pascal VOC
+
+import json
+import xml.etree.ElementTree as ET
+
+class BBox:
+    def __init__(self, coordinates: Union[List, Tuple] = None, format: BBoxFormat = BBoxFormat.CORNERS, img_width: int = None, img_height: int = None):
+        """
+        Initialize a BBox object with coordinates and format.
+
+        Args:
+            coordinates: The bounding box coordinates (optional).
+            format: The format of the coordinates (CORNERS, CENTER, TOPLEFT).
+            img_width: The width of the image (required for normalization).
+            img_height: The height of the image (required for normalization).
+        """
+        self.coordinates = coordinates
+        self.format = format
+        self.img_width = img_width
+        self.img_height = img_height
+
+    @classmethod
+    def from_yolo_file(cls, file_path: str, img_width: int, img_height: int):
+        """
+        Load bounding box from a YOLO format annotation file.
+
+        Args:
+            file_path: Path to the YOLO annotation file.
+            img_width: Width of the image.
+            img_height: Height of the image.
+
+        Returns:
+            A list of BBox objects (one for each annotation in the file).
+        """
+        bboxes = []
+        with open(file_path, 'r') as file:
+            for line in file:
+                class_id, x_center, y_center, width, height = map(float, line.strip().split())
+                bbox = cls([x_center, y_center, width, height], format=BBoxFormat.CENTER, img_width=img_width, img_height=img_height)
+                bboxes.append(bbox)
+        return bboxes
+
+    @classmethod
+    def from_coco_file(cls, file_path: str, image_id: int):
+        """
+        Load bounding box from a COCO format annotation file.
+
+        Args:
+            file_path: Path to the COCO annotation file.
+            image_id: ID of the image to load annotations for.
+
+        Returns:
+            A list of BBox objects (one for each annotation in the file).
+        """
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+
+        bboxes = []
+        for annotation in data['annotations']:
+            if annotation['image_id'] == image_id:
+                x_min, y_min, width, height = annotation['bbox']
+                bbox = cls([x_min, y_min, width, height], format=BBoxFormat.TOPLEFT)
+                bboxes.append(bbox)
+        return bboxes
+
+    @classmethod
+    def from_pascal_voc_file(cls, file_path: str):
+        """
+        Load bounding box from a Pascal VOC format annotation file.
+
+        Args:
+            file_path: Path to the Pascal VOC annotation file.
+
+        Returns:
+            A list of BBox objects (one for each annotation in the file).
+        """
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+
+        bboxes = []
+        for obj in root.findall('object'):
+            bndbox = obj.find('bndbox')
+            xmin = int(bndbox.find('xmin').text)
+            ymin = int(bndbox.find('ymin').text)
+            xmax = int(bndbox.find('xmax').text)
+            ymax = int(bndbox.find('ymax').text)
+            bbox = cls([xmin, ymin, xmax, ymax], format=BBoxFormat.CORNERS)
+            bboxes.append(bbox)
+        return bboxes
+
+    def get_coordinates(self, format: BBoxFormat = None) -> Tuple[float, float, float, float]:
+        """
+        Get the bounding box coordinates in the specified format.
+
+        Args:
+            format: The desired format (CORNERS, CENTER, TOPLEFT). If None, returns in the current format.
+
+        Returns:
+            Tuple of coordinates in the specified format.
+        """
+        if format is None:
+            return self.coordinates
+
+        if self.format == format:
+            return self.coordinates
+
+        if self.format == BBoxFormat.CORNERS:
+            if format == BBoxFormat.CENTER:
+                return corners_to_center_format(self.coordinates)
+            elif format == BBoxFormat.TOPLEFT:
+                return corners_to_topleft_format(self.coordinates)
+        elif self.format == BBoxFormat.CENTER:
+            if format == BBoxFormat.CORNERS:
+                return center_to_corners_format(self.coordinates)
+            elif format == BBoxFormat.TOPLEFT:
+                return center_to_topleft_format(self.coordinates)
+        elif self.format == BBoxFormat.TOPLEFT:
+            if format == BBoxFormat.CORNERS:
+                return topleft_to_corners_format(self.coordinates)
+            elif format == BBoxFormat.CENTER:
+                return topleft_to_center_format(self.coordinates)
+
+        raise ValueError(f"Unsupported format conversion: {self.format} to {format}")
+
+    def set_coordinates(self, coordinates: Union[List, Tuple], format: BBoxFormat = None):
+        """
+        Set the bounding box coordinates.
+
+        Args:
+            coordinates: The new bounding box coordinates.
+            format: The format of the new coordinates (CORNERS, CENTER, TOPLEFT). If None, assumes current format.
+        """
+        if format is None:
+            format = self.format
+
+        if format == BBoxFormat.CORNERS:
+            x1, y1, x2, y2 = coordinates
+            if x1 > x2 or y1 > y2:
+                raise ValueError("Invalid box coordinates: x1/y1 must be less than x2/y2")
+        elif format == BBoxFormat.CENTER:
+            xc, yc, w, h = coordinates
+            if w < 0 or h < 0:
+                raise ValueError("Width and height must be non-negative")
+        elif format == BBoxFormat.TOPLEFT:
+            x1, y1, w, h = coordinates
+            if w < 0 or h < 0:
+                raise ValueError("Width and height must be non-negative")
+
+        self.coordinates = coordinates
+        self.format = format
+
+    def normalize(self, img_width: int, img_height: int):
+        """
+        Normalize the bounding box coordinates relative to the image dimensions.
+
+        Args:
+            img_width: The width of the image.
+            img_height: The height of the image.
+        """
+        self.coordinates = normalize_bbox(self.coordinates, img_width, img_height, self.format)
+        self.img_width = img_width
+        self.img_height = img_height
+
+    def absolute(self):
+        """
+        Convert normalized bounding box coordinates to absolute pixel coordinates.
+
+        Returns:
+            Tuple of absolute coordinates in the current format.
+        """
+        if self.img_width is None or self.img_height is None:
+            raise ValueError("Image dimensions must be set for absolute conversion")
+        return absolute_bbox(self.coordinates, self.img_width, self.img_height, self.format)
+
+    def to_yolo(self) -> Tuple[float, float, float, float]:
+        """
+        Convert the bounding box to YOLO format (x_center, y_center, width, height) normalized.
+
+        Returns:
+            Tuple of YOLO format coordinates.
+        """
+        if self.format == BBoxFormat.CORNERS:
+            return pascalvoc_to_yolo_bbox(self.coordinates, self.img_width, self.img_height)
+        elif self.format == BBoxFormat.CENTER:
+            return self.coordinates
+        elif self.format == BBoxFormat.TOPLEFT:
+            return topleft_to_center_format(self.coordinates)
+
+    def to_coco(self) -> Tuple[float, float, float, float]:
+        """
+        Convert the bounding box to COCO format (x_min, y_min, width, height) in pixels.
+
+        Returns:
+            Tuple of COCO format coordinates.
+        """
+        if self.format == BBoxFormat.CORNERS:
+            return self.coordinates
+        elif self.format == BBoxFormat.CENTER:
+            return center_to_corners_format(self.coordinates)
+        elif self.format == BBoxFormat.TOPLEFT:
+            return topleft_to_corners_format(self.coordinates)
+
+    def to_pascal_voc(self) -> Tuple[float, float, float, float]:
+        """
+        Convert the bounding box to Pascal VOC format (x_min, y_min, x_max, y_max) in pixels.
+
+        Returns:
+            Tuple of Pascal VOC format coordinates.
+        """
+        if self.format == BBoxFormat.CORNERS:
+            return self.coordinates
+        elif self.format == BBoxFormat.CENTER:
+            return center_to_corners_format(self.coordinates)
+        elif self.format == BBoxFormat.TOPLEFT:
+            return topleft_to_corners_format(self.coordinates)
+
+    def calculate_iou(self, other: 'BBox') -> float:
+        """
+        Calculate Intersection over Union (IoU) with another bounding box.
+
+        Args:
+            other: Another BBox object to calculate IoU with.
+
+        Returns:
+            float: IoU value between 0 and 1.
+        """
+        return calculate_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS))
+
+    def __repr__(self):
+        return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
