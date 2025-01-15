@@ -1,7 +1,7 @@
 import numpy as np
 from tensorflow.python.keras import backend as K
 import tensorflow as tf
-from saltup.ai.object_detection.dataset.bbox_utils import calculate_iou, process_boxes
+from saltup.ai.object_detection.utils.bbox import compute_iou, process_boxes
 from saltup.ai.object_detection.postprocessing import Postprocessing
 
 def decode(yolo_output, anchors, num_classes, input_shape, calc_loss=False):

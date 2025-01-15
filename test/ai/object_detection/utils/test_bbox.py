@@ -176,7 +176,7 @@ class TestBBoxUtils:
         norm_again = normalize_bbox(abs_pascal, img_width, img_height, format=BBoxFormat.CORNERS)
         np.testing.assert_array_almost_equal(sample_boxes['pascal_norm'], norm_again)
 
-    def test_calculate_iou(self):
+    def test_compute_iou(self):
         """Test IoU calculation between bounding boxes."""
         # Perfect overlap
         box1 = [0, 0, 1, 1]

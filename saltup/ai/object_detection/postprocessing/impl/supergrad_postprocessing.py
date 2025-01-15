@@ -1,6 +1,6 @@
 import numpy as np
 
-from saltup.ai.object_detection.dataset.bbox_utils import calculate_iou
+from saltup.ai.object_detection.utils.bbox import compute_iou
 from saltup.ai.object_detection.postprocessing import Postprocessing
 
 
@@ -69,7 +69,7 @@ class SupergradPostprocess(Postprocessing):
         # Apply the non-max supression
         while len(boxes) > 0 and len(result) < len(boxes):
             result.append(boxes[0])
-            boxes = [box for box in boxes if calculate_iou(box[:4], boxes[0][:4]) < iou_threshold]
+            boxes = [box for box in boxes if compute_iou(box[:4], boxes[0][:4]) < iou_threshold]
         return result
 
     def __call__(self,

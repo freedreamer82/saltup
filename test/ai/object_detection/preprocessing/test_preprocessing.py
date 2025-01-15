@@ -51,7 +51,7 @@ class TestPreprocessingFactory:
         """Test creation of all valid processor types."""
         valid_types = [
             (PreprocessingType.ANCHORS_BASED, AnchorsBasedPreprocess),
-            (PreprocessingType.ULTRALITICS, UltralyticsPreprocess),
+            (PreprocessingType.ULTRALYTICS, UltralyticsPreprocess),
             (PreprocessingType.SUPERGRAD, SupergradPreprocess),
             (PreprocessingType.DAMO, DamoPreprocessing)
         ]
@@ -197,8 +197,8 @@ class TestSupergradPreprocess:
         assert not np.array_equal(result_top_left, result_center)
 
 
-class TestUltraliticsPreprocess:
-    """Test the Ultralitics preprocessing implementation."""
+class TestUltralyticsPreprocess:
+    """Test the Ultralytics preprocessing implementation."""
 
     @pytest.fixture
     def processor(self):

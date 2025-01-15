@@ -3,7 +3,7 @@ from saltup.ai.object_detection.preprocessing import Preprocessing
 
 class PreprocessingType(IntEnum):
     ANCHORS_BASED = 0
-    ULTRALITICS = 1
+    ULTRALYTICS = 1
     SUPERGRAD = 2
     DAMO = 3
 
@@ -13,7 +13,7 @@ class PreprocessingFactory:
         if processor_type == PreprocessingType.ANCHORS_BASED:
             from saltup.ai.object_detection.preprocessing.impl import AnchorsBasedPreprocess
             return AnchorsBasedPreprocess()
-        elif processor_type == PreprocessingType.ULTRALITICS:
+        elif processor_type == PreprocessingType.ULTRALYTICS:
             from saltup.ai.object_detection.preprocessing.impl import UltralyticsPreprocess
             return UltralyticsPreprocess()
         elif processor_type == PreprocessingType.SUPERGRAD:

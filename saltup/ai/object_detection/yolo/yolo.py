@@ -2,14 +2,14 @@ from typing import Any, Dict, List ,Tuple
 from enum import IntEnum
 import numpy as np
 from typing import Optional, Callable, Union
-from saltup.ai.object_detection.dataset.bbox_utils import BBox,BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox,BBoxFormat
 
 from typing import List, Dict, Any, Union
 
 
 class YoloType(IntEnum):
     ANCHORS_BASED = 0
-    ULTRALITICS = 1
+    ULTRALYTICS = 1
     SUPERGRAD = 2
     DAMO = 3
 

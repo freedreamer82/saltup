@@ -795,7 +795,7 @@ class BBox:
         elif self.format == BBoxFormat.TOPLEFT:
             return topleft_to_corners_format(self.coordinates)
 
-    def calculate_iou(self, other: 'BBox') -> float:
+    def compute_iou(self, other: 'BBox') -> float:
         """
         Calculate Intersection over Union (IoU) with another bounding box.
 
@@ -805,7 +805,7 @@ class BBox:
         Returns:
             float: IoU value between 0 and 1.
         """
-        return calculate_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS))
+        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS))
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"

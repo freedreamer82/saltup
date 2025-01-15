@@ -50,7 +50,7 @@ class TestPostprocessingFactory:
         """Test creation of all valid processor types."""
         valid_types = [
             (PostprocessingType.ANCHORS_BASED, AnchorsBasedPostprocess),
-            (PostprocessingType.ULTRALITICS, UltralyticsPostprocess),
+            (PostprocessingType.ULTRALYTICS, UltralyticsPostprocess),
             (PostprocessingType.SUPERGRAD, SupergradPostprocess),
             (PostprocessingType.DAMO, DamoPostprocess)
         ]

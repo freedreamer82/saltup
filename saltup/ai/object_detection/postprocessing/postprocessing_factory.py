@@ -9,7 +9,7 @@ from saltup.ai.object_detection.postprocessing.impl import (
 
 class PostprocessingType(IntEnum):
     ANCHORS_BASED = 0
-    ULTRALITICS = 1
+    ULTRALYTICS = 1
     SUPERGRAD = 2
     DAMO = 3
 
@@ -18,7 +18,7 @@ class PostprocessingFactory:
     def create(processor_type: PostprocessingType) -> Postprocessing:
         processors = {
             PostprocessingType.ANCHORS_BASED: AnchorsBasedPostprocess,
-            PostprocessingType.ULTRALITICS: UltralyticsPostprocess,
+            PostprocessingType.ULTRALYTICS: UltralyticsPostprocess,
             PostprocessingType.SUPERGRAD: SupergradPostprocess,
             PostprocessingType.DAMO: DamoPostprocess
         }
