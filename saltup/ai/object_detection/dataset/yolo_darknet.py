@@ -179,12 +179,21 @@ def read_label(label_file: str) -> list:
         lines = file.readlines()
         for line in lines:
             box_info = line.strip().split()
+            if len(box_info) != 5:
+                raise ValueError("Invalid label format: must have 5 values")
+            
             class_id = int(box_info[0])
-            x = float(box_info[1])
-            y = float(box_info[2])
+            xc = float(box_info[1])
+            yc = float(box_info[2])
             w = float(box_info[3])
             h = float(box_info[4])
-            labels.append((class_id, x, y, w, h))
+            
+            if not all(0 <= coord <= 1 for coord in (xc, yc)):
+                raise ValueError("Coordinates must be normalized [0-1]")
+            if not all(0 < dim <= 1 for dim in (w, h)):
+                raise ValueError("Width and height must be normalized (0-1]")
+            
+            labels.append((class_id, xc, yc, w, h))
     return labels
 
 
@@ -205,13 +214,42 @@ def write_label(label_file: str, labels: Iterable[Union[list, tuple]], file_mode
             if len(label) != 5:
                 raise ValueError("Each label must have 5 values: class_id, x, y, w, h")
                 
-            class_id, x, y, w, h = label
+            class_id, xc, yc, w, h = label
             
             # Validate coordinates
-            if not all(0 <= coord <= 1 for coord in (x, y, w, h)):
+            if not all(0 <= coord <= 1 for coord in (xc, yc, w, h)):
                 raise ValueError("Coordinates must be normalized [0-1]")
             
             file.write(f'{" ".join(map(str, label))}\n')
+
+
+def list_all_labels(label_dir: str) -> List[str]:
+    """
+    List all labels from text files in a directory.
+    
+    Args:
+        label_dir: Directory path containing label files
+        
+    Returns:
+        List of labels read from all .txt files in the directory
+        
+    Raises:
+        FileNotFoundError: If the directory doesn't exist
+        PermissionError: If there's no read access to the directory
+    """
+    # Get all .txt files from the directory using list comprehension
+    # Creates a list of full paths to each .txt file
+    labels_files = [
+        os.path.join(label_dir, file) 
+        for file in os.listdir(label_dir) 
+        if file.endswith('.txt')
+    ]
+        
+    # Read all labels using list comprehension
+    # Calls read_label() for each file path and returns the results as a list
+    return [
+        read_label(label_file) for label_file in labels_files
+    ]
 
 
 def replace_label_class(
@@ -351,7 +389,7 @@ def convert_to_coco_annotations(image_dir: str, label_dir: str, classes: list[st
         classes (list[str]): List of class names matching YOLO Darknet indices
         output_json (str): Path for output COCO JSON file
     """
-    from saltup.ai.object_detection.dataset.bbox_utils import yolo_to_coco_bbox
+    from saltup.ai.object_detection.utils.bbox import yolo_to_coco_bbox
     
     images = []
     annotations = []
