@@ -4,20 +4,81 @@ import numpy as np
 from typing import Optional, Callable, Union
 from saltup.ai.object_detection.dataset.bbox_utils import BBox
 
+from typing import List, Dict, Any, Union
+
+
+class YoloType(IntEnum):
+    ANCHORS_BASED = 0
+    ULTRALITICS = 1
+    SUPERGRAD = 2
+    DAMO = 3
+
+
 class YoloOutput:
     """Class to represent the results of the YOLO model."""
-    def __init__(self, boxes: List[Dict[str, Any]], scores: List[float], labels: List[str]):
-        self._boxes = boxes  # List of dictionaries with bounding box coordinates
+    def __init__(self, boxes: List[BBox], scores: List[float], labels: List[str]):
+        """
+        Initialize YoloOutput with bounding boxes, scores, and labels.
+
+        Args:
+            boxes: List of BBox objects representing the bounding boxes.
+            scores: List of confidence scores.
+            labels: List of predicted labels.
+        """
+        self._boxes = boxes  # List of BBox objects
         self._scores = scores  # List of confidence scores
         self._labels = labels  # List of predicted labels
 
-    def getLabels(self) -> List[str]:
+    def get_labels(self) -> List[str]:
+        """Get the list of predicted labels."""
         return self._labels
 
-    def setLabels(self, value: List[str]):
+    def set_labels(self, value: List[str]):
+        """Set the list of predicted labels."""
         self._labels = value
 
-    def getProperty(self, property_name: str) -> Any:
+    def get_boxes(self, format: BBoxFormat = BBoxFormat.CENTER) -> List[Tuple[float, float, float, float]]:
+        """
+        Get the list of bounding boxes in the specified format.
+
+        Args:
+            format: The desired format (CORNERS, CENTER, TOPLEFT).
+
+        Returns:
+            List of bounding box coordinates in the specified format.
+        """
+        return [bbox.get_coordinates(format) for bbox in self._boxes]
+
+    def set_boxes(self, boxes: List[BBox]):
+        """
+        Set the list of bounding boxes.
+
+        Args:
+            boxes: List of BBox objects.
+        """
+        self._boxes = boxes
+
+    def get_scores(self) -> List[float]:
+        """Get the list of confidence scores."""
+        return self._scores
+
+    def set_scores(self, value: List[float]):
+        """Set the list of confidence scores."""
+        self._scores = value
+
+    def get_property(self, property_name: str) -> Any:
+        """
+        Get a property by name.
+
+        Args:
+            property_name: Name of the property ("boxes", "scores", or "labels").
+
+        Returns:
+            The value of the property.
+
+        Raises:
+            AttributeError: If the property does not exist.
+        """
         if property_name == "boxes":
             return self._boxes
         elif property_name == "scores":
@@ -27,7 +88,17 @@ class YoloOutput:
         else:
             raise AttributeError(f"Property '{property_name}' does not exist.")
 
-    def setProperty(self, property_name: str, value: Any):
+    def set_property(self, property_name: str, value: Any):
+        """
+        Set a property by name.
+
+        Args:
+            property_name: Name of the property ("boxes", "scores", or "labels").
+            value: The new value for the property.
+
+        Raises:
+            AttributeError: If the property does not exist.
+        """
         if property_name == "boxes":
             self._boxes = value
         elif property_name == "scores":
@@ -40,12 +111,6 @@ class YoloOutput:
     def __repr__(self):
         return f"YoloOutput(boxes={self._boxes}, scores={self._scores}, labels={self._labels})"
 
-
-class YoloType(IntEnum):
-    ANCHORS_BASED = 0
-    ULTRALITICS = 1
-    SUPERGRAD = 2
-    DAMO = 3
 
 class BaseYolo:
     """Base class for implementing a generic YOLO model."""
