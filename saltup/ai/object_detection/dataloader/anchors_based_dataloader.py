@@ -125,3 +125,128 @@ class AnchorsBasedDataloader:
     def on_epoch_end(self):
         np.random.shuffle(self.__indexes)
 
+    def visualize_sample(self, idx, show_grid=True, show_anchors=False):
+        
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as patches
+        
+        try:
+            image, annotation_data = self.dataset_loader[idx]
+            
+            # Extract boxes and class labels
+            boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
+
+            # Preprocess image
+            processed_image = self.preprocess(image, self.target_size)
+            
+            # Create subplot
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+            
+            # Plot original image
+            ax1.imshow(image, cmap='gray' if len(image.shape) == 2 else None)
+            ax1.set_title(f'Original Image ({image.shape[1]}x{image.shape[0]})')
+            
+            # Draw original boxes
+            for box, class_id in zip(boxes, class_labels):
+                x_center, y_center, width, height = box
+                
+                # TODO: makes bbox indipendent from the dataset format
+                # Convert normalized coordinates to pixels
+                x1 = int((x_center - width/2) * image.shape[1])
+                y1 = int((y_center - height/2) * image.shape[0])
+                x2 = int((x_center + width/2) * image.shape[1])
+                y2 = int((y_center + height/2) * image.shape[0])
+                
+                # Draw rectangle
+                rect = patches.Rectangle(
+                    (x1, y1), x2-x1, y2-y1,
+                    linewidth=2,
+                    edgecolor='r',
+                    facecolor='none'
+                )
+                ax1.add_patch(rect)
+                
+                # Add label
+                ax1.text(
+                    x1, y1-5,
+                    f'Class {int(class_id)}',
+                    color='red',
+                    fontsize=8,
+                    bbox=dict(facecolor='white', alpha=0.7)
+                )
+            
+            # Plot preprocessed image
+            ax2.imshow(processed_image.squeeze(), cmap='gray' if len(processed_image.shape) == 3 else None)
+            ax2.set_title(f'Preprocessed Image ({self.target_size[1]}x{self.target_size[0]})')
+        
+            # Show YOLO grid
+            if show_grid and len(boxes) > 0:
+                grid_size_h, grid_size_w = self.grid_size
+                cell_size_h = self.target_size[0] // grid_size_h
+                cell_size_w = self.target_size[1] // grid_size_w
+                
+                for x in range(grid_size_w):
+                    for y in range(grid_size_h):
+                        rect = patches.Rectangle(
+                            (x * cell_size_w, y * cell_size_h),
+                            cell_size_w, cell_size_h,
+                            linewidth=1,
+                            edgecolor='green',
+                            facecolor='none',
+                            linestyle=':'
+                        )
+                        ax2.add_patch(rect)
+                        
+            # Show anchor boxes
+            if show_anchors and len(boxes) > 0:
+                for box in boxes:
+                    x_center, y_center, width, height = box
+                    best_iou = 0
+                    best_anchor = None
+                    
+                    # Find best matching anchor
+                    for anchor in self.anchors:
+                        iou = compute_iou(np.array([width, height]), np.array(anchor))
+                        if iou > best_iou:
+                            best_iou = iou
+                            best_anchor = anchor
+                    
+                    if best_anchor is not None:
+                        anchor_w, anchor_h = best_anchor
+                        anchor_w_px = int(anchor_w * self.target_size[1])
+                        anchor_h_px = int(anchor_h * self.target_size[0])
+                        x_center_px = int(x_center * self.target_size[1])
+                        y_center_px = int(y_center * self.target_size[0])
+                        
+                        rect_anchor = patches.Rectangle(
+                            (x_center_px - anchor_w_px // 2, y_center_px - anchor_h_px // 2),
+                            anchor_w_px, anchor_h_px,
+                            linewidth=1,
+                            edgecolor='blue',
+                            facecolor='none',
+                            linestyle='--'
+                        )
+                        ax2.add_patch(rect_anchor)
+            
+            plt.tight_layout()
+            plt.show()
+            
+            # Print statistics
+            print("\nStatistics:")
+            print(f"Number of objects: {len(boxes)}")
+            
+            # Count objects per class
+            for class_id in np.unique(class_labels):
+                count = np.sum(class_labels == class_id)
+                print(f"- Class {int(class_id)}: {count} objects")
+            
+            if len(boxes) > 0:
+                boxes = np.array(boxes)
+                widths = boxes[:, 2]
+                heights = boxes[:, 3]
+                print("\nBox dimensions (normalized):")
+                print(f"Width  - min: {widths.min():.3f}, max: {widths.max():.3f}, mean: {widths.mean():.3f}")
+                print(f"Height - min: {heights.min():.3f}, max: {heights.max():.3f}, mean: {heights.mean():.3f}")
+                
+        except Exception as e:
+            self.__logger.error(f"Error visualizing sample: {e}")
