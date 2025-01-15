@@ -206,6 +206,10 @@ def center_to_corners_format(box: Union[List, Tuple]) -> Tuple[float, float, flo
 
     x1 = xc - w / 2
     y1 = yc - h / 2
+    if x1 < 0:
+        x1 = 0.0
+    if y1 < 0:
+        y1 = 0.0
     x2 = xc + w / 2
     y2 = yc + h / 2
     return x1, y1, x2, y2
@@ -541,18 +545,37 @@ def plot_image_with_boxes(image_file: str, label_file: str):
     plt.axis('off')
     plt.show()
 
-import json
-import xml.etree.ElementTree as ET
+ 
+from tensorflow.python.keras import backend as K
 
+def process_boxes(box_xy, box_wh):
+    """
+    Concatinate xw and wh arrays.
 
-# # examples:
-# yolo_bboxes = BBox.from_yolo_file("path/to/yolo_annotation.txt", img_width=640, img_height=480)
-# for bbox in yolo_bboxes:
-#     print(bbox.to_coco())  # Converti in formato COCO
-# # Carica bounding box da un file COCO
-# coco_bboxes = BBox.from_coco_file("path/to/coco_annotation.json", image_id=42)
-# for bbox in coco_bboxes:
-#     print(bbox.to_pascal_voc())  # Converti in formato Pascal VOC
+    Args:
+        box_xy (tensor): containing the center coordinates of the boxes.
+        box_wh (tensor): containing the width and height of the boxes.
+
+    Returns:
+        corners (tensor): containing the corner coordinates of the boxes in (xmin, ymin, xmax, ymax) format.
+        centers (tensor): containing the center coordinates and width and height of the boxes in (x, y, w, h) format.
+    """
+    box_mins = box_xy - (box_wh / 2.)
+    
+    box_maxes = box_xy + (box_wh / 2.)
+    corners = K.concatenate([
+        box_mins[..., 1:2],  # y_min
+        box_mins[..., 0:1],  # x_min
+        box_maxes[..., 1:2], # y_max
+        box_maxes[..., 0:1]  # x_max
+        ])
+    centers = K.concatenate([
+        box_xy[..., 1:2],  # y
+        box_xy[..., 0:1],  # x
+        box_wh[..., 1:2],  # h
+        box_wh[..., 0:1],  # w
+        ])
+    return corners, centers
 
 import json
 import xml.etree.ElementTree as ET
@@ -782,3 +805,4 @@ class BBox:
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
+
