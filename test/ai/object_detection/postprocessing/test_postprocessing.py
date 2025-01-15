@@ -112,8 +112,8 @@ class TestDamoPostprocess:
                 assert len(bbox) == 6
 
     @pytest.fixture
-    def real_output(self):
-        damo_model_output = np.load(os.path.join('..', '..', '..', 'results','damo_output.npy'))
+    def real_output(self, root_dir):
+        damo_model_output = np.load(os.path.join(str(root_dir), 'results', 'damo_output.npy'))
         return damo_model_output
     
     def test_process_real_input(self, processor, real_output):
@@ -178,8 +178,8 @@ class TestSupergradPostprocess:
                 assert len(bbox) == 6
     
     @pytest.fixture
-    def real_output(self):
-        supergrad_model_output = np.load(os.path.join('..', '..', '..', 'results','supergrad_output.npy'))
+    def real_output(self, root_dir):
+        supergrad_model_output = np.load(os.path.join(str(root_dir), 'results', 'supergrad_output.npy'))
         return supergrad_model_output
     
     def test_process_real_input(self, processor, real_output):
@@ -244,8 +244,8 @@ class TestUltralyticsPostprocess:
                 assert len(bbox) == 6
     
     @pytest.fixture
-    def real_output(self):
-        ultralytics_model_output = np.load(os.path.join('..', '..', '..', 'results', 'ultralytics_ouput.npy'))
+    def real_output(self, root_dir):
+        ultralytics_model_output = np.load(os.path.join(str(root_dir), 'results', 'ultralytics_ouput.npy'))
         ultralytics_model_output = ultralytics_model_output.squeeze(0)
         return ultralytics_model_output
     
@@ -308,8 +308,8 @@ class TestAnchorsBasedPostprocess:
                 assert len(bbox) == 6
                 
     @pytest.fixture
-    def real_output(self):
-        anchorsBased_model_output = np.load(os.path.join('..', '..', '..', 'results', 'anchorsBased_output.npy'))
+    def real_output(self, root_dir):
+        anchorsBased_model_output = np.load(os.path.join(str(root_dir), 'results', 'anchorsBased_output.npy'))
         return anchorsBased_model_output
     
     def test_process_real_input(self, processor, real_output):
