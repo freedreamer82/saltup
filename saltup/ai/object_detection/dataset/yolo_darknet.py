@@ -45,10 +45,23 @@ class YoloDarknetLoader(BaseDatasetLoader):
             self.image_label_pairs = self._load_image_label_pairs_from_dirs()
         
         self.color_mode = color_mode
+        self._current_index = 0  # Track current position
 
     def __iter__(self):
-        for image_path, label_path in self.image_label_pairs:
-            yield self.load_image(image_path, self.color_mode), read_label(label_path)
+        """Return iterator object (self in this case)."""
+        self._current_index = 0  # Reset position when creating new iterator
+        return self
+
+    def __next__(self):
+        """Get next item from dataset."""
+        if self._current_index >= len(self.image_label_pairs):
+            self._current_index = 0  # Reset for next iteration
+            raise StopIteration
+            
+        image_path, label_path = self.image_label_pairs[self._current_index]
+        self._current_index += 1
+        
+        return self.load_image(image_path, self.color_mode), read_label(label_path)
 
     def __len__(self):
         return len(self.image_label_pairs)
@@ -67,6 +80,8 @@ class YoloDarknetLoader(BaseDatasetLoader):
                     )
                     if label_path:
                         image_label_pairs.append((image_path, label_path))
+                    else:
+                        self.__logger.warning(f"Label not found for {image_file}")
         return image_label_pairs
 
     def _load_image_label_pairs_from_dirs(self):
@@ -79,6 +94,8 @@ class YoloDarknetLoader(BaseDatasetLoader):
                 label_path = os.path.join(self.labels_dir, f"{base_name}.txt")
                 if os.path.exists(label_path):
                     image_label_pairs.append((image_path, label_path))
+                else:
+                    self.__logger.warning(f"Label not found for {image_file}")
         return image_label_pairs
 
     @staticmethod

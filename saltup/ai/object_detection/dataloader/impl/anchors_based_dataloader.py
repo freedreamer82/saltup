@@ -3,7 +3,7 @@ import albumentations as A
 import numpy as np
 import os
 
-from saltup.ai.object_detection.dataset.yolo_darknet import read_label
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader
 from saltup.ai.object_detection.preprocessing.impl.anchors_based_preprocess import AnchorsBasedPreprocess
 from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format
 from saltup.ai.object_detection.utils.bbox import compute_iou
@@ -13,32 +13,17 @@ from saltup.utils.configure_logging import get_logger
 class AnchorsBasedDataloader:
     def __init__(
         self, 
-        image_dir: str,
-        labels_dir: str, 
+        dataset_loader: BaseDatasetLoader,
         anchors: np.ndarray,
-        batch_size: int = 16,
-        target_size: Tuple[int, int] = (480, 640), 
-        grid_size: Tuple[int, int] = (15, 20),
-        num_classes: int = 1,
+        target_size: Tuple[int, int], 
+        grid_size: Tuple[int, int],
+        num_classes: int,
+        batch_size: int = 1,
         preprocess: callable = None,
         transform: A.Compose = None
     ):
-        self.image_dir = image_dir
-        # TODO: generator for image paths
-        self.__image_paths = [
-            os.path.join(self.image_dir, file) 
-            for file in os.listdir(self.image_dir) 
-            if file.endswith('.jpg') or file.endswith('.jpeg') or file.endswith('.png')
-        ]
-        self.__indexes = np.arange(len(self.__image_paths))
-        
-        self.labels_dir = labels_dir
-        # TODO: generator for labels paths
-        self.__label_paths = [
-            os.path.join(self.labels_dir, file) 
-            for file in os.listdir(self.labels_dir) 
-            if file.endswith('.txt')
-        ]
+        self.dataset_loader = dataset_loader
+        self.__indexes = np.arange(len(dataset_loader))
         
         self.anchors = anchors
         self.__num_anchors = len(anchors)
@@ -59,7 +44,7 @@ class AnchorsBasedDataloader:
         self.__logger.info("Initializing AnchorsBasedDataloader")
         
     def __len__(self):
-        return int(np.ceil(len(self.__image_paths) / self.batch_size))
+        return int(np.ceil(len(self.dataset_loader) / self.batch_size))
     
     def __iter__(self):
         for i in range(0, len(self), self.batch_size):
@@ -75,12 +60,14 @@ class AnchorsBasedDataloader:
         
         for i, idx in enumerate(batch_indexes):
             try:
-                # Load labels
-                labels = np.array(read_label(self.__label_paths[idx]))
-                boxes, class_labels = labels[:, :4], labels[:, 4]
+                # Get image and labels from dataset loader
+                image, annotation_data = next(self.dataset_loader)
+                
+                # Extract boxes and class labels
+                boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
                 
                 # Preprocess image
-                image = self.preprocess(self.__image_paths[idx], self.target_size)
+                image = self.preprocess(image, self.target_size)
                 
                 # Apply augmentations
                 if len(boxes) > 0 and self.augment:
@@ -125,7 +112,7 @@ class AnchorsBasedDataloader:
                     images[i] = image
                 
             except Exception as e:
-                self.__logger.error(f"Failed to process image {self.__image_paths[idx]}: {e}")
+                self.__logger.error(f"Failed to process batch item {idx}: {e}")
                 continue
             
             return images, labels
