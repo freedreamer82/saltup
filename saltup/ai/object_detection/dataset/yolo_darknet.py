@@ -35,6 +35,9 @@ class YoloDarknetLoader(BaseDatasetLoader):
         # Validate input arguments
         self._validate_init_args(root_dir, image_dir, labels_dir)
         
+        self.__logger = configure_logging.get_logger(__name__)
+        self.__logger.info("Initialized YOLO Darknet dataset loader")
+        
         if root_dir is not None:
             self.root_dir = Path(root_dir)
             self.train_images_dir, self.train_labels_dir, self.val_images_dir, self.val_labels_dir = get_dataset_paths(root_dir)
