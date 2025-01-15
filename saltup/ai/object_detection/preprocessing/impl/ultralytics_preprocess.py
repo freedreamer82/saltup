@@ -5,7 +5,7 @@ import cv2
 from saltup.ai.object_detection.preprocessing import Preprocessing
 
 
-class UltraliticsPreprocess(Preprocessing):
+class UltralyticsPreprocess(Preprocessing):
     """Preprocessing pipeline for Ultralytic models with letterboxing."""
     
     def __init__(

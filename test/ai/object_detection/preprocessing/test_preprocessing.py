@@ -12,7 +12,7 @@ from saltup.ai.object_detection.preprocessing.impl import (
     DamoPreprocessing,
     SupergradPreprocess,
     SupergradPreprocessType,
-    UltraliticsPreprocess
+    UltralyticsPreprocess
 )
 
 
@@ -51,7 +51,7 @@ class TestPreprocessingFactory:
         """Test creation of all valid processor types."""
         valid_types = [
             (PreprocessingType.ANCHORS_BASED, AnchorsBasedPreprocess),
-            (PreprocessingType.ULTRALITICS, UltraliticsPreprocess),
+            (PreprocessingType.ULTRALITICS, UltralyticsPreprocess),
             (PreprocessingType.SUPERGRAD, SupergradPreprocess),
             (PreprocessingType.DAMO, DamoPreprocessing)
         ]
@@ -202,7 +202,7 @@ class TestUltraliticsPreprocess:
 
     @pytest.fixture
     def processor(self):
-        return UltraliticsPreprocess()
+        return UltralyticsPreprocess()
 
     @pytest.fixture
     def sample_image(self):
