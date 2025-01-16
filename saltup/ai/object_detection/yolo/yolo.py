@@ -1,17 +1,13 @@
 from typing import Any, Dict, List ,Tuple
-from enum import IntEnum
+
 import numpy as np
 from typing import Optional, Callable, Union
 from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
+from saltup.ai.object_detection  import YoloType
 from saltup.ai import NeuralNetworkManager
 from typing import List, Dict, Any, Union
 import time
 
-class YoloType(IntEnum):
-    ANCHORS_BASED = 0
-    ULTRALYTICS = 1
-    SUPERGRAD = 2
-    DAMO = 3
 
   
 class YoloOutput:
