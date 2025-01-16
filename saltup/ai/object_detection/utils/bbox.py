@@ -135,7 +135,7 @@ def pascalvoc_to_yolo_bbox(voc_bbox: Union[List, Tuple], img_width: int, img_hei
     width = (xmax - xmin)/img_width
     height = (ymax - ymin)/img_height
 
-    return [x_center, y_center, width, height]
+    return (x_center, y_center, width, height)
 
 
 def corners_to_center_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
@@ -836,11 +836,14 @@ class BBox:
             Tuple of COCO format coordinates.
         """
         if self.format == BBoxFormat.CORNERS:
-            return self.coordinates
+            x1, y1, x2, y2 = self.coordinates
+            return (x1, y1, x2 - x1, y2 - y1)   
         elif self.format == BBoxFormat.CENTER:
-            return center_to_corners_format(self.coordinates)
+            xc, yc, w, h = self.coordinates
+            return (xc - w / 2, yc - h / 2, w, h)  
         elif self.format == BBoxFormat.TOPLEFT:
-            return topleft_to_corners_format(self.coordinates)
+            x1, y1, w, h = self.coordinates
+            return (x1, y1, w, h)   
 
     def to_pascal_voc(self) -> Tuple[float, float, float, float]:
         """
@@ -850,11 +853,13 @@ class BBox:
             Tuple of Pascal VOC format coordinates.
         """
         if self.format == BBoxFormat.CORNERS:
-            return self.coordinates
+            return tuple(self.coordinates) 
         elif self.format == BBoxFormat.CENTER:
-            return center_to_corners_format(self.coordinates)
+            xc, yc, w, h = self.coordinates
+            return (xc - w / 2, yc - h / 2, xc + w / 2, yc + h / 2)
         elif self.format == BBoxFormat.TOPLEFT:
-            return topleft_to_corners_format(self.coordinates)
+            x1, y1, w, h = self.coordinates
+            return (x1, y1, x1 + w, y1 + h) 
 
     def compute_iou(self, other: 'BBox', iou_type: IoUType = IoUType.IOU) -> float:
         """
