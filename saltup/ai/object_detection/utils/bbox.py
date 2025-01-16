@@ -75,7 +75,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Union
-from enum import auto, IntEnum
+from enum import auto, IntEnum ,Enum
 
 
 class BBoxFormat(IntEnum):
@@ -469,11 +469,17 @@ def absolute_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, for
 
     raise ValueError(f"Unsupported format: {format}. Must be 'corners', 'topleft', or 'center'")
 
+class IoUType(Enum):
+    IOU = "iou"
+    DIOU = "diou"
+    CIOU = "ciou"
+    GIOU = "giou"
 
 def compute_iou(
     box1: Union[List, Tuple], 
     box2: Union[List, Tuple], 
-    format: BBoxFormat = BBoxFormat.CORNERS
+    format: BBoxFormat = BBoxFormat.CORNERS,
+    iou_type: IoUType = IoUType.IOU
 ) -> float:
     """
     Calculate Intersection over Union (IoU) between two bounding boxes.
@@ -482,15 +488,19 @@ def compute_iou(
         box1: First bounding box coordinates
         box2: Second bounding box coordinates
         format: Format of the input boxes, either "corners" (x1,y1,x2,y2), "center" (xc,yc,w,h) or "topleft" (x1,y1,w,h)
+        iou_type: Type of IoU to compute, either "iou", "diou", "ciou", or "giou"
 
     Returns:
         float: IoU value between 0 and 1
 
     Raises:
         ValueError: If format is not "corners", "center" or "topleft"
+        ValueError: If iou_type is not "iou", "diou", "ciou", or "giou"
     """
     if not isinstance(format, BBoxFormat):
-        raise TypeError("Format must be a  BBoxFormat")
+        raise TypeError("Format must be a BBoxFormat")
+    if not isinstance(iou_type, IoUType):
+        raise TypeError("IoU type must be an IoUType")
 
     # Convert to corners format if necessary
     if format == BBoxFormat.CENTER:
@@ -500,20 +510,71 @@ def compute_iou(
         box1 = topleft_to_corners_format(box1)
         box2 = topleft_to_corners_format(box2)
 
-    # Calculate intersection coordinates
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
+    # Extract coordinates
+    x1_1, y1_1, x2_1, y2_1 = box1
+    x1_2, y1_2, x2_2, y2_2 = box2
 
-    # Calculate areas
+    # Calculate intersection coordinates
+    x1 = max(x1_1, x1_2)
+    y1 = max(y1_1, y1_2)
+    x2 = min(x2_1, x2_2)
+    y2 = min(y2_1, y2_2)
+
+    # Calculate intersection area
     intersection = max(0, x2 - x1) * max(0, y2 - y1)
-    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+
+    # Calculate areas of the bounding boxes
+    area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+    area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
     union = area1 + area2 - intersection
 
-    # Avoid division by zero
-    return intersection / (union + np.finfo(float).eps)
+    # Calculate IoU
+    iou = intersection / (union + np.finfo(float).eps)
+
+    if iou_type == IoUType.IOU:
+        return iou
+
+    # Calculate DIoU, CIoU, or GIoU
+    elif iou_type in [IoUType.DIOU, IoUType.CIOU, IoUType.GIOU]:
+        # Calculate the coordinates of the smallest enclosing box
+        x1_c = min(x1_1, x1_2)
+        y1_c = min(y1_1, y1_2)
+        x2_c = max(x2_1, x2_2)
+        y2_c = max(y2_1, y2_2)
+
+        # Calculate the diagonal distance of the smallest enclosing box
+        c = (x2_c - x1_c) ** 2 + (y2_c - y1_c) ** 2
+
+        # Calculate the distance between the centers of the two boxes
+        x1_m = (x1_1 + x2_1) / 2
+        y1_m = (y1_1 + y2_1) / 2
+        x2_m = (x1_2 + x2_2) / 2
+        y2_m = (y1_2 + y2_2) / 2
+        d = (x1_m - x2_m) ** 2 + (y1_m - y2_m) ** 2
+
+        # Calculate DIoU
+        diou = iou - d / (c + np.finfo(float).eps)
+
+        if iou_type == IoUType.DIOU:
+            return diou
+
+        # Calculate CIoU
+        elif iou_type == IoUType.CIOU:
+            # Calculate aspect ratio consistency
+            v = (4 / (np.pi ** 2)) * (np.arctan((x2_1 - x1_1) / (y2_1 - y1_1 + np.finfo(float).eps)) - np.arctan((x2_2 - x1_2) / (y2_2 - y1_2 + np.finfo(float).eps))) ** 2
+            alpha = v / (1 - iou + v + np.finfo(float).eps)
+            ciou = diou - alpha * v
+            return ciou
+
+        # Calculate GIoU
+        elif iou_type == IoUType.GIOU:
+            # Calculate the area of the smallest enclosing box
+            area_c = (x2_c - x1_c) * (y2_c - y1_c)
+            giou = iou - (area_c - union) / (area_c + np.finfo(float).eps)
+            return giou
+
+    else:
+        raise ValueError("Invalid IoU type")
 
 
 def plot_image_with_boxes(image_file: str, label_file: str):
@@ -795,7 +856,7 @@ class BBox:
         elif self.format == BBoxFormat.TOPLEFT:
             return topleft_to_corners_format(self.coordinates)
 
-    def compute_iou(self, other: 'BBox') -> float:
+    def compute_iou(self, other: 'BBox', iou_type: IoUType = IoUType.IOU) -> float:
         """
         Calculate Intersection over Union (IoU) with another bounding box.
 
@@ -805,7 +866,7 @@ class BBox:
         Returns:
             float: IoU value between 0 and 1.
         """
-        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS))
+        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS), iou_type=iou_type)
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
