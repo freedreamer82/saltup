@@ -38,8 +38,8 @@ class AnchorsBasedDataloader:
         self.grid_size = grid_size
         self.num_classes = num_classes
         
-        self.transform = transform
-        self.augment = True if self.transform else False
+        self.__transform = transform
+        self.__augment = True if self.__transform else False
         
         self.preprocess = preprocess
         if not self.preprocess:
@@ -75,9 +75,9 @@ class AnchorsBasedDataloader:
                 image = self.preprocess(image, self.target_size)
                 
                 # Apply augmentations
-                if len(boxes) > 0 and self.augment:
+                if len(boxes) > 0 and self.__augment:
                     try:
-                        transformed = self.transform(
+                        transformed = self.__transform(
                             image=image.squeeze(),
                             bboxes=boxes.tolist(),
                             class_labels=class_labels
@@ -120,10 +120,23 @@ class AnchorsBasedDataloader:
                 self.__logger.error(f"Failed to process batch item {idx}: {e}")
                 continue
             
-            return images, labels
+        return images, labels
         
     def on_epoch_end(self):
         np.random.shuffle(self.__indexes)
+        
+    @property
+    def transform(self):
+        return self.__transform
+    
+    @transform.setter
+    def transform(self, value):
+        self.__transform = value
+        self.__augment = True if value else False
+        
+    @property
+    def augment(self):
+        return self.__augment
 
     def visualize_sample(self, idx, show_grid=True, show_anchors=False):
         
