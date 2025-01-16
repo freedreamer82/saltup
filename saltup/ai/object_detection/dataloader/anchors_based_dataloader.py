@@ -4,6 +4,7 @@ import numpy as np
 import os
 
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader
+from saltup.ai.object_detection.dataloader.base_dataloader import BasedDataloader
 from saltup.ai.object_detection.preprocessing.impl.anchors_based_preprocess import AnchorsBasedPreprocess
 from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format
 from saltup.ai.object_detection.utils.bbox import (
@@ -15,7 +16,7 @@ from saltup.ai.object_detection.utils.bbox import (
 from saltup.utils.configure_logging import get_logger
 
 
-class AnchorsBasedDataloader:
+class AnchorsBasedDataloader(BasedDataloader):
     def __init__(
         self, 
         dataset_loader: BaseDatasetLoader,
@@ -47,7 +48,7 @@ class AnchorsBasedDataloader:
             
         self.__logger = get_logger(__name__)
         self.__logger.info("Initializing AnchorsBasedDataloader")
-        
+    
     def __len__(self):
         return int(np.ceil(len(self.dataset_loader) / self.batch_size))
     
