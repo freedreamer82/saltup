@@ -1,6 +1,6 @@
 import pytest
 import os
-import shutil
+import cv2
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
@@ -12,7 +12,7 @@ from saltup.ai.object_detection.dataset.yolo_darknet import (
     shift_class_ids, split_dataset,
     split_and_organize_dataset, count_objects,
     _extract_unique_classes, _create_labels_map,
-    _image_per_class_id
+    _image_per_class_id, YoloDarknetLoader, ColorMode
 )
 
 class TestYOLODarknet:
@@ -30,10 +30,15 @@ class TestYOLODarknet:
             ("img4.jpg", "2 0.3 0.3 0.15 0.25")  # Single object
         ]
         
+        # Create dummy image data (10x10 black image)
+        dummy_image = np.zeros((10, 10, 3), dtype=np.uint8)
+        
         # Create the sample files
         for img_name, label_content in sample_data:
-            # Create image file
-            (Path(dirs['images']['train']) / img_name).touch()
+            # Create and save image file
+            img_path = Path(dirs['images']['train']) / img_name
+            cv2.imwrite(str(img_path), dummy_image)
+            
             # Create corresponding label file
             label_path = Path(dirs['labels']['train']) / f"{img_name.replace('.jpg', '.txt')}"
             with open(label_path, 'w') as f:
@@ -256,6 +261,116 @@ class TestYOLODarknet:
         
         # Test without class names
         analyze_dataset(str(root_dir))
+        
+    def test_yolo_darknet_loader(self, sample_dataset):
+        """Test YoloDarknetLoader with direct directory paths."""
+        root_dir, dirs = sample_dataset
+        
+        loader = YoloDarknetLoader(
+            image_dir=dirs['images']['train'],
+            labels_dir=dirs['labels']['train']
+        )
+        
+        # Test length
+        assert len(loader) == 4  # Based on sample_dataset fixture
+        
+        # Test iteration
+        for image, labels in loader:
+            assert isinstance(image, np.ndarray)
+            assert len(labels) > 0  # Each image has at least one label
+            
+            # Check labels format
+            for label in labels:
+                assert len(label) == 5  # class_id, x, y, w, h
+                assert 0 <= label[1] <= 1  # x normalized
+                assert 0 <= label[2] <= 1  # y normalized
+                assert 0 < label[3] <= 1   # width normalized
+                assert 0 < label[4] <= 1   # height normalized
+
+    def test_yolo_darknet_loader_root(self, sample_dataset):
+        """Test YoloDarknetLoader with root directory."""
+        root_dir, _ = sample_dataset
+        
+        loader = YoloDarknetLoader(root_dir=str(root_dir))
+        
+        # Test length (should include both train and val sets)
+        assert len(loader) == 4  # Based on sample_dataset fixture
+        
+        # Test iteration
+        image_count = 0
+        for image, labels in loader:
+            image_count += 1
+            assert isinstance(image, np.ndarray)
+        assert image_count == len(loader)
+
+    def test_yolo_darknet_loader_color_modes(self, sample_dataset):
+        """Test different color modes in YoloDarknetLoader."""
+        root_dir, dirs = sample_dataset
+        
+        # Test RGB mode
+        loader_rgb = YoloDarknetLoader(
+            image_dir=dirs['images']['train'],
+            labels_dir=dirs['labels']['train'],
+            color_mode=ColorMode.RGB
+        )
+        
+        # Test BGR mode
+        loader_bgr = YoloDarknetLoader(
+            image_dir=dirs['images']['train'],
+            labels_dir=dirs['labels']['train'],
+            color_mode=ColorMode.BGR
+        )
+        
+        # Test GRAY mode
+        loader_gray = YoloDarknetLoader(
+            image_dir=dirs['images']['train'],
+            labels_dir=dirs['labels']['train'],
+            color_mode=ColorMode.GRAY
+        )
+        
+        # Check first image of each loader
+        for loader in [loader_rgb, loader_bgr, loader_gray]:
+            image, _ = next(iter(loader))
+            assert isinstance(image, np.ndarray)
+            if loader.color_mode == ColorMode.GRAY:
+                assert len(image.shape) == 2 or image.shape[-1] == 1
+            else:
+                assert image.shape[-1] == 3
+
+    def test_yolo_darknet_loader_invalid_init(self, sample_dataset):
+        """Test invalid initializations of YoloDarknetLoader."""
+        root_dir, dirs = sample_dataset
+        
+        # Test with no arguments
+        with pytest.raises(ValueError):
+            YoloDarknetLoader()
+        
+        # Test with incomplete arguments
+        with pytest.raises(ValueError):
+            YoloDarknetLoader(image_dir=dirs['images']['train'])
+        
+        # Test with mixed arguments
+        with pytest.raises(ValueError):
+            YoloDarknetLoader(
+                root_dir=str(root_dir),
+                image_dir=dirs['images']['train']
+            )
+
+    def test_yolo_darknet_loader_missing_files(self, sample_dataset):
+        """Test YoloDarknetLoader with missing files."""
+        root_dir, dirs = sample_dataset
+        
+        # Create directory with missing label files
+        incomplete_labels = root_dir / 'incomplete_labels'
+        incomplete_labels.mkdir()
+        
+        # Should not raise error but should skip missing pairs
+        loader = YoloDarknetLoader(
+            image_dir=dirs['images']['train'],
+            labels_dir=str(incomplete_labels)
+        )
+        
+        assert len(loader) == 0  # No valid image-label pairs
 
 if __name__ == '__main__':
     pytest.main(['-v', __file__])
