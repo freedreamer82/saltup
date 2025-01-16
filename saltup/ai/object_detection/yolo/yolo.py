@@ -229,7 +229,7 @@ class BaseYolo(NeuralNetworkManager):
                             If False, skips postprocessing entirely.
         :return: A YoloOutput object containing the results and timing information.
         """
-        # Misurazione del tempo di pre-processing
+        # Measure preprocessing time
         start_preprocess = time.time()
         if preprocess is False:
             # Skip preprocessing entirely
@@ -243,11 +243,13 @@ class BaseYolo(NeuralNetworkManager):
         end_preprocess = time.time()
         preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
 
-        # Misurazione del tempo di inferenza
+        # Measure inference time
+        start_inference = time.time()
         raw_output = self.model_inference(preprocessed_image)
-        inference_time_ms = self.get_inference_time_ms() #from model handler
+        end_inference = time.time()
+        inference_time_ms = (end_inference - start_inference) * 1000
 
-        # Misurazione del tempo di post-processing
+        # Measure postprocessing time
         start_postprocess = time.time()
         if postprocess is False:
             # Skip postprocessing entirely
@@ -261,7 +263,7 @@ class BaseYolo(NeuralNetworkManager):
         end_postprocess = time.time()
         postprocessing_time_ms = (end_postprocess - start_postprocess) * 1000
 
-        # Imposta i tempi di esecuzione nell'oggetto YoloOutput
+        # Set execution times in the YoloOutput object
         if isinstance(postprocessed_output, YoloOutput):
             postprocessed_output.set_preprocessing_time(preprocessing_time_ms)
             postprocessed_output.set_inference_time(inference_time_ms)
