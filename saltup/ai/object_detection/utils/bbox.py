@@ -204,14 +204,12 @@ def center_to_corners_format(box: Union[List, Tuple]) -> Tuple[float, float, flo
     if w < 0 or h < 0:
         raise ValueError("Width and height must be non-negative")
 
-    x1 = xc - w / 2
-    y1 = yc - h / 2
-    if x1 < 0:
-        x1 = 0.0
-    if y1 < 0:
-        y1 = 0.0
-    x2 = xc + w / 2
-    y2 = yc + h / 2
+    # Clamp coordinates
+    x1 = max(0, xc - w / 2)
+    y1 = max(0, yc - h / 2)
+    x2 = max(0, xc + w / 2)
+    y2 = max(0, yc + h / 2)
+    
     return x1, y1, x2, y2
 
 
