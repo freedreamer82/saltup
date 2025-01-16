@@ -37,7 +37,7 @@ class YoloOutput:
         """Set the list of predicted labels."""
         self._labels = value
 
-    def get_boxes(self, format: BBoxFormat = BBoxFormat.CENTER) -> List[Tuple[float, float, float, float]]:
+    def get_boxes(self, format: BBoxFormat = BBoxFormat.CENTER) -> List[BBox]:
         """
         Get the list of bounding boxes in the specified format.
 
@@ -47,7 +47,7 @@ class YoloOutput:
         Returns:
             List of bounding box coordinates in the specified format.
         """
-        return [bbox.get_coordinates(format) for bbox in self._boxes]
+        return self._boxes
 
     def set_boxes(self, boxes: List[BBox]):
         """
