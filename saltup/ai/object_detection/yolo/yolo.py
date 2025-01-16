@@ -199,13 +199,6 @@ class BaseYolo(NeuralNetworkManager):
     def getYoloType(self) -> YoloType:
         return self.yolotype
     
-    def _load_model(self, model_path: str) -> Any:
-        """
-        Load the YOLO model from the given path
-         Example: return torch.hub.load('ultralytics/yolov5', 'custom', path=model_path)
-        """
-        raise NotImplementedError("Model loading must be implemented.")
-
     def run(
         self,
         image: np.ndarray,
