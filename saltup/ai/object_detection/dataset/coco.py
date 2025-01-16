@@ -269,7 +269,7 @@ def convert_coco_to_yolo_labels(
     Returns:
         Dict mapping image filenames to YOLO annotations
     """
-    from saltup.ai.object_detection.dataset.bbox_utils import coco_to_yolo_bbox
+    from saltup.ai.object_detection.utils.bbox import coco_to_yolo_bbox
     
     with open(coco_json, 'r') as f:
         coco_data = json.load(f)

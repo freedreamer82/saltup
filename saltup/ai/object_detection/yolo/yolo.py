@@ -2,15 +2,14 @@ from typing import Any, Dict, List ,Tuple
 from enum import IntEnum
 import numpy as np
 from typing import Optional, Callable, Union
-from saltup.ai.object_detection.dataset.bbox_utils import BBox,BBoxFormat
+from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
 from saltup.ai import NeuralNetworkManager
-
 from typing import List, Dict, Any, Union
 
 
 class YoloType(IntEnum):
     ANCHORS_BASED = 0
-    ULTRALITICS = 1
+    ULTRALYTICS = 1
     SUPERGRAD = 2
     DAMO = 3
 
@@ -177,7 +176,7 @@ class BaseYolo(NeuralNetworkManager):
         return postprocessed_output
 
     @staticmethod
-    def evaluate( predictions: YoloOutput,ground_truth: BBox,  threshold :float ) -> Dict[str, float]:
+    def evaluate( predictions: YoloOutput,ground_truth: BBox,  threshold_iou :float ) -> Dict[str, float]:
         """
          Compute evaluation metrics (e.g., precision, recall, mAP)
          Example:

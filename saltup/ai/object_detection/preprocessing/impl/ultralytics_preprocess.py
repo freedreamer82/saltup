@@ -50,7 +50,7 @@ class UltralyticsPreprocess(Preprocessing):
                 - Dict with transformation parameters (ratio, padding)
         
         Example:
-            >>> processor = UltraliticsPreprocess(target_shape=(416, 416))
+            >>> processor = UltralyticsPreprocess(target_shape=(416, 416))
             >>> result = processor.letterbox(my_image)
         """
         shape = img.shape[:2]  # Current shape [height, width]
