@@ -1,4 +1,6 @@
 import numpy as np
+from saltup.ai.object_detection.utils.bbox import BBox
+from typing import List, Tuple, Union
 
 def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     """
