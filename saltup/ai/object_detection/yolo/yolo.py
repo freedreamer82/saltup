@@ -3,6 +3,7 @@ from enum import IntEnum
 import numpy as np
 from typing import Optional, Callable, Union
 from saltup.ai.object_detection.dataset.bbox_utils import BBox,BBoxFormat
+from saltup.ai import NeuralNetworkManager
 
 from typing import List, Dict, Any, Union
 
@@ -112,12 +113,12 @@ class YoloOutput:
         return f"YoloOutput(boxes={self._boxes}, scores={self._scores}, labels={self._labels})"
 
 
-class BaseYolo:
+class BaseYolo(NeuralNetworkManager):
     """Base class for implementing a generic YOLO model."""
-    def __init__(self, yolot : YoloType, model_path: str):
-        super().__init__()
+    def __init__(self, yolot: YoloType, model_path: str):
+        super().__init__()  # Initialize NeuralNetworkManager
         self.model_path = model_path
-        self.model = self._load_model(model_path)
+        self.model = self.load_model(model_path)  # Load model using inherited method
         self.yolotype = yolot
 
     def getYoloType(self) -> YoloType:
@@ -159,8 +160,8 @@ class BaseYolo:
             else:
                 preprocessed_image = self.preprocess(image)
 
-        # Perform model inference
-        raw_output = self._model_inference(preprocessed_image)
+        # Perform model inference using the inherited method
+        raw_output = self.model_inference(preprocessed_image)
 
         # Handle postprocessing
         if postprocess is False:
@@ -176,7 +177,7 @@ class BaseYolo:
         return postprocessed_output
 
     @staticmethod
-    def evaluate( predictions: YoloOutput,ground_truth: BBox) -> Dict[str, float]:
+    def evaluate( predictions: YoloOutput,ground_truth: BBox,  threshold :float ) -> Dict[str, float]:
         """
          Compute evaluation metrics (e.g., precision, recall, mAP)
          Example:
@@ -203,13 +204,3 @@ class BaseYolo:
         :return: A YoloOutput object.
         """
         raise NotImplementedError("The postprocess method must be overridden in the derived class.")
-
-    def _model_inference(self, preprocessed_image: Any) -> Any:
-        """
-        Simulate YOLO model inference. This method should be implemented
-        in the derived class to connect to the actual model.
-
-        :param preprocessed_image: Preprocessed input for the model.
-        :return: Raw output from the model.
-        """
-        raise NotImplementedError("The _model_inference method must be implemented in the derived class.")
