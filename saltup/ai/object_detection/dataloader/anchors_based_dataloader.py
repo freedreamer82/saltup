@@ -17,6 +17,19 @@ from saltup.utils.configure_logging import get_logger
 
 
 class AnchorsBasedDataloader(BasedDataloader):
+    """
+    Dataloader for anchor-based object detection models.
+    
+    Handles loading and preprocessing of images and annotations, with support for:
+    - Batch generation
+    - Data augmentation
+    - Grid-based label generation for anchor boxes
+    - Visualization utilities
+    
+    The dataloader converts YOLO format annotations into grid cell format suitable
+    for training anchor-based detectors like YOLOv2/v3.
+    """
+    
     def __init__(
         self, 
         dataset_loader: BaseDatasetLoader,
@@ -28,6 +41,19 @@ class AnchorsBasedDataloader(BasedDataloader):
         preprocess: callable = None,
         transform: A.Compose = None
     ):
+        """
+        Initialize the dataloader.
+
+        Args:
+            dataset_loader: Base dataset loader providing image-label pairs
+            anchors: Anchor boxes as array of (width, height) pairs
+            target_size: Model input size as (height, width)
+            grid_size: Output grid dimensions as (rows, cols)
+            num_classes: Number of object classes
+            batch_size: Number of samples per batch
+            preprocess: Optional custom preprocessing function
+            transform: Optional albumentations transforms for augmentation
+        """
         self.dataset_loader = dataset_loader
         self.__indexes = np.arange(len(dataset_loader))
         
@@ -57,6 +83,24 @@ class AnchorsBasedDataloader(BasedDataloader):
             yield self[i]
     
     def __getitem__(self, idx):
+        """
+        Get a batch of processed samples.
+        
+        Handles:
+        1. Loading raw images and annotations
+        2. Preprocessing images to target size
+        3. Applying augmentations if enabled
+        4. Converting labels to grid format
+        5. Building batches of samples
+
+        Args:
+            idx: Batch index
+
+        Returns:
+            Tuple of (images, labels) arrays:
+            - images: [batch_size, height, width, channels]
+            - labels: [batch_size, grid_h, grid_w, num_anchors, 5 + num_classes]
+        """
         batch_indexes = self.__indexes[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_size = len(batch_indexes)
         
@@ -140,6 +184,30 @@ class AnchorsBasedDataloader(BasedDataloader):
         return self.__augment
 
     def visualize_sample(self, idx, show_grid=True, show_anchors=False):
+        """
+        Visualize a dataset sample with annotations.
+        
+        Creates a side-by-side plot showing:
+        - Original image with bounding boxes
+        - Preprocessed image with optional grid and anchor overlays
+        - Prints statistics about objects and box dimensions
+        
+        Note:
+            Currently only supports YOLO format annotations (normalized x_center, y_center, width, height).
+            Future versions will support multiple annotation formats.
+            
+        Args:
+            idx: Sample index to visualize
+            show_grid: Whether to show the YOLO grid overlay
+            show_anchors: Whether to show matched anchor boxes
+            
+        Returns:
+            None: Displays a matplotlib plot and prints statistics
+            
+        Todo:
+            * Make bbox visualization independent from dataset format
+            * Add support for different annotation formats (COCO, Pascal VOC)
+        """
         
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
@@ -266,9 +334,19 @@ class AnchorsBasedDataloader(BasedDataloader):
             self.__logger.error(f"Error visualizing sample: {e}")
 
 
-from tensorflow.keras.utils import Sequence # type: ignore
+from tensorflow.keras.utils import Sequence #type: ignore
 
 class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
+    """
+    Keras-specific wrapper for AnchorsBasedDataloader.
+    
+    Extends AnchorsBasedDataloader to make it compatible with Keras' Sequence interface,
+    allowing it to be used directly with model.fit() and model.predict().
+    
+    Inherits all functionality from AnchorsBasedDataloader while ensuring compliance
+    with Keras' data loading requirements.
+    """
+    
     def __init__(
         self,
         dataset_loader: BaseDatasetLoader,
@@ -280,7 +358,12 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
         preprocess: callable = None,
         transform: A.Compose = None
     ):
-        # Initialize AnchorsBasedDataloader
+        """
+        Initialize Keras-compatible dataloader.
+        
+        Args match parent class AnchorsBasedDataloader.
+        See AnchorsBasedDataloader documentation for details.
+        """
         AnchorsBasedDataloader.__init__(
             self,
             dataset_loader=dataset_loader,
@@ -310,6 +393,17 @@ from torch.utils.data import Dataset
 import torch
 
 class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
+    """
+    PyTorch-specific wrapper for AnchorsBasedDataloader.
+    
+    Extends AnchorsBasedDataloader to make it compatible with PyTorch's Dataset interface.
+    Key differences from base class:
+    - Uses batch_size=1 since PyTorch handles batching separately
+    - Returns torch.Tensor instead of numpy.ndarray
+    - Handles channel dimension ordering for PyTorch (B,C,H,W)
+    - Provides custom collate function for batching
+    """
+    
     def __init__(
         self,
         dataset_loader: BaseDatasetLoader,
@@ -320,8 +414,21 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
         preprocess: callable = None,
         transform: A.Compose = None
     ):
+        """
+        Initialize PyTorch-compatible dataloader.
         
-        # Initialize AnchorsBasedDataloader with batch_size=1 since PyTorch handles batching separately
+        Note:
+            batch_size is fixed to 1 since PyTorch handles batching through DataLoader
+        
+        Args:
+            dataset_loader: Base dataset loader providing image-label pairs
+            anchors: Anchor boxes as array of (width, height) pairs
+            target_size: Model input size as (height, width)
+            grid_size: Output grid dimensions as (rows, cols)
+            num_classes: Number of object classes
+            preprocess: Optional custom preprocessing function
+            transform: Optional albumentations transforms for augmentation
+        """
         AnchorsBasedDataloader.__init__(
             self,
             dataset_loader=dataset_loader,
@@ -339,7 +446,17 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
         return len(self.dataset_loader)
         
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Get single item using parent class method
+        """
+        Get a single sample as PyTorch tensors.
+        
+        Args:
+            idx: Sample index
+            
+        Returns:
+            Tuple of (image, labels) as PyTorch tensors:
+            - image: tensor of shape (C,H,W)
+            - labels: tensor of shape (grid_h, grid_w, num_anchors, 5 + num_classes)
+        """
         images, labels = super().__getitem__(idx)
         
         # Convert numpy arrays to PyTorch tensors
@@ -359,11 +476,17 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
     @staticmethod
     def collate_fn(batch):
         """
-        Custom collate function to handle batching of variable sized data
+        Custom collate function for PyTorch DataLoader.
+        
+        Handles batching of samples into a single tensor.
+        
         Args:
-            batch: list of (image, label) tuples
+            batch: List of (image, label) tuples from __getitem__
+            
         Returns:
-            Tuple of batched images and labels as torch tensors
+            Tuple of:
+            - images tensor of shape (batch_size, C, H, W)
+            - labels tensor of shape (batch_size, grid_h, grid_w, num_anchors, 5 + num_classes)
         """
         images, labels = zip(*batch)
         
