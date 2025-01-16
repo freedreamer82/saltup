@@ -263,3 +263,111 @@ class AnchorsBasedDataloader:
                 
         except Exception as e:
             self.__logger.error(f"Error visualizing sample: {e}")
+
+
+from tensorflow.keras.utils import Sequence # type: ignore
+
+class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
+    def __init__(
+        self,
+        dataset_loader: BaseDatasetLoader,
+        anchors: np.ndarray,
+        target_size: Tuple[int, int],
+        grid_size: Tuple[int, int],
+        num_classes: int,
+        batch_size: int = 1,
+        preprocess: callable = None,
+        transform: A.Compose = None
+    ):
+        # Initialize AnchorsBasedDataloader
+        AnchorsBasedDataloader.__init__(
+            self,
+            dataset_loader=dataset_loader,
+            anchors=anchors,
+            target_size=target_size,
+            grid_size=grid_size,
+            num_classes=num_classes,
+            batch_size=batch_size,
+            preprocess=preprocess,
+            transform=transform
+        )
+        
+    def __len__(self) -> int:
+        # Use AnchorsBasedDataloader's __len__ method
+        return super().__len__()
+        
+    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+        # Use AnchorsBasedDataloader's __getitem__ method
+        return super().__getitem__(idx)
+        
+    def on_epoch_end(self) -> None:
+        # Use AnchorsBasedDataloader's on_epoch_end method
+        super().on_epoch_end()
+
+
+from torch.utils.data import Dataset
+import torch
+
+class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
+    def __init__(
+        self,
+        dataset_loader: BaseDatasetLoader,
+        anchors: np.ndarray,
+        target_size: Tuple[int, int],
+        grid_size: Tuple[int, int],
+        num_classes: int,
+        preprocess: callable = None,
+        transform: A.Compose = None
+    ):
+        
+        # Initialize AnchorsBasedDataloader with batch_size=1 since PyTorch handles batching separately
+        AnchorsBasedDataloader.__init__(
+            self,
+            dataset_loader=dataset_loader,
+            anchors=anchors,
+            target_size=target_size,
+            grid_size=grid_size,
+            num_classes=num_classes,
+            batch_size=1,  # Fixed to 1 for PyTorch Dataset
+            preprocess=preprocess,
+            transform=transform
+        )
+        
+    def __len__(self) -> int:
+        # Return the total number of samples
+        return len(self.dataset_loader)
+        
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Get single item using parent class method
+        images, labels = super().__getitem__(idx)
+        
+        # Convert numpy arrays to PyTorch tensors
+        images = torch.from_numpy(images.squeeze(0))  # Remove batch dimension
+        labels = torch.from_numpy(labels.squeeze(0))  # Remove batch dimension
+        
+        # Ensure correct channel dimension order (B,C,H,W) for PyTorch
+        if len(images.shape) == 3:  # If there's a channel dimension
+            images = images.permute(2, 0, 1)  # (H,W,C) -> (C,H,W)
+            
+        return images, labels
+        
+    def on_epoch_end(self) -> None:
+        # Use AnchorsBasedDataloader's on_epoch_end method
+        super().on_epoch_end()
+        
+    @staticmethod
+    def collate_fn(batch):
+        """
+        Custom collate function to handle batching of variable sized data
+        Args:
+            batch: list of (image, label) tuples
+        Returns:
+            Tuple of batched images and labels as torch tensors
+        """
+        images, labels = zip(*batch)
+        
+        # Stack images and labels
+        images = torch.stack(images)
+        labels = torch.stack(labels)
+        
+        return images, labels
