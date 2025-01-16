@@ -562,8 +562,8 @@ def convert_to_coco_annotations(image_dir: str, label_dir: str, classes: list[st
 
 def split_dataset(
     class_to_images: Dict[int, List], 
-    split_ratio: float=0.8, 
-    split_val_ratio: float=0.5,
+    split_ratio: float = 0.8, 
+    split_val_ratio: float = 0.5,
     max_images_per_class: Optional[int] = None
 ) -> Tuple[List, List, List]:
     """Split dataset into train, validation and test sets.
@@ -588,33 +588,42 @@ def split_dataset(
         >>> class_data = {0: ['img1.jpg', 'img2.jpg'], 1: ['img3.jpg', 'img4.jpg']}
         >>> train, val, test = split_dataset(class_data, min_images_per_class=2)
     """
-    split_ratio, split_val_ratio = map(abs, [split_ratio, split_val_ratio])
-    if not all(e >= 0.0 and e <= 1.0 for e in [split_ratio, split_val_ratio]):
+    # Validate input ratios
+    if not (0.0 <= split_ratio <= 1.0 and 0.0 <= split_val_ratio <= 1.0):
         raise ValueError("Split ratios must be in range [0, 1]")
-        
     if max_images_per_class is not None and max_images_per_class < 0:
         raise ValueError("max_images_per_class must be positive or None")
-    
-    train_set, val_test_set = set(), set()
+
+    # Track which split each image belongs to
+    image_to_split = {}
 
     for class_id, images in class_to_images.items():
         random.shuffle(images)
         limit = min(max_images_per_class, len(images)) if max_images_per_class else len(images)
 
-        # Split into training and remaining sets
+        # Assign images to train set
         train_count = int(limit * split_ratio)
-        train_set.update(images[:train_count])
-        val_test_set.update(images[train_count:limit])
+        for image in images[:train_count]:
+            if image not in image_to_split:
+                image_to_split[image] = "train"
 
-    # Further split remaining data into validation and test sets
-    val_test_list = list(val_test_set)
-    random.shuffle(val_test_list)
-    mid_point = int(len(val_test_list) * split_val_ratio)
-    val_set = val_test_list[:mid_point]
-    test_set = val_test_list[mid_point:]
+        # Assign remaining images to val/test set
+        val_test_images = images[train_count:limit]
+        random.shuffle(val_test_images)
+        mid_point = int(len(val_test_images) * split_val_ratio)
+        for image in val_test_images[:mid_point]:
+            if image not in image_to_split:
+                image_to_split[image] = "val"
+        for image in val_test_images[mid_point:]:
+            if image not in image_to_split:
+                image_to_split[image] = "test"
 
-    return list(train_set), list(val_set), list(test_set)
+    # Create final splits
+    train_set = [image for image, split in image_to_split.items() if split == "train"]
+    val_set = [image for image, split in image_to_split.items() if split == "val"]
+    test_set = [image for image, split in image_to_split.items() if split == "test"]
 
+    return train_set, val_set, test_set
 
 def split_and_organize_dataset(
     labels_dir: str,
