@@ -33,10 +33,9 @@ class YoloOutput:
         self._labels = labels  # List of predicted labels
         self._image = image  # Optional image associated with the results
 
-        # Timing information (default to 0)
-        self._inference_time_ms = 0.0  # Tempo di inferenza del modello (default: 0)
-        self._preprocessing_time_ms = 0.0  # Tempo di pre-processing (default: 0)
-        self._postprocessing_time_ms = 0.0  # Tempo di post-processing (default: 0)
+        self._inference_time_ms = 0.0  
+        self._preprocessing_time_ms = 0.0 
+        self._postprocessing_time_ms = 0.0 
 
     def get_labels(self) -> List[str]:
         """Get the list of predicted labels."""
