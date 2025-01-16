@@ -4,6 +4,7 @@ import onnxruntime as ort
 import tensorflow as tf
 import numpy as np
 from tf_keras.saving import load_model  # Importazione specifica di load_model da tf_keras.saving
+import time
 
 class NeuralNetworkManager:
     """Class to manage loading and inference for different neural network model formats."""
@@ -11,6 +12,7 @@ class NeuralNetworkManager:
     def __init__(self):
         self.model = None
         self.supported_formats = [".pt", ".keras", ".h5", ".onnx", ".tflite"]
+        self.inference_time_ms = None  # Attributo per memorizzare il tempo di inferenza
 
     def get_supported_formats(self) -> List[str]:
         """Return a list of supported model formats."""
@@ -49,7 +51,7 @@ class NeuralNetworkManager:
 
     def model_inference(self, input_data: Any) -> Any:
         """
-        Perform inference using the loaded model.
+        Perform inference using the loaded model and measure the inference time.
 
         Args:
             input_data: Preprocessed input data for the model.
@@ -63,17 +65,19 @@ class NeuralNetworkManager:
         if self.model is None:
             raise RuntimeError("Model is not loaded. Call `load_model` first.")
 
+        start_time = time.time()  # Capture start time
+
         if isinstance(self.model, torch.nn.Module):
             # PyTorch inference
             with torch.no_grad():
-                return self.model(input_data)
+                output = self.model(input_data)
         elif isinstance(self.model, tf.keras.Model):
             # TensorFlow/Keras inference
-            return self.model.predict(input_data)
+            output = self.model.predict(input_data)
         elif isinstance(self.model, ort.InferenceSession):
             # ONNX inference
             input_name = self.model.get_inputs()[0].name
-            return self.model.run(None, {input_name: input_data})
+            output = self.model.run(None, {input_name: input_data})
         elif isinstance(self.model, tf.lite.Interpreter):
             # TensorFlow Lite inference
             input_details = self.model.get_input_details()
@@ -86,6 +90,20 @@ class NeuralNetworkManager:
             self.model.invoke()
 
             # Get output tensor
-            return self.model.get_tensor(output_details[0]['index'])
+            output = self.model.get_tensor(output_details[0]['index'])
         else:
             raise RuntimeError("Unsupported model type.")
+
+        end_time = time.time()  # Capture end time
+        self.inference_time_ms = (end_time - start_time) * 1000  # Calculate inference time in milliseconds
+
+        return output
+
+    def get_inference_time_ms(self) -> float:
+        """
+        Get the last measured inference time in milliseconds.
+
+        Returns:
+            The last inference time in milliseconds, or None if no inference has been performed yet.
+        """
+        return self.inference_time_ms
