@@ -3,7 +3,7 @@ from typing import Any, Dict, List ,Tuple
 import numpy as np
 from typing import Optional, Callable, Union
 from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
-from saltup.ai.object_detection  import YoloType
+from saltup.ai.object_detection.yolo  import YoloType
 from saltup.ai import NeuralNetworkManager
 from typing import List, Dict, Any, Union
 import time
