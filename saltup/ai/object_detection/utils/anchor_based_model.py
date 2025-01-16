@@ -3,9 +3,6 @@ import numpy as np
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from typing import Union, List
-
-from saltup.ai.object_detection.utils.bbox import compute_iou
 
 
 def compute_anchors(boxes: np.ndarray, num_anchors: int) -> np.ndarray:
@@ -47,6 +44,41 @@ def compute_anchors(boxes: np.ndarray, num_anchors: int) -> np.ndarray:
 
    # Return cluster centroids (optimal anchors)
    return kmeans.cluster_centers_
+
+
+def compute_anchor_iou(wh1: np.ndarray, wh2: np.ndarray) -> float:
+   """
+   Compute IoU between two anchor boxes using only width and height.
+   Assumes boxes are centered at the same point.
+   
+   Args:
+       wh1: Width and height of first box as (w,h)
+       wh2: Width and height of second box as (w,h)
+       
+   Returns:
+       float: IoU value between 0 and 1
+       
+   Note:
+       This is a simplified IoU calculation specifically for comparing anchor
+       boxes, where only width/height are considered and boxes are assumed
+       to be centered.
+   """
+   # Get width and height
+   w1, h1 = wh1
+   w2, h2 = wh2
+   
+   # Calculate intersection area (assumes centered boxes)
+   inter_w = min(w1, w2)
+   inter_h = min(h1, h2)
+   intersection = inter_w * inter_h
+   
+   # Calculate areas
+   area1 = w1 * h1
+   area2 = w2 * h2
+   
+   # Calculate union and IoU
+   union = area1 + area2 - intersection
+   return intersection / (union + np.finfo(float).eps)
 
 
 def convert_to_grid_format(
@@ -92,7 +124,7 @@ def convert_to_grid_format(
         best_anchor = -1
         
         for i, anchor in enumerate(anchors):
-            iou = compute_iou(box_wh, np.array(anchor))
+            iou = compute_anchor_iou(box_wh, np.array(anchor))
             if iou > best_iou:
                 best_iou = iou
                 best_anchor = i
