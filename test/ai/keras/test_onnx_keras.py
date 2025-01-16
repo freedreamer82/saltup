@@ -8,12 +8,12 @@ from saltup.ai.keras_utils.keras_to_onnx import (
 
 class TestOnnxKeras:
     @pytest.fixture
-    def keras_model(self):
-        keras_model_path = os.path.join('..', '..',  'results', 'models', 'model_1.keras')
+    def keras_model(self, root_dir):
+        keras_model_path = os.path.join(str(root_dir),  'results', 'models', 'model_1.keras')
         return keras_model_path
     
-    def test_keras_to_onnx(self, keras_model):
-        onnx_path = os.path.join('..', '..',  'results', 'models', 'model_1.onnx')
+    def test_keras_to_onnx(self, keras_model, root_dir):
+        onnx_path = os.path.join(str(root_dir),  'results', 'models', 'model_1.onnx')
         onnx, keras = convert_keras_to_onnx(keras_model, onnx_path)
         
         keras_pred, onnx_pred = verify_onnx_model(onnx_path, keras)
