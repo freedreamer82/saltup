@@ -14,41 +14,39 @@ from saltup.utils import configure_logging
 
 class YoloDarknetLoader(BaseDatasetLoader):
     def __init__(
-        self, 
-        root_dir: str = None, *, 
-        image_dir: str = None, 
-        labels_dir: str = None, 
+        self,
+        image_dir: str,
+        labels_dir: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
         """
         Initialize YoloDarknet dataset loader.
         
         Args:
-            root_dir: Root directory containing train/val splits
-            image_dir: Directory containing images (alternative to root_dir)
-            labels_dir: Directory containing labels (alternative to root_dir)
+            image_dir: Directory containing images
+            labels_dir: Directory containing labels
             color_mode: Color mode for loading images
             
         Raises:
-            ValueError: If arguments combination is invalid
+            FileNotFoundError: If directories don't exist
         """
-        # Validate input arguments
-        self._validate_init_args(root_dir, image_dir, labels_dir)
+        self.logger = configure_logging.get_logger(__name__)
+        self.logger.info("Initializing YOLO Darknet dataset loader")
         
-        self.__logger = configure_logging.get_logger(__name__)
-        self.__logger.info("Initialized YOLO Darknet dataset loader")
-        
-        if root_dir is not None:
-            self.root_dir = Path(root_dir)
-            self.train_images_dir, self.train_labels_dir, self.val_images_dir, self.val_labels_dir = get_dataset_paths(root_dir)
-            self.image_label_pairs = self._load_image_label_pairs_from_root()
-        else:
-            self.image_dir = Path(image_dir)
-            self.labels_dir = Path(labels_dir)
-            self.image_label_pairs = self._load_image_label_pairs_from_dirs()
-        
+        # Validate directories existence
+        if not os.path.exists(image_dir):
+            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(labels_dir):
+            raise FileNotFoundError(f"Labels directory not found: {labels_dir}")
+            
+        self.image_dir = Path(image_dir)
+        self.labels_dir = Path(labels_dir)
         self.color_mode = color_mode
-        self._current_index = 0  # Track current position
+        self._current_index = 0
+        
+        # Load image-label pairs
+        self.image_label_pairs = self._load_image_label_pairs()
+        self.logger.info(f"Found {len(self.image_label_pairs)} image-label pairs")
 
     def __iter__(self):
         """Return iterator object (self in this case)."""
@@ -67,47 +65,35 @@ class YoloDarknetLoader(BaseDatasetLoader):
         return self.load_image(image_path, self.color_mode), read_label(label_path)
 
     def __len__(self):
+        """Return total number of samples in dataset."""
         return len(self.image_label_pairs)
 
-    def _load_image_label_pairs_from_root(self):
-        """Load pairs from full dataset structure."""
+    def _load_image_label_pairs(self) -> List[Tuple[str, str]]:
+        """
+        Load pairs from images and labels directories.
+        
+        Returns:
+            List of tuples containing (image_path, label_path) pairs
+        """
         image_label_pairs = []
-        for split_dir in [self.train_images_dir, self.val_images_dir]:
-            for image_file in os.listdir(split_dir):
-                if image_file.endswith(('.jpg', '.jpeg', '.png')):
-                    base_name = os.path.splitext(image_file)[0]
-                    image_path = os.path.join(split_dir, image_file)
-                    label_path = _find_matching_label(
-                        base_name, 
-                        self.train_labels_dir if split_dir == self.train_images_dir else self.val_labels_dir
-                    )
-                    if label_path:
-                        image_label_pairs.append((image_path, label_path))
-                    else:
-                        self.__logger.warning(f"Label not found for {image_file}")
-        return image_label_pairs
-
-    def _load_image_label_pairs_from_dirs(self):
-        """Load pairs from specific directories."""
-        image_label_pairs = []
+        skipped_images = 0
+        
         for image_file in os.listdir(self.image_dir):
             if image_file.endswith(('.jpg', '.jpeg', '.png')):
                 base_name = os.path.splitext(image_file)[0]
-                image_path = os.path.join(self.image_dir, image_file)
-                label_path = os.path.join(self.labels_dir, f"{base_name}.txt")
+                image_path = str(self.image_dir / image_file)
+                label_path = str(self.labels_dir / f"{base_name}.txt")
+                
                 if os.path.exists(label_path):
                     image_label_pairs.append((image_path, label_path))
                 else:
-                    self.__logger.warning(f"Label not found for {image_file}")
+                    skipped_images += 1
+                    self.logger.warning(f"Label not found for {image_file}")
+        
+        if skipped_images > 0:
+            self.logger.warning(f"Skipped {skipped_images} images due to missing labels")
+            
         return image_label_pairs
-
-    @staticmethod
-    def _validate_init_args(root_dir, image_dir, labels_dir):
-        """Validate initialization arguments."""
-        if root_dir is not None and (image_dir is not None or labels_dir is not None):
-            raise ValueError("Cannot provide both root_dir and image_dir/labels_dir")
-        if root_dir is None and (image_dir is None or labels_dir is None):
-            raise ValueError("Must provide either root_dir or both image_dir and labels_dir")
 
 
 def create_dataset_structure(root_dir: str):
