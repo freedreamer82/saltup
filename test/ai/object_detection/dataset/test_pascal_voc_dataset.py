@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 
 from saltup.ai.object_detection.dataset.pascal_voc import (
-    PascalVOCLoader,
+    PascalVOCLoader, ColorMode,
     create_dataset_structure,
     validate_dataset_structure,
     read_annotation,
@@ -107,79 +107,6 @@ class TestPascalVOCDataset:
             assert ann["class_name"] == expected["class_name"]
             assert ann["bbox"] == expected["bbox"]
 
-    def test_pascal_voc_loader(self, dataset_dir, sample_pascal_voc_data):
-        """Test PascalVOCLoader with sample data."""
-        root_dir, dirs = dataset_dir
-
-        # Create sample image and annotation
-        train_img_dir = root_dir / "images" / "train"
-        train_ann_dir = root_dir / "annotations" / "train"
-
-        # Crea un'immagine valida (10x10 pixel, nera)
-        image = Image.new('RGB', (10, 10), color='black')
-        image_path = train_img_dir / "example.jpg"
-        image.save(str(image_path))
-
-        # Scrivi l'annotazione
-        write_annotation(
-            str(train_ann_dir / "example.xml"),
-            sample_pascal_voc_data["annotations"],
-            {
-                "filename": "example.jpg",
-                "width": 10,  # Larghezza dell'immagine
-                "height": 10,  # Altezza dell'immagine
-            }
-        )
-
-        # Initialize loader
-        loader = PascalVOCLoader(root_dir=str(root_dir))
-
-        # Test length
-        assert len(loader) == 1
-
-        # Test iteration
-        for image, annotations in loader:
-            assert isinstance(image, np.ndarray)
-            assert len(annotations) == len(sample_pascal_voc_data["annotations"])
-            for ann, expected in zip(annotations, sample_pascal_voc_data["annotations"]):
-                assert ann["class_name"] == expected["class_name"]
-                assert ann["bbox"] == expected["bbox"]
-
-    def test_pascal_voc_loader_invalid_init(self, dataset_dir):
-        """Test invalid initializations of PascalVOCLoader."""
-        root_dir, _ = dataset_dir
-
-        # Test with no arguments
-        with pytest.raises(ValueError):
-            PascalVOCLoader()
-
-        # Test with incomplete arguments
-        with pytest.raises(ValueError):
-            PascalVOCLoader(image_dir=str(root_dir / "images" / "train"))
-
-        # Test with mixed arguments
-        with pytest.raises(ValueError):
-            PascalVOCLoader(
-                root_dir=str(root_dir),
-                image_dir=str(root_dir / "images" / "train")
-            )
-
-    def test_pascal_voc_loader_missing_files(self, dataset_dir):
-        """Test PascalVOCLoader with missing files."""
-        root_dir, _ = dataset_dir
-
-        # Create directory with missing annotation files
-        incomplete_annotations = root_dir / "annotations" / "incomplete"
-        incomplete_annotations.mkdir()
-
-        # Should not raise error but should skip missing pairs
-        loader = PascalVOCLoader(
-            image_dir=str(root_dir / "images" / "train"),
-            annotations_dir=str(incomplete_annotations)
-        )
-
-        assert len(loader) == 0  # No valid image-annotation pairs
-
     def test_get_dataset_paths(self, dataset_dir):
         """Test getting directory paths for Pascal VOC dataset."""
         root_dir, _ = dataset_dir
@@ -189,6 +116,173 @@ class TestPascalVOCDataset:
         assert train_annotations_dir == str(root_dir / "annotations" / "train")
         assert val_images_dir == str(root_dir / "images" / "val")
         assert val_annotations_dir == str(root_dir / "annotations" / "val")
+        
+
+class TestPascalVOCDataloader:
+    @pytest.fixture
+    def sample_pascal_voc_data(self):
+        """Create sample Pascal VOC format data."""
+        return {
+            "annotations": [
+                {
+                    "class_name": "person",
+                    "bbox": (100, 100, 250, 250),
+                },
+                {
+                    "class_name": "car",
+                    "bbox": (200, 200, 400, 400),
+                },
+            ]
+        }
+
+    @pytest.fixture
+    def sample_dataset(self, tmp_path, sample_pascal_voc_data):
+        """Create a temporary dataset with sample images and annotations."""
+        dataset_dir = tmp_path / "dataset"
+        image_dir = dataset_dir / "images"
+        annotation_dir = dataset_dir / "annotations"
+        
+        # Create directories
+        image_dir.mkdir(parents=True)
+        annotation_dir.mkdir(parents=True)
+        
+        # Create sample image
+        image = Image.new('RGB', (10, 10), color='black')
+        image_paths = []
+        annotation_paths = []
+        
+        # Create multiple samples
+        for i in range(3):
+            # Save image
+            image_path = image_dir / f"img{i}.jpg"
+            image.save(str(image_path))
+            image_paths.append(image_path)
+            
+            # Write annotation
+            annotation_path = annotation_dir / f"img{i}.xml"
+            write_annotation(
+                str(annotation_path),
+                sample_pascal_voc_data["annotations"],
+                {
+                    "filename": f"img{i}.jpg",
+                    "width": 10,
+                    "height": 10,
+                }
+            )
+            annotation_paths.append(annotation_path)
+        
+        return dataset_dir, {"image_dir": image_dir, "annotation_dir": annotation_dir}
+
+    def test_pascal_voc_loader(self, sample_dataset):
+        """Test basic functionality of PascalVOCLoader."""
+        _, dirs = sample_dataset
+        
+        loader = PascalVOCLoader(
+            image_dir=str(dirs["image_dir"]),
+            annotations_dir=str(dirs["annotation_dir"])
+        )
+        
+        # Test length
+        assert len(loader) == 3
+        
+        # Test iteration
+        for image, annotations in loader:
+            assert isinstance(image, np.ndarray)
+            assert len(annotations) == 2  # Two objects per annotation
+            for ann in annotations:
+                assert "class_name" in ann
+                assert "bbox" in ann
+                assert len(ann["bbox"]) == 4
+
+    def test_pascal_voc_loader_missing_directories(self, sample_dataset):
+        """Test PascalVOCLoader with missing directories."""
+        _, dirs = sample_dataset
+        
+        # Test with non-existent image directory
+        with pytest.raises(FileNotFoundError):
+            PascalVOCLoader(
+                image_dir="/nonexistent/path",
+                annotations_dir=str(dirs["annotation_dir"])
+            )
+        
+        # Test with non-existent annotations directory
+        with pytest.raises(FileNotFoundError):
+            PascalVOCLoader(
+                image_dir=str(dirs["image_dir"]),
+                annotations_dir="/nonexistent/path"
+            )
+
+    def test_pascal_voc_loader_missing_files(self, sample_dataset):
+        """Test PascalVOCLoader with missing annotation files."""
+        root_dir, dirs = sample_dataset
+        
+        # Create directory with missing annotation files
+        incomplete_annotations = root_dir / "incomplete_annotations"
+        incomplete_annotations.mkdir()
+        
+        # Should not raise error but should skip missing pairs
+        loader = PascalVOCLoader(
+            image_dir=str(dirs["image_dir"]),
+            annotations_dir=str(incomplete_annotations)
+        )
+        
+        assert len(loader) == 0  # No valid image-annotation pairs
+
+    def test_pascal_voc_loader_iterator_reset(self, sample_dataset):
+        """Test that iterator properly resets after completion."""
+        _, dirs = sample_dataset
+        
+        loader = PascalVOCLoader(
+            image_dir=str(dirs["image_dir"]),
+            annotations_dir=str(dirs["annotation_dir"])
+        )
+        
+        # First iteration
+        first_images = [img for img, _ in loader]
+        assert len(first_images) == 3
+        
+        # Second iteration
+        second_images = [img for img, _ in loader]
+        assert len(second_images) == 3
+        
+        # Compare iterations
+        for img1, img2 in zip(first_images, second_images):
+            assert np.array_equal(img1, img2)
+
+    def test_pascal_voc_loader_color_modes(self, sample_dataset):
+        """Test different color modes in PascalVOCLoader."""
+        _, dirs = sample_dataset
+        
+        # Test RGB mode
+        loader_rgb = PascalVOCLoader(
+            image_dir=str(dirs["image_dir"]),
+            annotations_dir=str(dirs["annotation_dir"]),
+            color_mode=ColorMode.RGB
+        )
+        
+        # Test BGR mode
+        loader_bgr = PascalVOCLoader(
+            image_dir=str(dirs["image_dir"]),
+            annotations_dir=str(dirs["annotation_dir"]),
+            color_mode=ColorMode.BGR
+        )
+        
+        # Test GRAY mode
+        loader_gray = PascalVOCLoader(
+            image_dir=str(dirs["image_dir"]),
+            annotations_dir=str(dirs["annotation_dir"]),
+            color_mode=ColorMode.GRAY
+        )
+        
+        # Check first image of each loader
+        for loader in [loader_rgb, loader_bgr, loader_gray]:
+            image, _ = next(iter(loader))
+            assert isinstance(image, np.ndarray)
+            if loader.color_mode == ColorMode.GRAY:
+                assert len(image.shape) == 2 or image.shape[-1] == 1
+            else:
+                assert image.shape[-1] == 3
+
 
 if __name__ == '__main__':
     pytest.main(['-v', __file__])

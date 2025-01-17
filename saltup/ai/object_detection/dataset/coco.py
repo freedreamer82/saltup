@@ -30,51 +30,47 @@ from typing import Dict, List, Tuple, Optional, Union
 import random
 
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
+from saltup.utils.configure_logging import logging
 
 
 class COCODatasetLoader(BaseDatasetLoader):
     def __init__(
         self,
-        root_dir: str = None,
-        *,
-        image_dir: str = None,
-        annotations_file: str = None,
+        image_dir: str,
+        annotations_file: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
         """
         Initialize COCO dataset loader.
 
         Args:
-            root_dir: Root directory containing train/val splits.
-            image_dir: Directory containing images (alternative to root_dir).
-            annotations_file: Path to COCO annotations JSON file.
-            color_mode: Color mode for loading images.
+            image_dir: Directory containing images
+            annotations_file: Path to COCO annotations JSON file
+            color_mode: Color mode for loading images
         
         Raises:
-            ValueError: If arguments combination is invalid.
+            ValueError: If paths are invalid
+            FileNotFoundError: If directories or files don't exist
         """
-        self._validate_init_args(root_dir, image_dir, annotations_file)
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("Initializing COCO dataset loader")
         
-        if root_dir is not None:
-            # Verifica la struttura del dataset
-            validate_dataset_structure(root_dir)
+        # Validate input paths
+        if not os.path.exists(image_dir):
+            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(annotations_file):
+            raise FileNotFoundError(f"Annotations file not found: {annotations_file}")
             
-            # Ottieni i percorsi corretti
-            self.train_images_dir, self.train_annotations_file, self.val_images_dir, self.val_annotations_file = get_dataset_paths(root_dir)
-            
-            # Usa il train set come default
-            self.image_dir = self.train_images_dir
-            self.annotations_file = self.train_annotations_file
-        else:
-            self.image_dir = Path(image_dir)
-            self.annotations_file = Path(annotations_file)
-        
+        self.image_dir = Path(image_dir)
+        self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
-        self._current_index = 0  # Track current position
-
-        # Load annotations
+        self._current_index = 0
+        
+        # Load annotations and create pairs
         self.annotations = self._load_annotations()
         self.image_annotation_pairs = self._create_image_annotation_pairs()
+        
+        self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
 
     def __iter__(self):
         """Return iterator object (self in this case)."""
@@ -96,33 +92,54 @@ class COCODatasetLoader(BaseDatasetLoader):
         """Return total number of samples in dataset."""
         return len(self.image_annotation_pairs)
 
-    def _validate_init_args(self, root_dir, image_dir, annotations_file):
-        """Validate initialization arguments."""
-        if root_dir is not None and (image_dir is not None or annotations_file is not None):
-            raise ValueError("Cannot provide both root_dir and image_dir/annotations_file")
-        if root_dir is None and (image_dir is None or annotations_file is None):
-            raise ValueError("Must provide either root_dir or both image_dir and annotations_file")
-
     def _load_annotations(self) -> Dict:
         """Load COCO annotations from JSON file."""
-        with open(self.annotations_file, 'r') as f:
-            return json.load(f)
+        try:
+            with open(self.annotations_file, 'r') as f:
+                annotations = json.load(f)
+                
+            # Validate COCO format
+            required_keys = ["images", "annotations", "categories"]
+            if not all(key in annotations for key in required_keys):
+                raise ValueError(f"Invalid COCO format. Missing one or more required keys: {required_keys}")
+                
+            return annotations
+        except json.JSONDecodeError:
+            self.logger.error(f"Invalid JSON format in annotation file: {self.annotations_file}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error loading annotations from {self.annotations_file}: {str(e)}")
+            raise
 
     def _create_image_annotation_pairs(self) -> List[Tuple[str, List[Dict]]]:
-        """Create pairs of image paths and their corresponding annotations."""
+        """
+        Create pairs of image paths and their corresponding annotations.
+        
+        Returns:
+            List of tuples containing (image_path, annotations_list) pairs
+        """
         image_annotation_pairs = []
-
+        
         # Create a mapping from image_id to annotations
         image_to_annotations = defaultdict(list)
         for ann in self.annotations['annotations']:
             image_to_annotations[ann['image_id']].append(ann)
 
-        # Create pairs
+        # Create pairs and verify image existence
+        skipped_images = 0
         for img in self.annotations['images']:
             image_path = os.path.join(self.image_dir, img['file_name'])
             if os.path.exists(image_path):
-                image_annotation_pairs.append((image_path, image_to_annotations[img['id']]))
-
+                image_annotation_pairs.append(
+                    (image_path, image_to_annotations[img['id']])
+                )
+            else:
+                skipped_images += 1
+                self.logger.warning(f"Image not found: {img['file_name']}")
+                
+        if skipped_images > 0:
+            self.logger.warning(f"Skipped {skipped_images} images due to missing files")
+            
         return image_annotation_pairs
 
 
@@ -184,16 +201,20 @@ def validate_dataset_structure(root_dir: str) -> Dict:
     return stats
 
 
-def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
+def get_dataset_paths(root_dir: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
-    Get directory paths for dataset in COCO format.
+    Get directory paths for dataset in COCO format and verify correlation between
+    images and their annotations.
 
     Args:
         root_dir: Dataset root directory
 
     Returns:
         Tuple of (train_images_dir, train_annotations_file, val_images_dir, val_annotations_file)
+        Returns None for paths that don't exist or don't have correlation
     """
+    logger = logging.getLogger(__name__)
+    
     # Verify root directory exists
     if not os.path.exists(root_dir):
         raise FileNotFoundError(f"Root directory {root_dir} does not exist")
@@ -204,19 +225,44 @@ def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
     val_images_dir = os.path.join(root_dir, 'images', 'val')
     val_annotations_file = os.path.join(root_dir, 'annotations', 'instances_val.json')
 
-    # Verify required COCO directories and files exist
-    required_paths = [
-        (train_images_dir, "Train Images"),
-        (train_annotations_file, "Train Annotations"),
-        (val_images_dir, "Validation Images"),
-        (val_annotations_file, "Validation Annotations")
-    ]
+    def verify_split_correlation(images_dir: str, annotation_file: str, split: str) -> Tuple[Optional[str], Optional[str]]:
+        """Helper function to verify correlation between images and annotations for a split"""
+        has_images = os.path.exists(images_dir) and len(os.listdir(images_dir)) > 0
+        has_annotations = os.path.exists(annotation_file)
+        
+        if has_images and not has_annotations:
+            logger.warning(f"{split} split: Found images in {images_dir} but missing annotations file {annotation_file}")
+            return None, None
+        
+        if has_annotations and not has_images:
+            try:
+                with open(annotation_file, 'r') as f:
+                    annotations = json.load(f)
+                if annotations.get('images'):
+                    logger.warning(f"{split} split: Found annotations in {annotation_file} but missing images in {images_dir}")
+                    return None, None
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON format in annotation file: {annotation_file}")
+                return None, None
+            except Exception as e:
+                logger.warning(f"Error reading annotation file {annotation_file}: {str(e)}")
+                return None, None
+        
+        if not has_images and not has_annotations:
+            logger.warning(f"{split} split: Neither images nor annotations found")
+            return None, None
+            
+        return images_dir if has_images else None, annotation_file if has_annotations else None
 
-    for path, path_name in required_paths:
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"{path_name} not found at {path}")
+    # Verify correlation for both splits
+    train_imgs, train_anns = verify_split_correlation(
+        train_images_dir, train_annotations_file, "Training"
+    )
+    val_imgs, val_anns = verify_split_correlation(
+        val_images_dir, val_annotations_file, "Validation"
+    )
 
-    return train_images_dir, train_annotations_file, val_images_dir, val_annotations_file
+    return train_imgs, train_anns, val_imgs, val_anns
 
 
 def analyze_dataset(root_dir: str, class_names: List[str] = None):

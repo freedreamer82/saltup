@@ -85,36 +85,70 @@ class TestCOCODataset:
         """Test get_dataset_paths() function."""
         root_dir, _ = dataset_dir
 
-        # Crea la struttura del dataset
+        # Create dataset structure
         create_dataset_structure(str(root_dir))
 
-        # Crea file di annotazioni fittizi
+        # Create sample COCO annotations
+        train_annotations = {
+            "images": [{"id": 1, "file_name": "img1.jpg"}],
+            "annotations": [{"id": 1, "image_id": 1}],
+            "categories": [{"id": 1, "name": "test"}]
+        }
+        val_annotations = {
+            "images": [{"id": 1, "file_name": "img1.jpg"}],
+            "annotations": [{"id": 1, "image_id": 1}],
+            "categories": [{"id": 1, "name": "test"}]
+        }
+
+        # Create annotation files
         train_ann_file = root_dir / "annotations" / "instances_train.json"
         val_ann_file = root_dir / "annotations" / "instances_val.json"
-        train_ann_file.touch()
-        val_ann_file.touch()
+        with open(train_ann_file, 'w') as f:
+            json.dump(train_annotations, f)
+        with open(val_ann_file, 'w') as f:
+            json.dump(val_annotations, f)
 
-        # Crea directory per le immagini
+        # Create image directories and sample images
         train_img_dir = root_dir / "images" / "train"
         val_img_dir = root_dir / "images" / "val"
         train_img_dir.mkdir(parents=True, exist_ok=True)
         val_img_dir.mkdir(parents=True, exist_ok=True)
 
-        # Ottieni i percorsi con get_dataset_paths()
+        # Create sample images
+        (train_img_dir / "img1.jpg").touch()
+        (val_img_dir / "img1.jpg").touch()
+
+        # Get paths using get_dataset_paths()
         train_images_dir, train_annotations_file, val_images_dir, val_annotations_file = get_dataset_paths(str(root_dir))
 
-        # Verifica che i percorsi siano corretti
+        # Verify paths are correct when correlation exists
         assert train_images_dir == str(train_img_dir)
         assert train_annotations_file == str(train_ann_file)
         assert val_images_dir == str(val_img_dir)
         assert val_annotations_file == str(val_ann_file)
 
-        # Verifica che la funzione sollevi un'eccezione se la struttura del dataset non è valida
-        with pytest.raises(FileNotFoundError):
-            # Elimina una directory richiesta e verifica che la funzione sollevi un'eccezione
-            shutil.rmtree(train_img_dir)
-            get_dataset_paths(str(root_dir))
+        # Test case with missing images
+        (train_img_dir / "img1.jpg").unlink()
+        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file = get_dataset_paths(str(root_dir))
+        
+        # Verify train paths are None when correlation is broken
+        assert train_images_dir is None
+        assert train_annotations_file is None
+        # Val paths should still be valid
+        assert val_images_dir == str(val_img_dir)
+        assert val_annotations_file == str(val_ann_file)
 
+        # Test case with missing annotations file
+        train_ann_file.unlink()
+        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file = get_dataset_paths(str(root_dir))
+        
+        # Verify both train paths are None
+        assert train_images_dir is None
+        assert train_annotations_file is None
+        # Val paths should still be valid
+        assert val_images_dir == str(val_img_dir)
+        assert val_annotations_file == str(val_ann_file)
+    
     def test_read_write_annotations(self, tmp_path, sample_coco_data):
         """Test reading and writing COCO annotations."""
         json_path = tmp_path / "annotations.json"
@@ -320,47 +354,39 @@ class TestCOCODatasetLoader:
                 {"id": 2, "name": "car", "supercategory": "none"}
             ]
         }
-        
-    @pytest.fixture
-    def sample_coco_data_empty(self):
-        """Create sample Pascal VOC format data."""
-        return {
-            "images": [],
-            "annotations": [],
-        }
 
     @pytest.fixture
     def dataset_dir(self, tmp_path):
-        """Create a temporary dataset directory with COCO structure."""
+        """Create a temporary dataset directory."""
         dataset_dir = tmp_path / "coco_dataset"
-        dirs = create_dataset_structure(str(dataset_dir))
-        return dataset_dir, dirs
+        image_dir = dataset_dir / "images"
+        image_dir.mkdir(parents=True)
+        return dataset_dir
 
     @pytest.fixture
     def sample_images(self, dataset_dir):
         """Create sample images for testing."""
-        root_dir, dirs = dataset_dir
-        train_img_dir = root_dir / "images" / "train"
+        image_dir = dataset_dir / "images"
 
         # Create sample images (10x10 black images)
         for img in ["img1.jpg", "img2.jpg", "img3.jpg"]:
             image = Image.new('RGB', (10, 10), color='black')
-            image.save(train_img_dir / img)
+            image.save(image_dir / img)
+        
+        return image_dir
 
-    def test_coco_dataset_loader(self, dataset_dir, sample_coco_data, sample_coco_data_empty, sample_images):
-        """Test COCODatasetLoader with sample data."""
-        root_dir, dirs = dataset_dir
-
+    def test_coco_dataset_loader(self, dataset_dir, sample_coco_data, sample_images):
+        """Test basic functionality of COCODatasetLoader."""
         # Create annotations file
-        val_ann_file = root_dir / "annotations" / "instances_val.json"
-        with open(val_ann_file, 'w') as f:
-            json.dump(sample_coco_data_empty, f)
-        train_ann_file = root_dir / "annotations" / "instances_train.json"
-        with open(train_ann_file, 'w') as f:
+        ann_file = dataset_dir / "annotations.json"
+        with open(ann_file, 'w') as f:
             json.dump(sample_coco_data, f)
 
         # Initialize loader
-        loader = COCODatasetLoader(root_dir=str(root_dir))
+        loader = COCODatasetLoader(
+            image_dir=str(sample_images),
+            annotations_file=str(ann_file)
+        )
 
         # Test length
         assert len(loader) == 3
@@ -373,79 +399,112 @@ class TestCOCODatasetLoader:
                 assert "bbox" in ann
                 assert "category_id" in ann
 
-    def test_coco_dataset_loader_missing_images(self, dataset_dir, sample_coco_data):
-        """Test COCODatasetLoader with missing images."""
-        root_dir, dirs = dataset_dir
-
-        # Create annotations file
-        ann_file = root_dir / "annotations" / "instances_train.json"
+    def test_missing_images_directory(self, dataset_dir, sample_coco_data):
+        """Test loader with non-existent images directory."""
+        ann_file = dataset_dir / "annotations.json"
         with open(ann_file, 'w') as f:
             json.dump(sample_coco_data, f)
 
-        # Initialize loader (no images created)
-        loader = COCODatasetLoader(root_dir=str(root_dir))
+        with pytest.raises(FileNotFoundError):
+            COCODatasetLoader(
+                image_dir=str(dataset_dir / "nonexistent"),
+                annotations_file=str(ann_file)
+            )
 
-        # Test length (should be 0 because images are missing)
-        assert len(loader) == 0
+    def test_missing_annotations_file(self, dataset_dir, sample_images):
+        """Test loader with non-existent annotations file."""
+        with pytest.raises(FileNotFoundError):
+            COCODatasetLoader(
+                image_dir=str(sample_images),
+                annotations_file=str(dataset_dir / "nonexistent.json")
+            )
 
-    def test_coco_dataset_loader_invalid_annotations(self, dataset_dir, sample_images):
-        """Test COCODatasetLoader with invalid annotations file."""
-        root_dir, dirs = dataset_dir
-
-        # Create invalid annotations file
-        ann_file = root_dir / "annotations" / "instances_train.json"
+    def test_invalid_annotations_format(self, dataset_dir, sample_images):
+        """Test loader with invalid annotations format."""
+        ann_file = dataset_dir / "invalid.json"
         with open(ann_file, 'w') as f:
             json.dump({"invalid": "data"}, f)
 
-        # Initialize loader
-        with pytest.raises(KeyError):
-            COCODatasetLoader(root_dir=str(root_dir))
+        with pytest.raises(ValueError):
+            COCODatasetLoader(
+                image_dir=str(sample_images),
+                annotations_file=str(ann_file)
+            )
 
-    def test_coco_dataset_loader_custom_paths(self, dataset_dir, sample_coco_data, sample_images):
-        """Test COCODatasetLoader with custom image_dir and annotations_file."""
-        root_dir, dirs = dataset_dir
-
+    def test_missing_images_files(self, dataset_dir, sample_coco_data, sample_images):
+        """Test loader when some image files are missing."""
         # Create annotations file
-        ann_file = root_dir / "annotations" / "instances_train.json"
+        ann_file = dataset_dir / "annotations.json"
         with open(ann_file, 'w') as f:
             json.dump(sample_coco_data, f)
 
-        # Initialize loader with custom paths
+        # Remove one image file
+        (sample_images / "img1.jpg").unlink()
+
+        # Initialize loader
         loader = COCODatasetLoader(
-            image_dir=str(root_dir / "images" / "train"),
+            image_dir=str(sample_images),
             annotations_file=str(ann_file)
         )
 
-        # Test length
-        assert len(loader) == 3  # 3 immagini nel dataset di esempio
+        # Should have 2 valid pairs instead of 3
+        assert len(loader) == 2
 
-    def test_coco_dataset_loader_color_modes(self, dataset_dir, sample_coco_data, sample_coco_data_empty, sample_images):
-        """Test COCODatasetLoader with different color modes."""
-        root_dir, dirs = dataset_dir
-
-        # Create annotations file
-        val_ann_file = root_dir / "annotations" / "instances_val.json"
-        with open(val_ann_file, 'w') as f:
-            json.dump(sample_coco_data_empty, f)
-        train_ann_file = root_dir / "annotations" / "instances_train.json"
-        with open(train_ann_file, 'w') as f:
+    def test_color_modes(self, dataset_dir, sample_coco_data, sample_images):
+        """Test loader with different color modes."""
+        ann_file = dataset_dir / "annotations.json"
+        with open(ann_file, 'w') as f:
             json.dump(sample_coco_data, f)
 
         # Test RGB mode
-        loader_rgb = COCODatasetLoader(root_dir=str(root_dir), color_mode=ColorMode.RGB)
+        loader_rgb = COCODatasetLoader(
+            image_dir=str(sample_images),
+            annotations_file=str(ann_file),
+            color_mode=ColorMode.RGB
+        )
         image, _ = next(iter(loader_rgb))
-        assert image.shape[-1] == 3  # RGB has 3 channels
+        assert image.shape[-1] == 3
 
         # Test BGR mode
-        loader_bgr = COCODatasetLoader(root_dir=str(root_dir), color_mode=ColorMode.BGR)
+        loader_bgr = COCODatasetLoader(
+            image_dir=str(sample_images),
+            annotations_file=str(ann_file),
+            color_mode=ColorMode.BGR
+        )
         image, _ = next(iter(loader_bgr))
-        assert image.shape[-1] == 3  # BGR has 3 channels
+        assert image.shape[-1] == 3
 
         # Test GRAY mode
-        loader_gray = COCODatasetLoader(root_dir=str(root_dir), color_mode=ColorMode.GRAY)
+        loader_gray = COCODatasetLoader(
+            image_dir=str(sample_images),
+            annotations_file=str(ann_file),
+            color_mode=ColorMode.GRAY
+        )
         image, _ = next(iter(loader_gray))
-        assert len(image.shape) == 2 or image.shape[-1] == 1  # GRAY has 1 channel
+        assert len(image.shape) == 2 or image.shape[-1] == 1
 
+    def test_iterator_reset(self, dataset_dir, sample_coco_data, sample_images):
+        """Test that iterator properly resets after completion."""
+        ann_file = dataset_dir / "annotations.json"
+        with open(ann_file, 'w') as f:
+            json.dump(sample_coco_data, f)
+
+        loader = COCODatasetLoader(
+            image_dir=str(sample_images),
+            annotations_file=str(ann_file)
+        )
+
+        # First iteration
+        first_images = [img for img, _ in loader]
+        assert len(first_images) == 3
+
+        # Second iteration
+        second_images = [img for img, _ in loader]
+        assert len(second_images) == 3
+
+        # Compare iterations
+        for img1, img2 in zip(first_images, second_images):
+            assert np.array_equal(img1, img2)
 
 if __name__ == '__main__':
     pytest.main(['-v', __file__])

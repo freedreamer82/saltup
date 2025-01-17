@@ -46,42 +46,42 @@ from collections import defaultdict, Counter
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
 from saltup.utils import configure_logging
 
+
 class PascalVOCLoader(BaseDatasetLoader):
     def __init__(
-        self, 
-        root_dir: str = None, *, 
-        image_dir: str = None, 
-        annotations_dir: str = None, 
+        self,
+        image_dir: str,
+        annotations_dir: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
         """
         Initialize Pascal VOC dataset loader.
         
         Args:
-            root_dir: Root directory containing train/val splits
-            image_dir: Directory containing images (alternative to root_dir)
-            annotations_dir: Directory containing annotations (alternative to root_dir)
+            image_dir: Directory containing images
+            annotations_dir: Directory containing XML annotations
             color_mode: Color mode for loading images
             
         Raises:
-            ValueError: If arguments combination is invalid
+            FileNotFoundError: If directories don't exist
         """
-        self._validate_init_args(root_dir, image_dir, annotations_dir)
+        self.logger = configure_logging.get_logger(__name__)
+        self.logger.info("Initializing Pascal VOC dataset loader")
         
-        self.__logger = configure_logging.get_logger(__name__)
-        self.__logger.info("Initialized Pascal VOC dataset loader")
-        
-        if root_dir is not None:
-            self.root_dir = Path(root_dir)
-            self.train_images_dir, self.train_annotations_dir, self.val_images_dir, self.val_annotations_dir = get_dataset_paths(root_dir)
-            self.image_annotation_pairs = self._load_image_annotation_pairs_from_root()
-        else:
-            self.image_dir = Path(image_dir)
-            self.annotations_dir = Path(annotations_dir)
-            self.image_annotation_pairs = self._load_image_annotation_pairs_from_dirs()
-        
+        # Validate directories existence
+        if not os.path.exists(image_dir):
+            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(annotations_dir):
+            raise FileNotFoundError(f"Annotations directory not found: {annotations_dir}")
+            
+        self.image_dir = Path(image_dir)
+        self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
-        self._current_index = 0  # Track current position
+        self._current_index = 0
+        
+        # Load image-annotation pairs
+        self.image_annotation_pairs = self._load_image_annotation_pairs()
+        self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
 
     def __iter__(self):
         """Return iterator object (self in this case)."""
@@ -100,48 +100,35 @@ class PascalVOCLoader(BaseDatasetLoader):
         return self.load_image(image_path, self.color_mode), read_annotation(annotation_path)
 
     def __len__(self):
+        """Return total number of samples in dataset."""
         return len(self.image_annotation_pairs)
 
-    def _load_image_annotation_pairs_from_root(self):
-        """Load pairs from full dataset structure."""
+    def _load_image_annotation_pairs(self) -> List[Tuple[str, str]]:
+        """
+        Load pairs from images and annotations directories.
+        
+        Returns:
+            List of tuples containing (image_path, annotation_path) pairs
+        """
         image_annotation_pairs = []
-        for split_dir in [self.train_images_dir, self.val_images_dir]:
-            for image_file in os.listdir(split_dir):
-                if image_file.endswith(('.jpg', '.jpeg', '.png')):
-                    base_name = os.path.splitext(image_file)[0]
-                    image_path = os.path.join(split_dir, image_file)
-                    annotation_path = _find_matching_annotation(
-                        base_name, 
-                        self.train_annotations_dir if split_dir == self.train_images_dir else self.val_annotations_dir
-                    )
-                    if annotation_path:
-                        image_annotation_pairs.append((image_path, annotation_path))
-                    else:
-                        self.__logger.warning(f"Annotation not found for {image_file}")
-        return image_annotation_pairs
-
-    def _load_image_annotation_pairs_from_dirs(self):
-        """Load pairs from specific directories."""
-        image_annotation_pairs = []
+        skipped_images = 0
+        
         for image_file in os.listdir(self.image_dir):
             if image_file.endswith(('.jpg', '.jpeg', '.png')):
                 base_name = os.path.splitext(image_file)[0]
-                image_path = os.path.join(self.image_dir, image_file)
-                annotation_path = os.path.join(self.annotations_dir, f"{base_name}.xml")
+                image_path = str(self.image_dir / image_file)
+                annotation_path = str(self.annotations_dir / f"{base_name}.xml")
+                
                 if os.path.exists(annotation_path):
                     image_annotation_pairs.append((image_path, annotation_path))
                 else:
-                    self.__logger.warning(f"Annotation not found for {image_file}")
+                    skipped_images += 1
+                    self.logger.warning(f"Annotation not found for {image_file}")
+        
+        if skipped_images > 0:
+            self.logger.warning(f"Skipped {skipped_images} images due to missing annotations")
+            
         return image_annotation_pairs
-
-    @staticmethod
-    def _validate_init_args(root_dir, image_dir, annotations_dir):
-        """Validate initialization arguments."""
-        if root_dir is not None and (image_dir is not None or annotations_dir is not None):
-            raise ValueError("Cannot provide both root_dir and image_dir/annotations_dir")
-        if root_dir is None and (image_dir is None or annotations_dir is None):
-            raise ValueError("Must provide either root_dir or both image_dir and annotations_dir")
-
 
 def create_dataset_structure(root_dir: str):
     """Creates Pascal VOC directory structure if it doesn't exist.
