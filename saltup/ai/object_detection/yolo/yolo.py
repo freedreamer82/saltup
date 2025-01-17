@@ -1,17 +1,18 @@
-from typing import Any, Dict, List ,Tuple
 
 import numpy as np
-from typing import Optional, Callable, Union
-from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
-from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
-from saltup.ai.object_detection.yolo.yolo_type  import YoloType
-from saltup.ai.nn_manager import NeuralNetworkManager
-from typing import List, Dict, Any, Union
+from typing import (
+    Optional, Callable, Union,
+    Any, Dict, List ,Tuple,
+)
 import time
-from typing import Dict, List, Tuple
 import cv2
 from collections import defaultdict
 
+from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
+from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
+from saltup.ai.object_detection.yolo.yolo_type  import YoloType
+from saltup.utils.data.image.image_utils import load_image, ColorMode
+from saltup.ai.nn_manager import NeuralNetworkManager
 
 
 class YoloOutput:
@@ -161,16 +162,8 @@ class YoloOutput:
             f"preprocessing_time={self._preprocessing_time_ms} ms, "
             f"postprocessing_time={self._postprocessing_time_ms} ms)"
         )
+   
 
-
-from enum import IntEnum, auto
-from pathlib import Path
-class ColorMode(IntEnum):
-    RGB = auto()
-    BGR = auto()
-    GRAY = auto()
-    
-    
 class BaseYolo(NeuralNetworkManager):
     """Base class for implementing a generic YOLO model."""
     def __init__(self, yolot: YoloType, model_path: str, number_class:int):
@@ -184,6 +177,21 @@ class BaseYolo(NeuralNetworkManager):
 
     def getYoloType(self) -> YoloType:
         return self.yolotype
+    
+    def _validate_input_preprocessing_image(self, img: np.ndarray) -> None:
+        """Validate the input image format and type.
+        
+        Args:
+            img: Input image to validate
+
+        Raises:
+            ValueError: If image is None
+            TypeError: If image is not a numpy array
+        """
+        if img is None:
+            raise ValueError("Input image cannot be None")
+        if not isinstance(img, np.ndarray):
+            raise TypeError("Input must be numpy array")
     
     @staticmethod
     def load_anchors(anchors_path:str) -> np.ndarray:
@@ -208,24 +216,7 @@ class BaseYolo(NeuralNetworkManager):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        # Verify file exists
-        if not Path(image_path).is_file():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
-
-        # Load image in BGR (OpenCV default)
-        image = cv2.imread(image_path)
-        if image is None:
-            raise FileNotFoundError(f"Failed to load image: {image_path}")
-
-        # Convert to desired color mode
-        try:
-            if color_mode == ColorMode.RGB:
-                return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            elif color_mode == ColorMode.GRAY:
-                return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            return image  # BGR
-        except cv2.error as e:
-            raise ValueError(f"Error converting image color mode: {e}")
+        return load_image(image_path, color_mode)
     
     def get_number_image_channel(self) -> int:
         return self.model_input_shape[-1]
@@ -389,7 +380,13 @@ class BaseYolo(NeuralNetworkManager):
             "mAP@50-95": mAP_50_95,
         }
 
-    def preprocess(self, image: np.array, target_height:int, target_width:int) -> np.ndarray:
+    def preprocess(self, 
+                   image: np.array,
+                   target_height:int, 
+                   target_width:int,        
+                   normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+                   apply_padding: bool = True
+                   ) -> np.ndarray:
         """
         Preprocess the image before model inference.
 

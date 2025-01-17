@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saltup"
-version = "0.2"
+version = "0.3"
 description = "add flavor to your AI projects"
 readme = "README.md"
 requires-python = ">=3.6"
@@ -20,6 +20,7 @@ dependencies = [
     "boto3",
     "onnx",
     "onnxruntime",
-    "tensorflow"
+    "tensorflow",
+    "tf_keras"
 ]
 

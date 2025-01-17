@@ -4,6 +4,8 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, convert_matrix_boxes, nms
+
 
 def compute_anchors(boxes: np.ndarray, num_anchors: int) -> np.ndarray:
    """
@@ -193,3 +195,137 @@ def plot_anchors(
    
    plt.grid(True)
    plt.show()
+   
+
+def postprocess_decode(yolo_output, anchors, num_classes, input_shape, calc_loss=False):
+    """
+    Decode YOLO output derived from loss function logic.
+    Returns box coordinates, dimensions, confidence, and class probabilities.
+    """
+    stride = input_shape[0] / yolo_output.shape[1]
+    grid_h = int(input_shape[0] // stride)
+    grid_w = int(input_shape[1] // stride)
+    num_anchors = len(anchors)
+
+    yolo_output = yolo_output.reshape(-1, grid_h, grid_w, num_anchors, 5 + num_classes).astype(np.float32)
+
+    box_xy = 1 / (1 + np.exp(-yolo_output[..., 0:2]))
+    box_wh = np.exp(yolo_output[..., 2:4])
+    box_confidence = 1 / (1 + np.exp(-yolo_output[..., 4:5]))
+    box_class_probs = 1 / (1 + np.exp(-yolo_output[..., 5:]))
+
+    grid_y = np.arange(grid_h).reshape(-1, 1, 1, 1)
+    grid_x = np.arange(grid_w).reshape(1, -1, 1, 1)
+    grid_y = np.tile(grid_y, (1, grid_w, 1, 1))
+    grid_x = np.tile(grid_x, (grid_h, 1, 1, 1))
+    grid = np.concatenate([grid_x, grid_y], axis=-1)
+    grid = np.tile(grid, (1, 1, num_anchors, 1))
+
+    box_xy = (box_xy + grid) / np.array([grid_w, grid_h], dtype=np.float32)
+
+    anchors_tensor = np.array(anchors, dtype=np.float32).reshape(1, 1, 1, num_anchors, 2)
+    box_wh = box_wh * anchors_tensor
+
+    if calc_loss:
+        return grid, yolo_output, box_xy, box_wh
+    return box_xy, box_wh, box_confidence, box_class_probs
+
+
+def postprocess_filter_boxes(my_boxes, boxes, box_confidence, box_class_probs, threshold=0.5):
+    """
+    Filters YOLO boxes based on object and class confidence.
+
+    Args:
+        my_boxes (numpy.ndarray): containing the coordinates of the boxes in the original image dimensions.
+        boxes (numpy.ndarray): containing the coordinates of the boxes.
+        box_confidence (numpy.ndarray): containing the object confidence scores.
+        box_class_probs (numpy.ndarray): containing the class probabilities.
+        threshold (float): threshold for box score to be considered as a detection.
+
+    Returns:
+        boxes (numpy.ndarray): containing the coordinates of the filtered boxes in corners format.
+        scores (numpy.ndarray): containing the scores of the filtered boxes.
+        classes (numpy.ndarray): containing the class IDs of the filtered boxes.
+        my_boxes (numpy.ndarray): containing the coordinates of the filtered boxes in centroids format.
+    """
+    box_scores = box_confidence * box_class_probs
+    box_classes = np.argmax(box_scores, axis=-1)  # Shape: (N, ...)
+    box_class_scores = np.max(box_scores, axis=-1)  # Shape: (N, ...)
+
+    # Create prediction mask
+    prediction_mask = box_class_scores >= threshold
+    
+    # Apply boolean mask to filter boxes
+    boxes = boxes[prediction_mask]
+    my_boxes = my_boxes[prediction_mask]
+    scores = box_class_scores[prediction_mask]
+    classes = box_classes[prediction_mask]
+
+    return boxes, scores, classes, my_boxes
+
+
+def tiny_anchors_based_nms(
+    yolo_outputs, image_shape, max_boxes=30, score_threshold=0.5, iou_threshold=0.3, classes_ids=[0]
+):
+    """
+    Applies non-max suppression to the output of Tiny YOLO v2 model.
+
+    Args:
+        yolo_outputs (list): Output of the Tiny YOLO v2 model.
+        image_shape (tuple): Shape of the input image (height, width).
+        max_boxes (int): Maximum number of boxes to be selected by non-max suppression.
+        score_threshold (float): Threshold for box score to be considered as a detection.
+        iou_threshold (float): Threshold for intersection over union to be considered as a duplicate detection.
+        classes_ids (list): List of class IDs to perform non-max suppression on.
+
+    Returns:
+        List of selected boxes, scores, and classes.
+    """
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    boxes, my_boxes = convert_matrix_boxes(box_xy, box_wh)
+    boxes, scores, classes, my_boxes = postprocess_filter_boxes(
+        my_boxes, boxes, box_confidence, box_class_probs, threshold=score_threshold
+    )
+
+    # Scale boxes to image dimensions
+    height, width = image_shape
+    image_dims = np.array([height, width, height, width], dtype=np.float32)
+    boxes = boxes * image_dims  # Convert to original image dimensions
+    
+    # Wrap boxes into BBox objects
+    bboxes = [BBox(box.tolist(), format=BBoxFormat.CORNERS, img_width=width, img_height=height) for box in boxes]
+
+    total_boxes, total_scores, total_classes = [], [], []
+
+    for c in classes_ids:
+        # Filter by class ID
+        mask = (classes == c)
+        class_boxes = [bboxes[i] for i in np.where(mask)[0]]
+        class_scores = scores[mask]
+
+        if not class_boxes:
+            continue
+
+        # Apply NMS
+        selected_boxes = nms(class_boxes, class_scores, iou_threshold, max_boxes)
+        
+        selected_indices = [class_boxes.index(box) for box in selected_boxes]
+
+        # Collect results
+        total_boxes.extend(selected_boxes)
+        total_scores.extend(class_scores[selected_indices])
+        total_classes.extend([c] * len(selected_boxes))
+
+    # Convert results to numpy arrays
+    if total_boxes:
+        s_boxes = np.array([box.get_coordinates() for box in total_boxes], dtype=np.float32)
+        s_scores = np.array(total_scores, dtype=np.float32)
+        s_classes = np.array(total_classes, dtype=np.int32)
+        s_my_boxes = np.array([box.to_yolo() for box in total_boxes], dtype=np.float32)
+    else:
+        s_boxes = np.empty((0, 4), dtype=np.float32)
+        s_scores = np.empty((0,), dtype=np.float32)
+        s_classes = np.empty((0,), dtype=np.int32)
+        s_my_boxes = np.empty((0, 4), dtype=np.float32)
+
+    return s_boxes, s_scores, s_classes, s_my_boxes

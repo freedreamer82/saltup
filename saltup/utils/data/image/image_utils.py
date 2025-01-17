@@ -1,13 +1,49 @@
 import numpy as np
 import cv2
+from enum import IntEnum, auto
+from pathlib import Path
 
 
-def load_grayscale_image(image_path) -> np.ndarray:
+class ColorMode(IntEnum):
+    RGB = auto()
+    BGR = auto()
+    GRAY = auto()
+    
+
+def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR) -> np.ndarray:
+    """Load and convert image to specified color mode.
+
+    Args:
+        image_path: Path to the image file
+        color_mode: Target color mode ("RGB", "BGR", or "GRAY")
+
+    Returns:
+        np.ndarray: Image in specified color mode
+
+    Raises:
+        FileNotFoundError: If image file does not exist or cannot be loaded
+        ValueError: If color conversion fails
     """
-    Load an image in grayscale using OpenCV
-    """
-    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    return image
+    # Verify file exists
+    if not Path(image_path).is_file():
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    # Load image in BGR (OpenCV default)
+    image = cv2.imread(image_path)
+    if image is None:
+        raise FileNotFoundError(f"Failed to load image: {image_path}")
+
+    # Convert to desired color mode
+    try:
+        if color_mode == ColorMode.RGB:
+            return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        elif color_mode == ColorMode.GRAY:
+            image =  cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            image = np.expand_dims(image, axis=-1)
+            return image
+        return image  # BGR
+    except cv2.error as e:
+        raise ValueError(f"Error converting image color mode: {e}")
 
 
 def jpg_to_raw_array(input_file: str, grayscale: bool = False) -> np.ndarray:

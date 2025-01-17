@@ -611,33 +611,38 @@ def plot_image_with_boxes(image_file: str, label_file: str):
  
 from tensorflow.python.keras import backend as K
 
-def process_boxes(box_xy, box_wh):
+def convert_matrix_boxes(box_xy, box_wh):
     """
-    Concatinate xw and wh arrays.
+    Convert bounding boxes from center format to corner format.
 
     Args:
-        box_xy (tensor): containing the center coordinates of the boxes.
-        box_wh (tensor): containing the width and height of the boxes.
+        box_xy (numpy.ndarray): Array containing the center coordinates of the boxes (x_center, y_center).
+        box_wh (numpy.ndarray): Array containing the width and height of the boxes (width, height).
 
     Returns:
-        corners (tensor): containing the corner coordinates of the boxes in (xmin, ymin, xmax, ymax) format.
-        centers (tensor): containing the center coordinates and width and height of the boxes in (x, y, w, h) format.
+        corners (numpy.ndarray): Array containing the corner coordinates of the boxes in (xmin, ymin, xmax, ymax) format.
+        centers (numpy.ndarray): Array containing the center coordinates and width and height of the boxes in (x, y, w, h) format.
     """
-    box_mins = box_xy - (box_wh / 2.)
-    
-    box_maxes = box_xy + (box_wh / 2.)
-    corners = K.concatenate([
-        box_mins[..., 1:2],  # y_min
+    # Calculate box corners
+    box_mins = box_xy - (box_wh / 2.0)  # (xmin, ymin)
+    box_maxes = box_xy + (box_wh / 2.0)  # (xmax, ymax)
+
+    # Concatenate to get corners in (xmin, ymin, xmax, ymax) format
+    corners = np.concatenate([
         box_mins[..., 0:1],  # x_min
-        box_maxes[..., 1:2], # y_max
-        box_maxes[..., 0:1]  # x_max
-        ])
-    centers = K.concatenate([
-        box_xy[..., 1:2],  # y
+        box_mins[..., 1:2],  # y_min
+        box_maxes[..., 0:1], # x_max
+        box_maxes[..., 1:2]  # y_max
+    ], axis=-1)
+
+    # Concatenate to get centers in (x, y, w, h) format
+    centers = np.concatenate([
         box_xy[..., 0:1],  # x
-        box_wh[..., 1:2],  # h
+        box_xy[..., 1:2],  # y
         box_wh[..., 0:1],  # w
-        ])
+        box_wh[..., 1:2]   # h
+    ], axis=-1)
+
     return corners, centers
 
 import json
@@ -673,12 +678,14 @@ class BBox:
             A list of BBox objects (one for each annotation in the file).
         """
         bboxes = []
+        class_ids = []
         with open(file_path, 'r') as file:
             for line in file:
                 class_id, x_center, y_center, width, height = map(float, line.strip().split())
                 bbox = cls([x_center, y_center, width, height], format=BBoxFormat.CENTER, img_width=img_width, img_height=img_height)
                 bboxes.append(bbox)
-        return bboxes
+                class_ids.append(class_id)
+        return bboxes, class_ids
 
     @classmethod
     def from_coco_file(cls, file_path: str, image_id: int):
@@ -874,3 +881,41 @@ class BBox:
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
 
+
+def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes: int = None) -> List[BBox]:
+    """
+    Perform Non-Maximum Suppression (NMS) on a list of BBox objects.
+
+    Args:
+        bboxes: List of BBox objects.
+        scores: List of confidence scores corresponding to the bounding boxes.
+        iou_threshold: IoU threshold for suppression.
+        max_boxes: Maximum number of boxes to keep (optional).
+
+    Returns:
+        List of BBox objects after applying NMS.
+    """
+    
+    # Pair bounding boxes with their scores and sort them by scores in descending order
+    boxes_with_scores = sorted(zip(bboxes, scores), key=lambda x: x[1], reverse=True)
+
+    selected_bboxes = []
+    while boxes_with_scores:
+        # Select the box with the highest score
+        current_box, current_score = boxes_with_scores.pop(0)
+        selected_bboxes.append(current_box)
+
+        # Remove boxes that have IoU greater than the threshold with the current box
+        remaining_boxes = []
+        for other_box, other_score in boxes_with_scores:
+            iou = current_box.compute_iou(other_box)
+            if iou <= iou_threshold:
+                remaining_boxes.append((other_box, other_score))
+
+        boxes_with_scores = remaining_boxes
+
+        # Stop if we've reached the max number of boxes
+        if max_boxes is not None and len(selected_bboxes) >= max_boxes:
+            break
+
+    return selected_bboxes
