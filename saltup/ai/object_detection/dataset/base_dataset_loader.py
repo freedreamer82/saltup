@@ -1,14 +1,7 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
-from enum import IntEnum, auto
-import cv2
 import numpy as np
 
-
-class ColorMode(IntEnum):
-    RGB = auto()
-    BGR = auto()
-    GRAY = auto()
+from saltup.utils.data.image.image_utils import load_image, ColorMode
 
 
 class BaseDatasetLoader(ABC):
@@ -43,21 +36,4 @@ class BaseDatasetLoader(ABC):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        # Verify file exists
-        if not Path(image_path).is_file():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
-
-        # Load image in BGR (OpenCV default)
-        image = cv2.imread(image_path)
-        if image is None:
-            raise FileNotFoundError(f"Failed to load image: {image_path}")
-
-        # Convert to desired color mode
-        try:
-            if color_mode == ColorMode.RGB:
-                return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            elif color_mode == ColorMode.GRAY:
-                return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            return image  # BGR
-        except cv2.error as e:
-            raise ValueError(f"Error converting image color mode: {e}")
+        return load_image(image_path, color_mode)
