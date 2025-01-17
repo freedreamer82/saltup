@@ -11,7 +11,10 @@ from typing import List, Dict, Any, Union
 import time
 from typing import Dict, List, Tuple
 import cv2
+import cv2
 from collections import defaultdict
+
+
 
 
 
@@ -20,9 +23,11 @@ class YoloOutput:
     def __init__(
         self,
         boxes: List[Tuple[BBox, int, float]],
+        boxes: List[Tuple[BBox, int, float]],
         image: Optional[np.ndarray] = None,
     ):
         """
+        Initialize YoloOutput with bounding boxes, scores, and an optional image.
         Initialize YoloOutput with bounding boxes, scores, and an optional image.
 
         Args:
@@ -37,6 +42,7 @@ class YoloOutput:
         self._preprocessing_time_ms = 0.0 
         self._postprocessing_time_ms = 0.0 
 
+    def get_boxes(self, format: str = "CENTER") -> List[Tuple[BBox, int, float]]:
     def get_boxes(self, format: str = "CENTER") -> List[Tuple[BBox, int, float]]:
         """
         Get the list of bounding boxes in the specified format.
@@ -57,6 +63,7 @@ class YoloOutput:
             boxes: List of BBox objects.
         """
         self._boxes = boxes
+        
         
     def get_image(self) -> Optional[np.ndarray]:
         """Get the associated image."""
@@ -109,6 +116,7 @@ class YoloOutput:
 
         Args:
             property_name: Name of the property ("boxes", "image",
+            property_name: Name of the property ("boxes", "image",
                           "inference_time", "preprocessing_time", "postprocessing_time").
 
         Returns:
@@ -136,6 +144,7 @@ class YoloOutput:
 
         Args:
             property_name: Name of the property ("boxes", "image",
+            property_name: Name of the property ("boxes", "image",
                           "inference_time", "preprocessing_time", "postprocessing_time").
             value: The new value for the property.
 
@@ -158,6 +167,7 @@ class YoloOutput:
     def __repr__(self):
         return (
             f"YoloOutput(boxes={self._boxes}"
+            f"YoloOutput(boxes={self._boxes}"
             f"image={self._image is not None}, inference_time={self._inference_time_ms} ms, "
             f"preprocessing_time={self._preprocessing_time_ms} ms, "
             f"postprocessing_time={self._postprocessing_time_ms} ms)"
@@ -166,8 +176,13 @@ class YoloOutput:
 class BaseYolo(NeuralNetworkManager):
     """Base class for implementing a generic YOLO model."""
     def __init__(self, yolot: YoloType, model_path: str, number_class:int):
+    def __init__(self, yolot: YoloType, model_path: str, number_class:int):
         super().__init__()  # Initialize NeuralNetworkManager
         self.model_path = model_path
+        self.number_class = number_class
+        self.model, self.model_input_shape, self.model_output_shape = self.load_model(model_path)  # Load model using inherited method
+        self.img_input_height  = self.model_input_shape[1]
+        self.img_input_width  = self.model_input_shape[2]
         self.number_class = number_class
         self.model, self.model_input_shape, self.model_output_shape = self.load_model(model_path)  # Load model using inherited method
         self.img_input_height  = self.model_input_shape[1]
@@ -213,6 +228,10 @@ class BaseYolo(NeuralNetworkManager):
         img_width: int,
         confidence_thr: float=0.5,
         iou_threshold:float = 0.5,
+        img_height: int, 
+        img_width: int,
+        confidence_thr: float=0.5,
+        iou_threshold:float = 0.5,
         preprocess: Optional[Union[Callable, bool]] = None,
         postprocess: Optional[Union[Callable, bool]] = None,
     ) -> YoloOutput:
@@ -237,7 +256,9 @@ class BaseYolo(NeuralNetworkManager):
             # Use custom preprocessing if provided, otherwise use the native method
             if callable(preprocess):
                 preprocessed_image = preprocess(image, self.img_input_height, self.img_input_width)
+                preprocessed_image = preprocess(image, self.img_input_height, self.img_input_width)
             else:
+                preprocessed_image = self.preprocess(image, self.img_input_height, self.img_input_width)
                 preprocessed_image = self.preprocess(image, self.img_input_height, self.img_input_width)
         end_preprocess = time.time()
         preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
@@ -258,7 +279,11 @@ class BaseYolo(NeuralNetworkManager):
             if callable(postprocess):
                 postprocessed_output = postprocess(raw_output, img_height, img_width, confidence_thr, 
                             iou_threshold)
+                postprocessed_output = postprocess(raw_output, img_height, img_width, confidence_thr, 
+                            iou_threshold)
             else:
+                postprocessed_output = self.postprocess(raw_output, img_height, img_width, confidence_thr, 
+                            iou_threshold)
                 postprocessed_output = self.postprocess(raw_output, img_height, img_width, confidence_thr, 
                             iou_threshold)
         end_postprocess = time.time()
@@ -276,11 +301,13 @@ class BaseYolo(NeuralNetworkManager):
 
     @staticmethod
     def evaluate(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], threshold_iou: float = 0.5) -> Dict[str, float]:
+    def evaluate(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], threshold_iou: float = 0.5) -> Dict[str, float]:
         """
         Compute evaluation metrics (precision, recall, F1-score, mAP, mAP@50-95).
 
         Args:
             predictions: YoloOutput object containing predicted bounding boxes, scores, and class IDs.
+            ground_truth: List of tuples (BBox, class_id) representing ground truth.
             ground_truth: List of tuples (BBox, class_id) representing ground truth.
             threshold_iou: IoU threshold to consider a detection as a true positive.
 
@@ -308,15 +335,45 @@ class BaseYolo(NeuralNetworkManager):
             }
 
         # Group ground truth by class ID
+        # If there is no ground truth, return metrics equal to 0
+        if not ground_truth:
+            return {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "mAP": 0.0,
+                "mAP@50-95": 0.0,
+            }
+
+        # If there are no predictions, return metrics equal to 0
+        if not predictions.get_boxes():
+            return {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "mAP": 0.0,
+                "mAP@50-95": 0.0,
+            }
+
+        # Group ground truth by class ID
         gt_by_class = defaultdict(list)
+        for gt_bbox, class_id in ground_truth:
+            gt_by_class[class_id].append(gt_bbox)
         for gt_bbox, class_id in ground_truth:
             gt_by_class[class_id].append(gt_bbox)
 
         # Group predictions by class ID
+        # Group predictions by class ID
         pred_by_class = defaultdict(list)
         for pred_bbox, class_id, score in predictions.get_boxes():
             pred_by_class[class_id].append((pred_bbox, score))
+        for pred_bbox, class_id, score in predictions.get_boxes():
+            pred_by_class[class_id].append((pred_bbox, score))
 
+        # Initialize global TP, FP, and FN counters
+        global_tp = 0
+        global_fp = 0
+        global_fn = 0
         # Initialize global TP, FP, and FN counters
         global_tp = 0
         global_fp = 0
@@ -337,6 +394,7 @@ class BaseYolo(NeuralNetworkManager):
 
             # Match predictions to ground truth
             gt_matched = [False] * len(gt_bboxes)  # Tracks ground truth boxes already matched
+            gt_matched = [False] * len(gt_bboxes)  # Tracks ground truth boxes already matched
 
             for i, pred_bbox in enumerate(pred_bboxes):
                 max_iou = 0
@@ -346,6 +404,8 @@ class BaseYolo(NeuralNetworkManager):
                 for j, gt_bbox in enumerate(gt_bboxes):
                     if gt_matched[j]:
                         continue  # Skip already matched ground truth
+                    if gt_matched[j]:
+                        continue  # Skip already matched ground truth
                     iou = pred_bbox.compute_iou(gt_bbox)
                     if iou > max_iou:
                         max_iou = iou
@@ -353,9 +413,33 @@ class BaseYolo(NeuralNetworkManager):
 
                 # If IoU > threshold and the ground truth box is not already matched, it's a TP
                 if max_iou >= threshold_iou and best_match_idx != -1:
+                if max_iou >= threshold_iou and best_match_idx != -1:
                     tp[i] = 1
                     gt_matched[best_match_idx] = True  # Mark the ground truth as matched
+                    gt_matched[best_match_idx] = True  # Mark the ground truth as matched
                 else:
+                    fp[i] = 1  # Otherwise, it's an FP
+
+            # Update global counters
+            global_tp += np.sum(tp)
+            global_fp += np.sum(fp)
+            global_fn += len(gt_bboxes) - np.sum(tp)  # Unmatched ground truth
+
+        # Compute global precision, recall, and F1-score
+        precision = global_tp / (global_tp + global_fp) if (global_tp + global_fp) > 0 else 0
+        recall = global_tp / (global_tp + global_fn) if (global_tp + global_fn) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+        # Note: mAP and mAP@50-95 require more complex calculations (not implemented here)
+        mAP = 1.0  # Placeholder
+        mAP_50_95 = 1.0  # Placeholder
+
+        return {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "mAP": mAP,
+            "mAP@50-95": mAP_50_95,
                     fp[i] = 1  # Otherwise, it's an FP
 
             # Update global counters
@@ -381,6 +465,7 @@ class BaseYolo(NeuralNetworkManager):
         }
 
     def preprocess(self, image: np.array, target_height:int, target_width:int) -> np.ndarray:
+    def preprocess(self, image: np.array, target_height:int, target_width:int) -> np.ndarray:
         """
         Preprocess the image before model inference.
 
@@ -389,6 +474,9 @@ class BaseYolo(NeuralNetworkManager):
         """
         raise NotImplementedError("The preprocess method must be overridden in the derived class.")
 
+    def postprocess(self, raw_output: np.ndarray,
+                    image_height:int, image_width:int, confidence_thr:float=0.5, 
+                            iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
     def postprocess(self, raw_output: np.ndarray,
                     image_height:int, image_width:int, confidence_thr:float=0.5, 
                             iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:

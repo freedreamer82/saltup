@@ -3,7 +3,7 @@ import torch
 import onnxruntime as ort
 import tensorflow as tf
 import numpy as np
-from tf_keras.saving import load_model  # Importazione specifica di load_model da tf_keras.saving
+from tf_keras.saving import load_model
 import time
 
 class NeuralNetworkManager:
@@ -12,7 +12,7 @@ class NeuralNetworkManager:
     def __init__(self):
         self.model = None
         self.supported_formats = [".pt", ".keras", ".h5", ".onnx", ".tflite"]
-        self.inference_time_ms = None  # Attributo per memorizzare il tempo di inferenza
+        self.inference_time_ms = None
 
     def get_supported_formats(self) -> List[str]:
         """Return a list of supported model formats."""
