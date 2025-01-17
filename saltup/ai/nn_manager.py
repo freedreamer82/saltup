@@ -2,7 +2,6 @@ from typing import List, Tuple, Any
 import torch
 import onnxruntime as ort
 import tensorflow as tf
-import numpy as np
 from tf_keras.saving import load_model
 import time
 

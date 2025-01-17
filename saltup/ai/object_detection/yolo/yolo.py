@@ -393,7 +393,13 @@ class BaseYolo(NeuralNetworkManager):
             "mAP@50-95": mAP_50_95,
         }
 
-    def preprocess(self, image: np.array, target_height:int, target_width:int) -> np.ndarray:
+    def preprocess(self, 
+                   image: np.array,
+                   target_height:int, 
+                   target_width:int,        
+                   normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+                   apply_padding: bool = True
+                   ) -> np.ndarray:
         """
         Preprocess the image before model inference.
 

@@ -46,17 +46,17 @@ if __name__ == "__main__":
     
     yolo = YoloFactory.create(yolotype, args.model , args.num_class, anchors=args.anchors)
     
-    image  = BaseYolo.load_image(args.img, ColorMode.GRAY if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
+    image  = BaseYolo.load_image(args.img, ColorMode.GRAY) #if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
     
-    img_height, img_width = image.shape
+    img_height, img_width, _ = image.shape
     
     yoloOut = yolo.run(image, img_height, img_width, args.conf_thres, args.iou_thres)
     
     print(yoloOut.get_boxes())
     
-    yolo_bboxes, yolo_class_ids = BBox.from_yolo_file(args.label, img_width=img_width, img_height=img_height)
+    #yolo_bboxes, yolo_class_ids = BBox.from_yolo_file(args.label, img_width=img_width, img_height=img_height)
     
-    print(yolo_bboxes)
+    #print(yolo_bboxes)
     #metrics = yolo.evaluate([yoloOut.get_boxes(),yoloOut.get_class_ids()], yolo_bboxes, args.iou-thres)
     
     #print(metrics)

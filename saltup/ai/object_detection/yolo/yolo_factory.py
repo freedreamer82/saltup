@@ -7,7 +7,6 @@ class YoloFactory:
     @staticmethod
     def create(yolo_type: YoloType, modelpath: str, number_class:int ,**kwargs) -> BaseYolo:
         if yolo_type == YoloType.ANCHORS_BASED:
-            from saltup.ai.object_detection.yolo.preprocessing.anchors_based_preprocess import AnchorsBasedPreprocess
             return YoloAnchorsBased(yolo_type, modelpath, number_class, BaseYolo.load_anchors(kwargs['anchors']))
         # elif yolo_type == YoloType.ULTRALYTICS:
         #     from saltup.ai.object_detection.yolo.preprocessing.ultralytics_preprocess import UltralyticsPreprocess

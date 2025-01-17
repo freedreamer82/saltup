@@ -125,7 +125,7 @@ class YoloAnchorsBased(BaseYolo):
         image = normalize_method(image)
 
         # Ensure proper channel dimension
-        if is_single_channel:
+        if channels == 1:
             image = np.expand_dims(image, axis=-1)
 
         # Prepare batch dimension
