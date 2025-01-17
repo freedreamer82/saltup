@@ -33,6 +33,8 @@ class YoloAnchorsBased(BaseYolo):
         :param image: Input image to preprocess.
         :return: Preprocessed image.
         """
+        
+        
         preprocessor = AnchorsBasedPreprocess()
         return preprocessor(image, (target_height, target_width))
 
