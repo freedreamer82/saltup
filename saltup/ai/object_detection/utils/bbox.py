@@ -919,3 +919,120 @@ def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes
             break
 
     return selected_bboxes
+
+def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> np.ndarray:
+    """
+    Draw bounding boxes on an image.
+
+    Args:
+        image: Input image as a numpy array (H x W x C).
+        bboxes: List of BBox objects to draw on the image.
+        color: Color of the bounding boxes in BGR format (default is green).
+        thickness: Thickness of the bounding box lines (default is 2).
+
+    Returns:
+        Image with bounding boxes drawn as a numpy array.
+    """
+    # Create a copy of the image to avoid modifying the original
+    image_with_boxes = image.copy()
+
+    for bbox in bboxes:
+        # Convert the bounding box to corners format (x1, y1, x2, y2)
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+
+        # Convert normalized coordinates to absolute pixel values if necessary
+        if bbox.img_width is not None and bbox.img_height is not None:
+            x1, y1, x2, y2 = corners
+            x1 = int(x1 * bbox.img_width)
+            y1 = int(y1 * bbox.img_height)
+            x2 = int(x2 * bbox.img_width)
+            y2 = int(y2 * bbox.img_height)
+        else:
+            x1, y1, x2, y2 = map(int, corners)
+
+        # Draw the bounding box on the image
+        cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
+
+    return image_with_boxes
+
+
+def draw_boxes_on_image_with_labels_score(
+    image: np.ndarray,
+    bboxes_with_labels_score: List[Tuple[BBox, int, float]],
+    color: Tuple[int, int, int] = (0, 255, 0),
+    thickness: int = 2,
+    font: int = cv2.FONT_HERSHEY_SIMPLEX,
+    font_scale: float = 0.6,
+    font_thickness: int = 1,
+    text_color: Tuple[int, int, int] = (255, 255, 255),
+    text_background_color: Tuple[int, int, int] = (0, 0, 0),
+) -> np.ndarray:
+    """
+    Draw bounding boxes on an image with class labels and scores.
+
+    Args:
+        image: Input image as a numpy array (H x W x C).
+        bboxes_with_labels_score: List of tuples containing (BBox, class_id, score).
+        color: Color of the bounding boxes in BGR format (default is green).
+        thickness: Thickness of the bounding box lines (default is 2).
+        font: Font type for the text (default is cv2.FONT_HERSHEY_SIMPLEX).
+        font_scale: Font scale for the text (default is 0.6).
+        font_thickness: Thickness of the text (default is 1).
+        text_color: Color of the text in BGR format (default is white).
+        text_background_color: Color of the text background in BGR format (default is black).
+
+    Returns:
+        Image with bounding boxes, class labels, and scores drawn as a numpy array.
+    """
+    # Create a copy of the image to avoid modifying the original
+    image_with_boxes = image.copy()
+
+    for bbox, class_id, score in bboxes_with_labels_score:
+        # Convert the bounding box to corners format (x1, y1, x2, y2)
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+
+        # Convert normalized coordinates to absolute pixel values if necessary
+        if bbox.img_width is not None and bbox.img_height is not None:
+            x1, y1, x2, y2 = corners
+            x1 = int(x1 * bbox.img_width)
+            y1 = int(y1 * bbox.img_height)
+            x2 = int(x2 * bbox.img_width)
+            y2 = int(y2 * bbox.img_height)
+        else:
+            x1, y1, x2, y2 = map(int, corners)
+
+        # Draw the bounding box on the image
+        cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
+
+        # Prepare the label and score text
+        label = f"Class {class_id}"
+        score_text = f"{score:.2f}"
+        text = f"{label} {score_text}"
+
+        # Calculate text size and position
+        (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
+        text_x = x1
+        text_y = y1 - 10 if y1 - 10 > 10 else y1 + 20  # Adjust text position to avoid going out of the image
+
+        # Draw a background rectangle for the text
+        cv2.rectangle(
+            image_with_boxes,
+            (text_x, text_y - text_height),
+            (text_x + text_width, text_y),
+            text_background_color,
+            -1,  # Fill the rectangle
+        )
+
+        # Draw the text on the image
+        cv2.putText(
+            image_with_boxes,
+            text,
+            (text_x, text_y),
+            font,
+            font_scale,
+            text_color,
+            font_thickness,
+            lineType=cv2.LINE_AA,
+        )
+
+    return image_with_boxes
