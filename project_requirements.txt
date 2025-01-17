@@ -4,6 +4,8 @@ matplotlib
 seaborn
 Pillow
 tensorflow
+tf-keras
+tf2onnx
 boto3
 librosa
 wave
@@ -13,4 +15,5 @@ cmsisdsp
 soundfile
 scikit-learn
 opencv-python
+albumentations
 pytest

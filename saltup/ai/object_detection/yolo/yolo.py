@@ -397,6 +397,102 @@ class BaseYolo(NeuralNetworkManager):
         }
 
         return metrics
+        Compute evaluation metrics (precision, recall, F1-score, mAP, mAP@50-95).
+
+        Args:
+            predictions: YoloOutput object containing predicted bounding boxes, scores, and class IDs.
+            ground_truth: List of ground truth BBox objects.
+            threshold_iou: IoU threshold to consider a detection as a true positive.
+
+        Returns:
+            Dictionary containing evaluation metrics.
+        """
+        # Group ground truth and predictions by class ID
+        gt_by_class = defaultdict(list)
+        for gt in ground_truth:
+            gt_by_class[gt.class_id].append(gt)
+
+        pred_by_class = defaultdict(list)
+        for pred_bbox, pred_score, pred_class_id in zip(predictions.bboxes, predictions.scores, predictions.class_ids):
+            pred_by_class[pred_class_id].append((pred_bbox, pred_score))
+
+        # Initialize metrics
+        precision_list = []
+        recall_list = []
+        f1_list = []
+        ap_list = []
+        ap_50_95_list = []
+
+        # Iterate over each class
+        for class_id in gt_by_class.keys():
+            gt_bboxes = gt_by_class[class_id]
+            pred_bboxes_scores = pred_by_class.get(class_id, [])
+
+            # Sort predictions by confidence score (descending)
+            pred_bboxes_scores.sort(key=lambda x: x[1], reverse=True)
+            pred_bboxes = [x[0] for x in pred_bboxes_scores]
+
+            # Initialize TP and FP arrays
+            tp = np.zeros(len(pred_bboxes))
+            fp = np.zeros(len(pred_bboxes))
+
+            # Match predictions to ground truth
+            gt_matched = [False] * len(gt_bboxes)
+
+            for i, pred_bbox in enumerate(pred_bboxes):
+                max_iou = 0
+                best_match_idx = -1
+
+                # Find the ground truth box with the highest IoU
+                for j, gt_bbox in enumerate(gt_bboxes):
+                    iou = pred_bbox.compute_iou(gt_bbox)
+                    if iou > max_iou:
+                        max_iou = iou
+                        best_match_idx = j
+
+                # If IoU > threshold and the ground truth box is not already matched, it's a TP
+                if max_iou >= threshold_iou and not gt_matched[best_match_idx]:
+                    tp[i] = 1
+                    gt_matched[best_match_idx] = True
+                else:
+                    fp[i] = 1
+
+            # Compute precision and recall
+            tp_cumsum = np.cumsum(tp)
+            fp_cumsum = np.cumsum(fp)
+            recall = tp_cumsum / len(gt_bboxes)
+            precision = tp_cumsum / (tp_cumsum + fp_cumsum)
+
+            # Avoid division by zero
+            precision = np.nan_to_num(precision, nan=0.0)
+            recall = np.nan_to_num(recall, nan=0.0)
+
+            # Compute F1-score
+            f1 = 2 * (precision * recall) / (precision + recall + 1e-16)
+
+            # Compute Average Precision (AP)
+            ap = compute_ap(recall, precision)
+
+            # Compute AP@50-95
+            ap_50_95 = compute_ap_range(gt_bboxes, pred_bboxes_scores)
+
+            # Append metrics for this class
+            precision_list.append(precision[-1] if len(precision) > 0 else 0)
+            recall_list.append(recall[-1] if len(recall) > 0 else 0)
+            f1_list.append(f1[-1] if len(f1) > 0 else 0)
+            ap_list.append(ap)
+            ap_50_95_list.append(ap_50_95)
+
+        # Compute mean metrics across all classes
+        metrics = {
+            "precision": np.mean(precision_list),
+            "recall": np.mean(recall_list),
+            "f1": np.mean(f1_list),
+            "mAP": np.mean(ap_list),
+            "mAP@50-95": np.mean(ap_50_95_list),
+        }
+
+        return metrics
 
     def preprocess(self, image: np.array, target_height:int, target_width:int) -> np.ndarray:
         """
