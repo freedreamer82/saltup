@@ -178,6 +178,21 @@ class BaseYolo(NeuralNetworkManager):
     def getYoloType(self) -> YoloType:
         return self.yolotype
     
+    def _validate_input_preprocessing_image(self, img: np.ndarray) -> None:
+        """Validate the input image format and type.
+        
+        Args:
+            img: Input image to validate
+
+        Raises:
+            ValueError: If image is None
+            TypeError: If image is not a numpy array
+        """
+        if img is None:
+            raise ValueError("Input image cannot be None")
+        if not isinstance(img, np.ndarray):
+            raise TypeError("Input must be numpy array")
+    
     @staticmethod
     def load_anchors(anchors_path:str) -> np.ndarray:
         anchors_data = np.loadtxt(anchors_path, delimiter=",")

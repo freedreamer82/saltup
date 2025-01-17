@@ -881,3 +881,41 @@ class BBox:
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
 
+
+def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes: int = None) -> List[BBox]:
+    """
+    Perform Non-Maximum Suppression (NMS) on a list of BBox objects.
+
+    Args:
+        bboxes: List of BBox objects.
+        scores: List of confidence scores corresponding to the bounding boxes.
+        iou_threshold: IoU threshold for suppression.
+        max_boxes: Maximum number of boxes to keep (optional).
+
+    Returns:
+        List of BBox objects after applying NMS.
+    """
+    
+    # Pair bounding boxes with their scores and sort them by scores in descending order
+    boxes_with_scores = sorted(zip(bboxes, scores), key=lambda x: x[1], reverse=True)
+
+    selected_bboxes = []
+    while boxes_with_scores:
+        # Select the box with the highest score
+        current_box, current_score = boxes_with_scores.pop(0)
+        selected_bboxes.append(current_box)
+
+        # Remove boxes that have IoU greater than the threshold with the current box
+        remaining_boxes = []
+        for other_box, other_score in boxes_with_scores:
+            iou = current_box.compute_iou(other_box)
+            if iou <= iou_threshold:
+                remaining_boxes.append((other_box, other_score))
+
+        boxes_with_scores = remaining_boxes
+
+        # Stop if we've reached the max number of boxes
+        if max_boxes is not None and len(selected_bboxes) >= max_boxes:
+            break
+
+    return selected_bboxes
