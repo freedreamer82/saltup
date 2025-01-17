@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.metrics import AUC # type: ignore
 import unittest
 from saltup.ai.object_detection.utils.bbox import BBox,BBoxFormat
-from saltup.ai.object_detection.utils.metrics import compute_ap, compute_ap_for_threshold, compute_ap_range
+from saltup.ai.object_detection.utils.metrics import compute_ap, compute_ap_for_threshold, compute_map_50_95
 import numpy as np
 import tensorflow as tf
 
@@ -99,7 +99,7 @@ class TestAveragePrecision(unittest.TestCase):
             (self.pred_bbox2, 0.97),  # False positive
         ]
         
-        ap = compute_ap_range(gt_bboxes, pred_bboxes_scores)
+        ap = compute_map_50_95(gt_bboxes, pred_bboxes_scores)
         print(f"AP for multiple ground truths and predictions: {ap}")
         self.assertGreater(ap, 0.3)  # Aggiorniamo il valore atteso
 

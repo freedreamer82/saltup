@@ -72,18 +72,18 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_false_negatives(self):
         """Testa il caso in cui ci sono falsi negativi."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
-        bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)   
-        predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])  
+        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
+        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
+        bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
+        predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])
         ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 1)]
 
         metrics = self.yolo.evaluate(predictions, ground_truth)
         self.assertAlmostEqual(metrics["precision"], 1.0)
         self.assertAlmostEqual(metrics["recall"], 2 / 3)
         self.assertAlmostEqual(metrics["f1"], 0.8)
-        self.assertAlmostEqual(metrics["mAP"], 1.0)
-        self.assertAlmostEqual(metrics["mAP@50-95"], 1.0)
+        self.assertAlmostEqual(metrics["mAP"], 0.875)
+        self.assertAlmostEqual(metrics["mAP@50-95"], 0.833, delta=0.0005)
 
     def test_evaluate_no_predictions(self):
         """Testa il caso in cui non ci sono previsioni."""
@@ -115,17 +115,17 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_partial_overlap(self):
         """Testa il caso in cui le previsioni hanno una sovrapposizione parziale con le verità fondamentali."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)   
-        bbox2 = BBox(coordinates=[1, 1, 11, 11], format=BBoxFormat.CORNERS)  
-        predictions = YoloOutput([(bbox2, 0, 0.9)])  
+        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
+        bbox2 = BBox(coordinates=[1, 1, 11, 11], format=BBoxFormat.CORNERS)
+        predictions = YoloOutput([(bbox2, 0, 0.9)])
         ground_truth = [(bbox1, 0)]
 
         metrics = self.yolo.evaluate(predictions, ground_truth, threshold_iou=0.5)
-        self.assertAlmostEqual(metrics["precision"], 1.0)  # 1 TP / (1 TP + 0 FP)
-        self.assertAlmostEqual(metrics["recall"], 1.0)     # 1 TP / (1 TP + 0 FN)
-        self.assertAlmostEqual(metrics["f1"], 1.0)         # 2 * (precision * recall) / (precision + recall)
-        self.assertAlmostEqual(metrics["mAP"], 1.0)        # Placeholder
-        self.assertAlmostEqual(metrics["mAP@50-95"], 1.0)  # Placeholder
+        self.assertAlmostEqual(metrics["precision"], 1.0)   
+        self.assertAlmostEqual(metrics["recall"], 1.0)      
+        self.assertAlmostEqual(metrics["f1"], 1.0)         
+        self.assertAlmostEqual(metrics["mAP"], 1.0)         
+        self.assertAlmostEqual(metrics["mAP@50-95"], 0.4, delta=0.1)
     
 if __name__ == "__main__":
     unittest.main()

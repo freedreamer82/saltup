@@ -9,7 +9,7 @@ import cv2
 from collections import defaultdict
 
 from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
-from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_ap_range
+from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
 from saltup.utils.data.image.image_utils import load_image, ColorMode
 from saltup.ai.nn_manager import NeuralNetworkManager
@@ -300,90 +300,77 @@ class BaseYolo(NeuralNetworkManager):
         Returns:
             Dictionary containing evaluation metrics.
         """
-        # If there is no ground truth, return metrics equal to 0
-        if not ground_truth:
-            return {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-                "mAP": 0.0,
-                "mAP@50-95": 0.0,
-            }
+        if not ground_truth:  # No ground truth
+            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95"]}
 
-        # If there are no predictions, return metrics equal to 0
-        if not predictions.get_boxes():
-            return {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-                "mAP": 0.0,
-                "mAP@50-95": 0.0,
-            }
+        if not predictions.get_boxes():  # No predictions
+            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95"]}
 
-        # Group ground truth by class ID
+        # Group ground truth and predictions by class ID
         gt_by_class = defaultdict(list)
         for gt_bbox, class_id in ground_truth:
             gt_by_class[class_id].append(gt_bbox)
 
-        # Group predictions by class ID
         pred_by_class = defaultdict(list)
         for pred_bbox, class_id, score in predictions.get_boxes():
             pred_by_class[class_id].append((pred_bbox, score))
 
-        # Initialize global TP, FP, and FN counters
-        global_tp = 0
-        global_fp = 0
-        global_fn = 0
+        # Initialize global counters and AP lists
+        global_tp, global_fp, global_fn = 0, 0, 0
+        aps = []
 
-        # Iterate over each class
-        for class_id in gt_by_class.keys():
+        for class_id in gt_by_class:
             gt_bboxes = gt_by_class[class_id]
             pred_bboxes_scores = pred_by_class.get(class_id, [])
+            
+            # Calculate AP for the class at the given threshold
+            ap = compute_ap_for_threshold(gt_bboxes, pred_bboxes_scores, threshold_iou)
+            aps.append(ap)
 
-            # Sort predictions by confidence score (descending)
+            # Match predictions to ground truth
             pred_bboxes_scores.sort(key=lambda x: x[1], reverse=True)
             pred_bboxes = [x[0] for x in pred_bboxes_scores]
 
-            # Initialize TP and FP arrays
+            # Initialize TP, FP and matched ground truths
             tp = np.zeros(len(pred_bboxes))
             fp = np.zeros(len(pred_bboxes))
-
-            # Match predictions to ground truth
-            gt_matched = [False] * len(gt_bboxes)  # Tracks ground truth boxes already matched
+            gt_matched = [False] * len(gt_bboxes)
 
             for i, pred_bbox in enumerate(pred_bboxes):
                 max_iou = 0
                 best_match_idx = -1
-
-                # Find the ground truth box with the highest IoU
                 for j, gt_bbox in enumerate(gt_bboxes):
                     if gt_matched[j]:
-                        continue  # Skip already matched ground truth
+                        continue
                     iou = pred_bbox.compute_iou(gt_bbox)
                     if iou > max_iou:
                         max_iou = iou
                         best_match_idx = j
 
-                # If IoU > threshold and the ground truth box is not already matched, it's a TP
                 if max_iou >= threshold_iou and best_match_idx != -1:
                     tp[i] = 1
-                    gt_matched[best_match_idx] = True  # Mark the ground truth as matched
+                    gt_matched[best_match_idx] = True
                 else:
-                    fp[i] = 1  # Otherwise, it's an FP
+                    fp[i] = 1
 
             # Update global counters
             global_tp += np.sum(tp)
             global_fp += np.sum(fp)
-            global_fn += len(gt_bboxes) - np.sum(tp)  # Unmatched ground truth
+            global_fn += len(gt_bboxes) - np.sum(tp)
 
-        # Compute global precision, recall, and F1-score
-        precision = global_tp / (global_tp + global_fp) if (global_tp + global_fp) > 0 else 0
-        recall = global_tp / (global_tp + global_fn) if (global_tp + global_fn) > 0 else 0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        # Calculate global precision, recall, and F1-score
+        precision = global_tp / (global_tp + global_fp) if (global_tp + global_fp) > 0 else 0.0
+        recall = global_tp / (global_tp + global_fn) if (global_tp + global_fn) > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
-        # Note: mAP and mAP@50-95 require more complex calculations (not implemented here)
-        mAP = 1.0  # Placeholder
-        mAP_50_95 = 1.0  # Placeholder
+        # Calculate mAP using compute_ap_range (includes AP@50-95)
+        mAP_50_95 = compute_map_50_95(
+            [gt for gt_class in gt_by_class.values() for gt in gt_class],
+            [(pred, score) for preds in pred_by_class.values() for pred, score in preds],
+        )
+
+        # Calculate mAP (average AP across classes at the given threshold)
+        mAP = np.mean(aps) if aps else 0.0
 
         return {
             "precision": precision,
