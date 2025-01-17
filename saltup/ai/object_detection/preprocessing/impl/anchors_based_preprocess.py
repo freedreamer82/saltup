@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from saltup.ai.object_detection.preprocessing.preproccesing import Preprocessing
+from saltup.ai.object_detection.yolo.preprocessing.preprocessing import Preprocessing
 
 class AnchorsBasedPreprocess(Preprocessing):
     """

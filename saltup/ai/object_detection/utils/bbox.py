@@ -614,12 +614,14 @@ class BBox:
             A list of BBox objects (one for each annotation in the file).
         """
         bboxes = []
+        class_ids = []
         with open(file_path, 'r') as file:
             for line in file:
                 class_id, x_center, y_center, width, height = map(float, line.strip().split())
                 bbox = cls([x_center, y_center, width, height], format=BBoxFormat.CENTER, img_width=img_width, img_height=img_height)
                 bboxes.append(bbox)
-        return bboxes
+                class_ids.append(class_id)
+        return bboxes, class_ids
 
     @classmethod
     def from_coco_file(cls, file_path: str, image_id: int):

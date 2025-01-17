@@ -18,7 +18,7 @@ class NeuralNetworkManager:
         """Return a list of supported model formats."""
         return self.supported_formats
 
-    def load_model(self, model_path: str) -> Any:
+    def load_model(self, model_path: str) -> Tuple[Any, Tuple[Any], Tuple[Any]]:
         """
         Load a model from the given path based on its file extension.
 
@@ -35,19 +35,58 @@ class NeuralNetworkManager:
             # Load PyTorch model
             self.model = torch.load(model_path)  # Generic PyTorch model loading
             self.model.eval()  # Set the model to evaluation mode
+            # Assuming the model has an attribute `input_shape` or similar
+            if hasattr(self.model, 'input_shape'):
+                model_input_shape =  self.model.input_shape
+            
+            # Assuming the model has an attribute `output_shape` or similar
+            if hasattr(self.model, 'output_shape'):
+                model_output_shape =  self.model.output_shape
+            else:
+                # If no output_shape attribute, infer from a forward pass (requires example input)
+                example_input = torch.randn(1, *self.model.input_shape)  # Example input
+                with torch.no_grad():
+                    output = self.model(example_input)
+                model_output_shape =  output.shape[1:]  # Exclude batch size
+            
+            return self.model, model_input_shape, model_output_shape
+            
         elif model_path.endswith(".keras") or model_path.endswith(".h5"):
             # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
             self.model = load_model(model_path, compile=False, safe_mode=False)  # Usa tf_keras.saving.load_model
+            model_input_shape = self.model.input_shape[1:]  # Exclude the batch size
+            
+            model_output_shape = self.model.output_shape[1:]  # Exclude the batch size
+            
+            return self.model, model_input_shape, model_output_shape
+
+        
         elif model_path.endswith(".onnx"):
             # Load ONNX model
             self.model = ort.InferenceSession(model_path)
+            input_metadata = self.model.get_inputs()[0]
+            model_input_shape = tuple(input_metadata.shape)
+            output_metadata = self.model.get_outputs()[0]
+            model_output_shape = tuple(output_metadata.shape)
+            return self.model, model_input_shape, model_output_shape
+
         elif model_path.endswith(".tflite"):
             # Load TensorFlow Lite model
             self.model = tf.lite.Interpreter(model_path=model_path)
             self.model.allocate_tensors()  # Allocate tensors for inference
+            # Get the input shape from the interpreter
+            input_details = self.model.get_input_details()[0]
+            model_input_shape = tuple(input_details['shape'])
+        
+            output_details = self.model.get_output_details()[0]
+            model_output_shape =  tuple(output_details['shape'])
+            
+            return self.model, model_input_shape, model_output_shape
+
+            
         else:
             raise ValueError(f"Unsupported model format. Supported formats are: {self.supported_formats}")
-        return self.model
+
 
     def model_inference(self, input_data: Any) -> Any:
         """
@@ -77,7 +116,7 @@ class NeuralNetworkManager:
         elif isinstance(self.model, ort.InferenceSession):
             # ONNX inference
             input_name = self.model.get_inputs()[0].name
-            output = self.model.run(None, {input_name: input_data})
+            output = self.model.run(None, {input_name: input_data})[0]
         elif isinstance(self.model, tf.lite.Interpreter):
             # TensorFlow Lite inference
             input_details = self.model.get_input_details()
