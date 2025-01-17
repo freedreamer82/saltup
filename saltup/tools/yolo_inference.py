@@ -46,7 +46,7 @@ if __name__ == "__main__":
     
     yolo = YoloFactory.create(yolotype, args.model , args.num_class, anchors=args.anchors)
     
-    image  = BaseYolo.load_image(args.img, ColorMode.GRAY)
+    image  = BaseYolo.load_image(args.img, ColorMode.GRAY if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
     
     img_height, img_width = image.shape
     

@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import List, Tuple, Any
 import torch
 import onnxruntime as ort
 import tensorflow as tf

@@ -3,13 +3,6 @@ from typing import Any, Dict, List ,Tuple
 import numpy as np
 from typing import Optional, Callable, Union
 from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
-<<<<<<< Updated upstream
-from saltup.ai.object_detection.yolo  import YoloType
-from saltup.ai import NeuralNetworkManager
-from typing import List, Dict, Any, Union
-import time
-
-=======
 from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_ap_range
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
 from saltup.ai.nn_manager import NeuralNetworkManager
@@ -18,7 +11,6 @@ import time
 from typing import Dict, List, Tuple
 import cv2
 from collections import defaultdict
->>>>>>> Stashed changes
 
 
 
@@ -26,46 +18,25 @@ class YoloOutput:
     """Class to represent the results of the YOLO model."""
     def __init__(
         self,
-<<<<<<< Updated upstream
-        boxes: List[BBox],
-        scores: List[float],
-        labels: List[str],
-=======
         boxes: List[Tuple[BBox, int, float]],
->>>>>>> Stashed changes
         image: Optional[np.ndarray] = None,
     ):
         """
-        Initialize YoloOutput with bounding boxes, scores, labels, and an optional image.
+        Initialize YoloOutput with bounding boxes, scores, and an optional image.
 
         Args:
             boxes: List of BBox objects representing the bounding boxes.
             scores: List of confidence scores.
-            labels: List of predicted labels.
             image: Optional image associated with the results.
         """
         self._boxes = boxes  # List of BBox objects
-        self._scores = scores  # List of confidence scores
-        self._labels = labels  # List of predicted labels
         self._image = image  # Optional image associated with the results
 
         self._inference_time_ms = 0.0  
         self._preprocessing_time_ms = 0.0 
         self._postprocessing_time_ms = 0.0 
 
-<<<<<<< Updated upstream
-    def get_labels(self) -> List[str]:
-        """Get the list of predicted labels."""
-        return self._labels
-
-    def set_labels(self, value: List[str]):
-        """Set the list of predicted labels."""
-        self._labels = value
-
-    def get_boxes(self, format: str = "CENTER") -> List[BBox]:
-=======
     def get_boxes(self, format: str = "CENTER") -> List[Tuple[BBox, int, float]]:
->>>>>>> Stashed changes
         """
         Get the list of bounding boxes in the specified format.
 
@@ -85,15 +56,7 @@ class YoloOutput:
             boxes: List of BBox objects.
         """
         self._boxes = boxes
-
-    def get_scores(self) -> List[float]:
-        """Get the list of confidence scores."""
-        return self._scores
-
-    def set_scores(self, value: List[float]):
-        """Set the list of confidence scores."""
-        self._scores = value
-
+        
     def get_image(self) -> Optional[np.ndarray]:
         """Get the associated image."""
         return self._image
@@ -144,7 +107,7 @@ class YoloOutput:
         Get a property by name.
 
         Args:
-            property_name: Name of the property ("boxes", "scores", "labels", "image",
+            property_name: Name of the property ("boxes", "image",
                           "inference_time", "preprocessing_time", "postprocessing_time").
 
         Returns:
@@ -155,10 +118,6 @@ class YoloOutput:
         """
         if property_name == "boxes":
             return self._boxes
-        elif property_name == "scores":
-            return self._scores
-        elif property_name == "labels":
-            return self._labels
         elif property_name == "image":
             return self._image
         elif property_name == "inference_time":
@@ -175,7 +134,7 @@ class YoloOutput:
         Set a property by name.
 
         Args:
-            property_name: Name of the property ("boxes", "scores", "labels", "image",
+            property_name: Name of the property ("boxes", "image",
                           "inference_time", "preprocessing_time", "postprocessing_time").
             value: The new value for the property.
 
@@ -184,10 +143,6 @@ class YoloOutput:
         """
         if property_name == "boxes":
             self._boxes = value
-        elif property_name == "scores":
-            self._scores = value
-        elif property_name == "labels":
-            self._labels = value
         elif property_name == "image":
             self._image = value
         elif property_name == "inference_time":
@@ -201,7 +156,7 @@ class YoloOutput:
 
     def __repr__(self):
         return (
-            f"YoloOutput(boxes={self._boxes}, scores={self._scores}, labels={self._labels}, "
+            f"YoloOutput(boxes={self._boxes}"
             f"image={self._image is not None}, inference_time={self._inference_time_ms} ms, "
             f"preprocessing_time={self._preprocessing_time_ms} ms, "
             f"postprocessing_time={self._postprocessing_time_ms} ms)"
@@ -218,31 +173,18 @@ class ColorMode(IntEnum):
     
 class BaseYolo(NeuralNetworkManager):
     """Base class for implementing a generic YOLO model."""
-    def __init__(self, yolot: YoloType, model_path: str):
+    def __init__(self, yolot: YoloType, model_path: str, number_class:int):
         super().__init__()  # Initialize NeuralNetworkManager
         self.model_path = model_path
-<<<<<<< Updated upstream
-        self.model = self.load_model(model_path)  # Load model using inherited method
-=======
         self.number_class = number_class
         self.model, self.model_input_shape, self.model_output_shape = self.load_model(model_path)  # Load model using inherited method
         self.img_input_height  = self.model_input_shape[1]
         self.img_input_width  = self.model_input_shape[2]
->>>>>>> Stashed changes
         self.yolotype = yolot
 
     def getYoloType(self) -> YoloType:
         return self.yolotype
     
-<<<<<<< Updated upstream
-    def _load_model(self, model_path: str) -> Any:
-        """
-        Load the YOLO model from the given path
-         Example: return torch.hub.load('ultralytics/yolov5', 'custom', path=model_path)
-        """
-        raise NotImplementedError("Model loading must be implemented.")
-
-=======
     @staticmethod
     def load_anchors(anchors_path:str) -> np.ndarray:
         anchors_data = np.loadtxt(anchors_path, delimiter=",")
@@ -288,10 +230,13 @@ class BaseYolo(NeuralNetworkManager):
     def get_number_image_channel(self) -> int:
         return self.model_input_shape[-1]
     
->>>>>>> Stashed changes
     def run(
         self,
         image: np.ndarray,
+        img_height: int, 
+        img_width: int,
+        confidence_thr: float=0.5,
+        iou_threshold:float = 0.5,
         preprocess: Optional[Union[Callable, bool]] = None,
         postprocess: Optional[Union[Callable, bool]] = None,
     ) -> YoloOutput:
@@ -315,15 +260,9 @@ class BaseYolo(NeuralNetworkManager):
         else:
             # Use custom preprocessing if provided, otherwise use the native method
             if callable(preprocess):
-<<<<<<< Updated upstream
-                preprocessed_image = preprocess(image)
-            else:
-                preprocessed_image = self.preprocess(image)
-=======
                 preprocessed_image = preprocess(image, self.img_input_height, self.img_input_width)
             else:
                 preprocessed_image = self.preprocess(image, self.img_input_height, self.img_input_width)
->>>>>>> Stashed changes
         end_preprocess = time.time()
         preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
 
@@ -341,32 +280,125 @@ class BaseYolo(NeuralNetworkManager):
         else:
             # Use custom postprocessing if provided, otherwise use the native method
             if callable(postprocess):
-                postprocessed_output = postprocess(raw_output)
+                postprocessed_output = postprocess(raw_output, img_height, img_width, confidence_thr, 
+                            iou_threshold)
             else:
-                postprocessed_output = self.postprocess(raw_output)
+                postprocessed_output = self.postprocess(raw_output, img_height, img_width, confidence_thr, 
+                            iou_threshold)
         end_postprocess = time.time()
         postprocessing_time_ms = (end_postprocess - start_postprocess) * 1000
-
+        
+        yoloOut = YoloOutput(postprocessed_output, image=preprocessed_image)
         # Set execution times in the YoloOutput object
-        if isinstance(postprocessed_output, YoloOutput):
-            postprocessed_output.set_preprocessing_time(preprocessing_time_ms)
-            postprocessed_output.set_inference_time(inference_time_ms)
-            postprocessed_output.set_postprocessing_time(postprocessing_time_ms)
 
-        return postprocessed_output
+        yoloOut.set_preprocessing_time(preprocessing_time_ms)
+        yoloOut.set_inference_time(inference_time_ms)
+        yoloOut.set_postprocessing_time(postprocessing_time_ms)
+            
+        
+        return yoloOut
 
     @staticmethod
-    def evaluate( predictions: YoloOutput,ground_truth: BBox,  threshold_iou :float ) -> Dict[str, float]:
+    def evaluate(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], threshold_iou: float = 0.5) -> Dict[str, float]:
         """
-         Compute evaluation metrics (e.g., precision, recall, mAP)
-         Example:
-         metrics = {"precision": 0.95, "recall": 0.90, "mAP": 0.85}
-         return metrics
+        Compute evaluation metrics (precision, recall, F1-score, mAP, mAP@50-95).
+
+        Args:
+            predictions: YoloOutput object containing predicted bounding boxes, scores, and class IDs.
+            ground_truth: List of ground truth BBox objects.
+            threshold_iou: IoU threshold to consider a detection as a true positive.
+
+        Returns:
+            Dictionary containing evaluation metrics.
         """
-        raise NotImplementedError("Evaluation must be implemented.")
+        # Group ground truth and predictions by class ID
+        gt_by_class = defaultdict(list)
+        for gt in ground_truth:
+            gt_by_class[gt.class_id].append(gt)
 
+        pred_by_class = defaultdict(list)
+        for pred_bbox, pred_score, pred_class_id in zip(predictions.bboxes, predictions.scores, predictions.class_ids):
+            pred_by_class[pred_class_id].append((pred_bbox, pred_score))
 
-    def preprocess(self, image: np.array) -> Any:
+        # Initialize metrics
+        precision_list = []
+        recall_list = []
+        f1_list = []
+        ap_list = []
+        ap_50_95_list = []
+
+        # Iterate over each class
+        for class_id in gt_by_class.keys():
+            gt_bboxes = gt_by_class[class_id]
+            pred_bboxes_scores = pred_by_class.get(class_id, [])
+
+            # Sort predictions by confidence score (descending)
+            pred_bboxes_scores.sort(key=lambda x: x[1], reverse=True)
+            pred_bboxes = [x[0] for x in pred_bboxes_scores]
+
+            # Initialize TP and FP arrays
+            tp = np.zeros(len(pred_bboxes))
+            fp = np.zeros(len(pred_bboxes))
+
+            # Match predictions to ground truth
+            gt_matched = [False] * len(gt_bboxes)
+
+            for i, pred_bbox in enumerate(pred_bboxes):
+                max_iou = 0
+                best_match_idx = -1
+
+                # Find the ground truth box with the highest IoU
+                for j, gt_bbox in enumerate(gt_bboxes):
+                    iou = pred_bbox.compute_iou(gt_bbox)
+                    if iou > max_iou:
+                        max_iou = iou
+                        best_match_idx = j
+
+                # If IoU > threshold and the ground truth box is not already matched, it's a TP
+                if max_iou >= threshold_iou and not gt_matched[best_match_idx]:
+                    tp[i] = 1
+                    gt_matched[best_match_idx] = True
+                else:
+                    fp[i] = 1
+
+            # Compute precision and recall
+            tp_cumsum = np.cumsum(tp)
+            fp_cumsum = np.cumsum(fp)
+            recall = tp_cumsum / len(gt_bboxes)
+            precision = tp_cumsum / (tp_cumsum + fp_cumsum)
+
+            # Avoid division by zero
+            precision = np.nan_to_num(precision, nan=0.0)
+            recall = np.nan_to_num(recall, nan=0.0)
+
+            # Compute F1-score
+            f1 = 2 * (precision * recall) / (precision + recall + 1e-16)
+
+            # Compute Average Precision (AP)
+            ap = compute_ap(recall, precision)
+
+            # Compute AP@50-95
+            ap_50_95 = compute_ap_range(gt_bboxes, pred_bboxes_scores)
+
+            # Append metrics for this class
+            precision_list.append(precision[-1] if len(precision) > 0 else 0)
+            recall_list.append(recall[-1] if len(recall) > 0 else 0)
+            f1_list.append(f1[-1] if len(f1) > 0 else 0)
+            ap_list.append(ap)
+            ap_50_95_list.append(ap_50_95)
+
+        # Compute mean metrics across all classes
+        metrics = {
+            "precision": np.mean(precision_list),
+            "recall": np.mean(recall_list),
+            "f1": np.mean(f1_list),
+            "mAP": np.mean(ap_list),
+            "mAP@50-95": np.mean(ap_50_95_list),
+        }
+
+        return metrics
+
+    def preprocess(self, image: np.array, target_height:int, target_width:int) -> np.ndarray:
         """
         Preprocess the image before model inference.
 
@@ -375,13 +407,9 @@ class BaseYolo(NeuralNetworkManager):
         """
         raise NotImplementedError("The preprocess method must be overridden in the derived class.")
 
-<<<<<<< Updated upstream
-    def postprocess(self, raw_output: np.array) -> YoloOutput:
-=======
     def postprocess(self, raw_output: np.ndarray,
                     image_height:int, image_width:int, confidence_thr:float=0.5, 
                             iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
->>>>>>> Stashed changes
         """
         Postprocess the raw output from the model to produce structured results.
 
