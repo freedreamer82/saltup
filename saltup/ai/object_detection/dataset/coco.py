@@ -29,6 +29,102 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Union
 import random
 
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
+
+
+class COCODatasetLoader(BaseDatasetLoader):
+    def __init__(
+        self,
+        root_dir: str = None,
+        *,
+        image_dir: str = None,
+        annotations_file: str = None,
+        color_mode: ColorMode = ColorMode.RGB
+    ):
+        """
+        Initialize COCO dataset loader.
+
+        Args:
+            root_dir: Root directory containing train/val splits.
+            image_dir: Directory containing images (alternative to root_dir).
+            annotations_file: Path to COCO annotations JSON file.
+            color_mode: Color mode for loading images.
+        
+        Raises:
+            ValueError: If arguments combination is invalid.
+        """
+        self._validate_init_args(root_dir, image_dir, annotations_file)
+        
+        if root_dir is not None:
+            # Verifica la struttura del dataset
+            validate_dataset_structure(root_dir)
+            
+            # Ottieni i percorsi corretti
+            self.train_images_dir, self.train_annotations_file, self.val_images_dir, self.val_annotations_file = get_dataset_paths(root_dir)
+            
+            # Usa il train set come default
+            self.image_dir = self.train_images_dir
+            self.annotations_file = self.train_annotations_file
+        else:
+            self.image_dir = Path(image_dir)
+            self.annotations_file = Path(annotations_file)
+        
+        self.color_mode = color_mode
+        self._current_index = 0  # Track current position
+
+        # Load annotations
+        self.annotations = self._load_annotations()
+        self.image_annotation_pairs = self._create_image_annotation_pairs()
+
+    def __iter__(self):
+        """Return iterator object (self in this case)."""
+        self._current_index = 0  # Reset position when creating new iterator
+        return self
+
+    def __next__(self):
+        """Get next item from dataset."""
+        if self._current_index >= len(self.image_annotation_pairs):
+            self._current_index = 0  # Reset for next iteration
+            raise StopIteration
+        
+        image_path, annotation = self.image_annotation_pairs[self._current_index]
+        self._current_index += 1
+        
+        return self.load_image(image_path, self.color_mode), annotation
+
+    def __len__(self):
+        """Return total number of samples in dataset."""
+        return len(self.image_annotation_pairs)
+
+    def _validate_init_args(self, root_dir, image_dir, annotations_file):
+        """Validate initialization arguments."""
+        if root_dir is not None and (image_dir is not None or annotations_file is not None):
+            raise ValueError("Cannot provide both root_dir and image_dir/annotations_file")
+        if root_dir is None and (image_dir is None or annotations_file is None):
+            raise ValueError("Must provide either root_dir or both image_dir and annotations_file")
+
+    def _load_annotations(self) -> Dict:
+        """Load COCO annotations from JSON file."""
+        with open(self.annotations_file, 'r') as f:
+            return json.load(f)
+
+    def _create_image_annotation_pairs(self) -> List[Tuple[str, List[Dict]]]:
+        """Create pairs of image paths and their corresponding annotations."""
+        image_annotation_pairs = []
+
+        # Create a mapping from image_id to annotations
+        image_to_annotations = defaultdict(list)
+        for ann in self.annotations['annotations']:
+            image_to_annotations[ann['image_id']].append(ann)
+
+        # Create pairs
+        for img in self.annotations['images']:
+            image_path = os.path.join(self.image_dir, img['file_name'])
+            if os.path.exists(image_path):
+                image_annotation_pairs.append((image_path, image_to_annotations[img['id']]))
+
+        return image_annotation_pairs
+
 
 def create_dataset_structure(root_dir: str) -> Dict:
     """Creates COCO dataset directory structure.
@@ -86,6 +182,41 @@ def validate_dataset_structure(root_dir: str) -> Dict:
                 annotations.get('annotations', []))
 
     return stats
+
+
+def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
+    """
+    Get directory paths for dataset in COCO format.
+
+    Args:
+        root_dir: Dataset root directory
+
+    Returns:
+        Tuple of (train_images_dir, train_annotations_file, val_images_dir, val_annotations_file)
+    """
+    # Verify root directory exists
+    if not os.path.exists(root_dir):
+        raise FileNotFoundError(f"Root directory {root_dir} does not exist")
+
+    # Build COCO paths
+    train_images_dir = os.path.join(root_dir, 'images', 'train')
+    train_annotations_file = os.path.join(root_dir, 'annotations', 'instances_train.json')
+    val_images_dir = os.path.join(root_dir, 'images', 'val')
+    val_annotations_file = os.path.join(root_dir, 'annotations', 'instances_val.json')
+
+    # Verify required COCO directories and files exist
+    required_paths = [
+        (train_images_dir, "Train Images"),
+        (train_annotations_file, "Train Annotations"),
+        (val_images_dir, "Validation Images"),
+        (val_annotations_file, "Validation Annotations")
+    ]
+
+    for path, path_name in required_paths:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"{path_name} not found at {path}")
+
+    return train_images_dir, train_annotations_file, val_images_dir, val_annotations_file
 
 
 def analyze_dataset(root_dir: str, class_names: List[str] = None):
