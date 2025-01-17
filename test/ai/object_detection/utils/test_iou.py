@@ -1,6 +1,5 @@
 import unittest
 import numpy as np
-from saltup.ai.object_detection.utils.metrics import compute_ap, compute_ap_range, compute_ap_for_threshold
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from saltup.ai.object_detection.utils.bbox import compute_iou, IoUType
 
