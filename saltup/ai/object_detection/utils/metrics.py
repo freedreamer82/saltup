@@ -1,6 +1,8 @@
 import numpy as np
 from saltup.ai.object_detection.utils.bbox import BBox
 from typing import List, Tuple, Union
+ 
+
 
 def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     """
@@ -13,18 +15,22 @@ def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     Returns:
         Average Precision (AP) as a float.
     """
-    # Append sentinel values at the end
+    # Append sentinel values at the beginning and end
     mrec = np.concatenate(([0.0], recall, [1.0]))
     mpre = np.concatenate(([0.0], precision, [0.0]))
 
-    # Compute the precision envelope
-    for i in range(len(mpre) - 1, 0, -1):
-        mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+    # Compute the precision envelope (monotonically decreasing)
+    for i in range(len(mpre) - 2, -1, -1):
+        mpre[i] = np.maximum(mpre[i], mpre[i + 1])
 
-    # Calculate the area under the PR curve
+    # Identify indices where recall changes
     i = np.where(mrec[1:] != mrec[:-1])[0]
-    ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+
+    # Calculate the area under the PR curve using the trapezoidal rule
+    ap = np.sum((mrec[i + 1] - mrec[i]) * (mpre[i + 1] + mpre[i]) / 2)
     return ap
+
+
 
 
 def compute_ap_range(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox, float]]) -> float:
@@ -49,17 +55,6 @@ def compute_ap_range(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox,
 
 
 def compute_ap_for_threshold(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox, float]], threshold: float) -> float:
-    """
-    Compute AP for a specific IoU threshold.
-
-    Args:
-        gt_bboxes: List of ground truth bounding boxes.
-        pred_bboxes_scores: List of predicted bounding boxes and their confidence scores.
-        threshold: IoU threshold.
-
-    Returns:
-        AP for the given threshold.
-    """
     # Sort predictions by confidence score (descending)
     pred_bboxes_scores.sort(key=lambda x: x[1], reverse=True)
     pred_bboxes = [x[0] for x in pred_bboxes_scores]
@@ -83,17 +78,29 @@ def compute_ap_for_threshold(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tup
                 best_match_idx = j
 
         # If IoU > threshold and the ground truth box is not already matched, it's a TP
-        if max_iou >= threshold and not gt_matched[best_match_idx]:
-            tp[i] = 1
-            gt_matched[best_match_idx] = True
+        if max_iou >= threshold:
+            if not gt_matched[best_match_idx]:
+                tp[i] = 1
+                gt_matched[best_match_idx] = True
+            else:
+                fp[i] = 1
         else:
             fp[i] = 1
+
+    # Debug: Print TP and FP
+    print(f"Threshold: {threshold}")
+    print(f"TP: {tp}")
+    print(f"FP: {fp}")
 
     # Compute precision and recall
     tp_cumsum = np.cumsum(tp)
     fp_cumsum = np.cumsum(fp)
     recall = tp_cumsum / len(gt_bboxes)
     precision = tp_cumsum / (tp_cumsum + fp_cumsum)
+
+    # Debug: Print precision and recall
+    print(f"Recall: {recall}")
+    print(f"Precision: {precision}")
 
     # Compute AP
     ap = compute_ap(recall, precision)
