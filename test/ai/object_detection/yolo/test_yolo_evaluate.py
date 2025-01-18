@@ -9,6 +9,8 @@ from onnx import helper, TensorProto
 import tempfile
 import os
 from typing import Any, Dict, List ,Tuple
+import torch
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 
 class TestEvaluate(unittest.TestCase):
@@ -126,6 +128,93 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["f1"], 1.0)         
         self.assertAlmostEqual(metrics["mAP"], 1.0)         
         self.assertAlmostEqual(metrics["mAP@50-95"], 0.4, delta=0.1)
-    
+
+   
+
+    def test_evaluate_comparison_with_torchmetrics(self):
+        """
+        Confronta i risultati della nostra implementazione con quella di torchmetrics.
+        Verifica che entrambe le implementazioni producano risultati simili.
+        """
+        # Crea i dati di test
+        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
+        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
+        bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
+        
+        predictions = YoloOutput([
+            (bbox1, 0, 0.9),
+            (bbox2, 1, 0.8),
+            (bbox3, 0, 0.7)
+        ])
+        
+        ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 0)]
+        
+        # Calcola le metriche con la nostra implementazione
+        our_metrics = self.yolo.evaluate(predictions, ground_truth)
+        
+        # Prepara i dati per torchmetrics
+        pred_boxes = []
+        pred_scores = []
+        pred_labels = []
+        
+        # Accedi ai dati di YoloOutput usando get_boxes()
+        for box, cls, score in predictions.get_boxes():
+            pred_boxes.append([
+                box.coordinates[0],
+                box.coordinates[1],
+                box.coordinates[2],
+                box.coordinates[3]
+            ])
+            pred_scores.append(score)
+            pred_labels.append(cls + 1)  # torchmetrics usa 1-based
+        
+        gt_boxes = []
+        gt_labels = []
+        
+        for box, cls in ground_truth:
+            gt_boxes.append([
+                box.coordinates[0],
+                box.coordinates[1],
+                box.coordinates[2],
+                box.coordinates[3]
+            ])
+            gt_labels.append(cls + 1)
+        
+        preds = [{
+            'boxes': torch.tensor(pred_boxes, dtype=torch.float32),
+            'scores': torch.tensor(pred_scores, dtype=torch.float32),
+            'labels': torch.tensor(pred_labels, dtype=torch.int32)
+        }]
+        
+        target = [{
+            'boxes': torch.tensor(gt_boxes, dtype=torch.float32),
+            'labels': torch.tensor(gt_labels, dtype=torch.int32)
+        }]
+        
+        # Calcola le metriche con torchmetrics
+        metric = MeanAveragePrecision(box_format='xyxy')
+        metric.update(preds, target)
+        torch_metrics = metric.compute()
+        
+        # Confronta i risultati delle due implementazioni
+        self.assertAlmostEqual(
+            our_metrics["mAP"],
+            torch_metrics['map'].item(),
+            places=2,
+            msg="Le metriche mAP differiscono significativamente tra le implementazioni"
+        )
+        
+        self.assertAlmostEqual(
+            our_metrics["mAP@50-95"],
+            torch_metrics['map_50'].item(),
+            places=2,
+            msg="Le metriche mAP@50-95 differiscono significativamente tra le implementazioni"
+        )
+        
+        # Verifica anche le altre metriche della nostra implementazione
+        self.assertGreater(our_metrics["precision"], 0.8)
+        self.assertGreater(our_metrics["recall"], 0.8)
+        self.assertGreater(our_metrics["f1"], 0.8)
+            
 if __name__ == "__main__":
     unittest.main()

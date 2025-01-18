@@ -663,11 +663,11 @@ class BBox:
         self.format = format
         self.img_width = img_width
         self.img_height = img_height
-
+    
     @classmethod
-    def from_yolo_file(cls, file_path: str, img_width: int, img_height: int):
+    def from_yolo_file(cls, file_path: str, img_width: int, img_height: int) -> Tuple[List['BBox'], List[int]]:
         """
-        Load bounding box from a YOLO format annotation file.
+        Load bounding boxes from a YOLO format annotation file.
 
         Args:
             file_path: Path to the YOLO annotation file.
@@ -675,14 +675,25 @@ class BBox:
             img_height: Height of the image.
 
         Returns:
-            A list of BBox objects (one for each annotation in the file).
+            Tuple[List[BBox], List[int]]: A tuple containing:
+                - A list of BBox objects (one for each annotation in the file).
+                - A list of class IDs (integers) corresponding to each bounding box.
         """
-        bboxes = []
-        class_ids = []
+        bboxes: List[BBox] = []
+        class_ids: List[int] = []
         with open(file_path, 'r') as file:
             for line in file:
+                # Parse the line: class_id, x_center, y_center, width, height
                 class_id, x_center, y_center, width, height = map(float, line.strip().split())
-                bbox = cls([x_center, y_center, width, height], format=BBoxFormat.CENTER, img_width=img_width, img_height=img_height)
+                # Convert class_id to int
+                class_id = int(class_id)
+                # Create a BBox object in CENTER format
+                bbox = cls(
+                    [x_center, y_center, width, height], 
+                    format=BBoxFormat.CENTER, 
+                    img_width=img_width, 
+                    img_height=img_height
+                )
                 bboxes.append(bbox)
                 class_ids.append(class_id)
         return bboxes, class_ids
@@ -735,7 +746,11 @@ class BBox:
             bboxes.append(bbox)
         return bboxes
 
-    def get_coordinates(self, format: BBoxFormat = None) -> Tuple[float, float, float, float]:
+    def get_format(self) -> BBoxFormat:
+        return self.format
+    
+   
+    def get_coordinates(self, format: BBoxFormat = None) -> Tuple[Tuple[float, float, float, float], BBoxFormat]:
         """
         Get the bounding box coordinates in the specified format.
 
@@ -743,32 +758,34 @@ class BBox:
             format: The desired format (CORNERS, CENTER, TOPLEFT). If None, returns in the current format.
 
         Returns:
-            Tuple of coordinates in the specified format.
+            Tuple[Tuple[float, float, float, float], BBoxFormat]: A tuple containing:
+                - The coordinates in the specified format.
+                - The format of the returned coordinates.
         """
         if format is None:
-            return self.coordinates
+            return self.coordinates, self.format
 
         if self.format == format:
-            return self.coordinates
+            return self.coordinates, self.format
 
         if self.format == BBoxFormat.CORNERS:
             if format == BBoxFormat.CENTER:
-                return corners_to_center_format(self.coordinates)
+                return corners_to_center_format(self.coordinates), format
             elif format == BBoxFormat.TOPLEFT:
-                return corners_to_topleft_format(self.coordinates)
+                return corners_to_topleft_format(self.coordinates), format
         elif self.format == BBoxFormat.CENTER:
             if format == BBoxFormat.CORNERS:
-                return center_to_corners_format(self.coordinates)
+                return center_to_corners_format(self.coordinates), format
             elif format == BBoxFormat.TOPLEFT:
-                return center_to_topleft_format(self.coordinates)
+                return center_to_topleft_format(self.coordinates), format
         elif self.format == BBoxFormat.TOPLEFT:
             if format == BBoxFormat.CORNERS:
-                return topleft_to_corners_format(self.coordinates)
+                return topleft_to_corners_format(self.coordinates), format
             elif format == BBoxFormat.CENTER:
-                return topleft_to_center_format(self.coordinates)
+                return topleft_to_center_format(self.coordinates), format
 
         raise ValueError(f"Unsupported format conversion: {self.format} to {format}")
-
+    
     def set_coordinates(self, coordinates: Union[List, Tuple], format: BBoxFormat = None):
         """
         Set the bounding box coordinates.
@@ -876,7 +893,7 @@ class BBox:
         Returns:
             float: IoU value between 0 and 1.
         """
-        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS), iou_type=iou_type)
+        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS)[0], other.get_coordinates(BBoxFormat.CORNERS)[0], iou_type=iou_type)
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
@@ -938,7 +955,7 @@ def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int,
 
     for bbox in bboxes:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)[0]
 
         # Convert normalized coordinates to absolute pixel values if necessary
         if bbox.img_width is not None and bbox.img_height is not None:
@@ -969,27 +986,12 @@ def draw_boxes_on_image_with_labels_score(
 ) -> np.ndarray:
     """
     Draw bounding boxes on an image with class labels and scores.
-
-    Args:
-        image: Input image as a numpy array (H x W x C).
-        bboxes_with_labels_score: List of tuples containing (BBox, class_id, score).
-        color: Color of the bounding boxes in BGR format (default is green).
-        thickness: Thickness of the bounding box lines (default is 2).
-        font: Font type for the text (default is cv2.FONT_HERSHEY_SIMPLEX).
-        font_scale: Font scale for the text (default is 0.6).
-        font_thickness: Thickness of the text (default is 1).
-        text_color: Color of the text in BGR format (default is white).
-        text_background_color: Color of the text background in BGR format (default is black).
-
-    Returns:
-        Image with bounding boxes, class labels, and scores drawn as a numpy array.
     """
-    # Create a copy of the image to avoid modifying the original
     image_with_boxes = image.copy()
 
     for bbox, class_id, score in bboxes_with_labels_score:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)[0]
 
         # Convert normalized coordinates to absolute pixel values if necessary
         if bbox.img_width is not None and bbox.img_height is not None:
@@ -1013,6 +1015,12 @@ def draw_boxes_on_image_with_labels_score(
         (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
         text_x = x1
         text_y = y1 - 10 if y1 - 10 > 10 else y1 + 20  # Adjust text position to avoid going out of the image
+
+        # Ensure text is within image bounds
+        if text_y - text_height < 0:
+            text_y = y1 + 20  # Move text below the box if it goes above the image
+        if text_x + text_width > image_with_boxes.shape[1]:
+            text_x = image_with_boxes.shape[1] - text_width  # Move text left if it goes beyond the image width
 
         # Draw a background rectangle for the text
         cv2.rectangle(

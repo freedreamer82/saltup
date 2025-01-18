@@ -7,11 +7,12 @@ from typing import (
 import time
 import cv2
 from collections import defaultdict
+from abc import ABC, abstractmethod
 
 from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
 from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
-from saltup.utils.data.image.image_utils import load_image, ColorMode
+from saltup.utils.data.image.image_utils import load_image, ColorMode ,ImageFormat
 from saltup.ai.nn_manager import NeuralNetworkManager
 
 
@@ -193,6 +194,19 @@ class BaseYolo(NeuralNetworkManager):
         if not isinstance(img, np.ndarray):
             raise TypeError("Input must be numpy array")
     
+
+    @abstractmethod
+    def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+        """Abstract method to get input information (shape, color mode, and color format).
+
+        Returns:
+            Tuple[tuple, ColorMode, ImageFormat]: A tuple containing:
+                - Shape: A tuple representing the input shape (e.g., (H, W, C) or (C, H, W)).
+                - ColorMode: An enum value from ColorMode (RGB, BGR, or GRAY).
+                - ImageFormat: An enum value from ImageFormat (HWC or CHW).
+        """
+        pass
+
     @staticmethod
     def load_anchors(anchors_path:str) -> np.ndarray:
         anchors_data = np.loadtxt(anchors_path, delimiter=",")

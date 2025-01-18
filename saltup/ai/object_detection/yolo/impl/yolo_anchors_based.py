@@ -9,6 +9,7 @@ from saltup.ai.object_detection.utils.anchor_based_model import (
 )
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 
+from saltup.utils.data.image.image_utils import  ColorMode ,ImageFormat
 
 class YoloAnchorsBased(BaseYolo):
     """
@@ -36,6 +37,14 @@ class YoloAnchorsBased(BaseYolo):
         self.anchors = anchors  # Store the anchor boxes
         self.num_anchors = anchors.shape[0]  # Number of anchor boxes
         self.max_output_boxes = max_output_boxes
+
+    def get_input_image_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+        input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+        return (
+            input_shape,  # Shape: (640, 480,1)
+            ColorMode.RGB,
+            ImageFormat.HWC
+        )
 
     def _validate_input(self, img: np.ndarray) -> None:
         """Validate input image format and channel structure.
