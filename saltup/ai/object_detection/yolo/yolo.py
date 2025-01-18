@@ -38,18 +38,37 @@ class YoloOutput:
         self._preprocessing_time_ms = 0.0 
         self._postprocessing_time_ms = 0.0 
 
-    def get_boxes(self, format: str = "CENTER") -> List[Tuple[BBox, int, float]]:
+    tprocessing_time_ms = 0.0 
+
+    def get_boxes(self, format: Optional[BBoxFormat] = None) -> List[Tuple['BBox', int, float]]:
         """
         Get the list of bounding boxes in the specified format.
 
         Args:
-            format: The desired format (CORNERS, CENTER, TOPLEFT).
+            format: The desired format (CORNERS, CENTER, TOPLEFT). If None, leaves the format unchanged.
 
         Returns:
-            List of bounding box coordinates in the specified format.
+            List of tuples containing:
+                - BBox objects with coordinates in the specified format (or current format if None).
+                - Class ID (int).
+                - Confidence score (float).
         """
-        return self._boxes
-
+        formatted_boxes = []
+        for bbox, class_id, confidence in self._boxes:
+            if format is None or bbox.get_format() == format:
+                # If format is None or already matches, reuse the existing BBox object
+                formatted_boxes.append((bbox, class_id, confidence))
+            else:
+                # If the format is different, create a new BBox object in the desired format
+                new_bbox = BBox(
+                    coordinates=bbox.get_coordinates(format),
+                    format=format,
+                    img_width=bbox.img_width,
+                    img_height=bbox.img_height
+                )
+                formatted_boxes.append((new_bbox, class_id, confidence))
+        return formatted_boxes
+    
     def set_boxes(self, boxes: List[BBox]):
         """
         Set the list of bounding boxes.

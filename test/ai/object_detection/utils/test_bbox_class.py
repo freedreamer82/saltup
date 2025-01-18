@@ -79,7 +79,7 @@ class TestBBox(unittest.TestCase):
 
     def test_get_coordinates(self):
         bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.get_coordinates(BBoxFormat.CENTER), (30.0, 40.0, 40, 40))  # Usa una tupla
+        self.assertEqual(bbox.get_coordinates(BBoxFormat.CENTER), (30.0, 40.0, 40, 40))
 
     def test_set_coordinates(self):
         bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)

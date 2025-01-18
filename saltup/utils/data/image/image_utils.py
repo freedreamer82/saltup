@@ -2,12 +2,7 @@ import numpy as np
 import cv2
 from enum import IntEnum, auto
 from pathlib import Path
-
-
-from enum import IntEnum, auto
-from pathlib import Path
-import cv2
-import numpy as np
+from typing import Union
 
 class ColorMode(IntEnum):
     RGB = auto()
@@ -57,10 +52,6 @@ def convert_image_format(image: np.ndarray, target_format: ImageFormat) -> np.nd
     # If we reach here, the image shape is invalid for the target format
     raise ValueError(f"Cannot convert image with shape {image.shape} to {target_format} format.")
 
-from pathlib import Path
-from typing import Union
-import cv2
-import numpy as np
 
 
 def load_image(
