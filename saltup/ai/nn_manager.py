@@ -53,10 +53,9 @@ class NeuralNetworkManager:
         elif model_path.endswith(".keras") or model_path.endswith(".h5"):
             # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
             self.model = load_model(model_path, compile=False, safe_mode=False)  # Usa tf_keras.saving.load_model
-            model_input_shape = self.model.input_shape[1:]  # Exclude the batch size
-            
-            model_output_shape = self.model.output_shape[1:]  # Exclude the batch size
-            
+            model_input_shape = self.model.input_shape  # Exclude the batch size
+            model_output_shape = self.model.output_shape  # Exclude the batch size
+ 
             return self.model, model_input_shape, model_output_shape
 
         
@@ -109,7 +108,8 @@ class NeuralNetworkManager:
             # PyTorch inference
             with torch.no_grad():
                 output = self.model(input_data)
-        elif isinstance(self.model, tf.keras.Model):
+#        elif isinstance(self.model, tf.keras.Model):  #not worning...
+        elif type(self.model).__name__ == 'Functional':  
             # TensorFlow/Keras inference
             output = self.model.predict(input_data)
         elif isinstance(self.model, ort.InferenceSession):

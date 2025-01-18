@@ -664,6 +664,32 @@ class BBox:
         self.img_width = img_width
         self.img_height = img_height
     
+    def is_normalized(self) -> bool:
+        """
+        Check if the bounding box coordinates are normalized.
+
+        Returns:
+            bool: True if the coordinates are normalized, False otherwise.
+        """
+        if self.img_width is None or self.img_height is None:
+            # If image dimensions are not set, assume coordinates are not normalized
+            return False
+
+        if self.format == BBoxFormat.CORNERS:
+            # For CORNERS format, check if all coordinates are between 0 and 1
+            x1, y1, x2, y2 = self.coordinates
+            return (0 <= x1 <= 1 and 0 <= y1 <= 1 and 0 <= x2 <= 1 and 0 <= y2 <= 1)
+        elif self.format == BBoxFormat.CENTER:
+            # For CENTER format, check if x_center, y_center, width, height are between 0 and 1
+            xc, yc, w, h = self.coordinates
+            return (0 <= xc <= 1 and 0 <= yc <= 1 and 0 <= w <= 1 and 0 <= h <= 1)
+        elif self.format == BBoxFormat.TOPLEFT:
+            # For TOPLEFT format, check if x1, y1, width, height are between 0 and 1
+            x1, y1, w, h = self.coordinates
+            return (0 <= x1 <= 1 and 0 <= y1 <= 1 and 0 <= w <= 1 and 0 <= h <= 1)
+        else:
+            raise ValueError(f"Unsupported format: {self.format}")
+        
     @classmethod
     def from_yolo_file(cls, file_path: str, img_width: int, img_height: int) -> Tuple[List['BBox'], List[int]]:
         """
@@ -993,7 +1019,7 @@ def draw_boxes_on_image_with_labels_score(
         corners = bbox.get_coordinates(BBoxFormat.CORNERS)
 
         # Convert normalized coordinates to absolute pixel values if necessary
-        if bbox.img_width is not None and bbox.img_height is not None:
+        if bbox.is_normalized():
             x1, y1, x2, y2 = corners
             x1 = int(x1 * bbox.img_width)
             y1 = int(y1 * bbox.img_height)
@@ -1008,7 +1034,7 @@ def draw_boxes_on_image_with_labels_score(
         # Prepare the label and score text
         label = f"Class {class_id}"
         score_text = f"{score:.2f}"
-        text = f"{label} {score_text}"
+        text = f"{label} - {score_text}"
 
         # Calculate text size and position
         (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
