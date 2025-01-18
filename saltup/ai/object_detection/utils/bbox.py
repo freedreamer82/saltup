@@ -750,7 +750,7 @@ class BBox:
         return self.format
     
    
-    def get_coordinates(self, format: BBoxFormat = None) -> Tuple[Tuple[float, float, float, float], BBoxFormat]:
+    def get_coordinates(self, format: BBoxFormat = None) -> Tuple[float, float, float, float]:
         """
         Get the bounding box coordinates in the specified format.
 
@@ -758,34 +758,33 @@ class BBox:
             format: The desired format (CORNERS, CENTER, TOPLEFT). If None, returns in the current format.
 
         Returns:
-            Tuple[Tuple[float, float, float, float], BBoxFormat]: A tuple containing:
-                - The coordinates in the specified format.
-                - The format of the returned coordinates.
+            Tuple of coordinates in the specified format.
         """
         if format is None:
-            return self.coordinates, self.format
+            return self.coordinates
 
         if self.format == format:
-            return self.coordinates, self.format
+            return self.coordinates
 
         if self.format == BBoxFormat.CORNERS:
             if format == BBoxFormat.CENTER:
-                return corners_to_center_format(self.coordinates), format
+                return corners_to_center_format(self.coordinates)
             elif format == BBoxFormat.TOPLEFT:
-                return corners_to_topleft_format(self.coordinates), format
+                return corners_to_topleft_format(self.coordinates)
         elif self.format == BBoxFormat.CENTER:
             if format == BBoxFormat.CORNERS:
-                return center_to_corners_format(self.coordinates), format
+                return center_to_corners_format(self.coordinates)
             elif format == BBoxFormat.TOPLEFT:
-                return center_to_topleft_format(self.coordinates), format
+                return center_to_topleft_format(self.coordinates)
         elif self.format == BBoxFormat.TOPLEFT:
             if format == BBoxFormat.CORNERS:
-                return topleft_to_corners_format(self.coordinates), format
+                return topleft_to_corners_format(self.coordinates)
             elif format == BBoxFormat.CENTER:
-                return topleft_to_center_format(self.coordinates), format
+                return topleft_to_center_format(self.coordinates)
 
         raise ValueError(f"Unsupported format conversion: {self.format} to {format}")
-    
+
+
     def set_coordinates(self, coordinates: Union[List, Tuple], format: BBoxFormat = None):
         """
         Set the bounding box coordinates.
@@ -893,7 +892,7 @@ class BBox:
         Returns:
             float: IoU value between 0 and 1.
         """
-        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS)[0], other.get_coordinates(BBoxFormat.CORNERS)[0], iou_type=iou_type)
+        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS), iou_type=iou_type)
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
@@ -955,7 +954,7 @@ def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int,
 
     for bbox in bboxes:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates(BBoxFormat.CORNERS)[0]
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
 
         # Convert normalized coordinates to absolute pixel values if necessary
         if bbox.img_width is not None and bbox.img_height is not None:
@@ -991,7 +990,7 @@ def draw_boxes_on_image_with_labels_score(
 
     for bbox, class_id, score in bboxes_with_labels_score:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates(BBoxFormat.CORNERS)[0]
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
 
         # Convert normalized coordinates to absolute pixel values if necessary
         if bbox.img_width is not None and bbox.img_height is not None:

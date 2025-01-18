@@ -39,7 +39,7 @@ class TestBBox(unittest.TestCase):
         if bboxes[0]:  # Se la lista non è vuota
             self.assertIsInstance(bboxes[0][0], BBox)
             
-        self.assertEqual(bboxes[0][0].get_coordinates()[0], [0.3, 0.4, 0.2, 0.2])
+        self.assertEqual(bboxes[0][0].get_coordinates(), [0.3, 0.4, 0.2, 0.2])
         self.assertEqual(bboxes[0][0].get_format(), BBoxFormat.CENTER)
 
     def test_from_coco_file(self):
@@ -79,7 +79,7 @@ class TestBBox(unittest.TestCase):
 
     def test_get_coordinates(self):
         bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.get_coordinates(BBoxFormat.CENTER)[0], (30.0, 40.0, 40, 40))  # Usa una tupla
+        self.assertEqual(bbox.get_coordinates(BBoxFormat.CENTER), (30.0, 40.0, 40, 40))  # Usa una tupla
 
     def test_set_coordinates(self):
         bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)

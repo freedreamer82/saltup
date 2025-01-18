@@ -318,7 +318,7 @@ def tiny_anchors_based_nms(
 
     # Convert results to numpy arrays
     if total_boxes:
-        s_boxes = np.array([box.get_coordinates()[0] for box in total_boxes], dtype=np.float32)
+        s_boxes = np.array([box.get_coordinates() for box in total_boxes], dtype=np.float32)
         s_scores = np.array(total_scores, dtype=np.float32)
         s_classes = np.array(total_classes, dtype=np.int32)
         s_my_boxes = np.array([box.to_yolo() for box in total_boxes], dtype=np.float32)
