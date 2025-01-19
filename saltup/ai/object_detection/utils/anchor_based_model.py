@@ -289,7 +289,7 @@ def tiny_anchors_based_nms(
 
     # Scale boxes to image dimensions
     height, width = image_shape
-    image_dims = np.array([height, width, height, width], dtype=np.float32)
+    image_dims = np.array([width, height, width, height], dtype=np.float32)
     boxes = boxes * image_dims  # Convert to original image dimensions
     
     # Wrap boxes into BBox objects
