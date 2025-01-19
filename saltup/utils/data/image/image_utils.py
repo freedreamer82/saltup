@@ -193,3 +193,29 @@ def invert_pixel(img: np.ndarray) -> np.ndarray:
         inverted_img = np.expand_dims(inverted_img, axis=-1)
 
     return inverted_img
+
+def pad_image(image: np.ndarray, target_h: int, target_w: int, image_format: ImageFormat = ImageFormat.HWC) -> np.ndarray:
+    """Add padding if image dimensions are smaller than target size.
+
+    Args:
+        image: Input image in CHW format (channels, height, width)
+        target_size: Required dimensions as (width, height)
+
+    Returns:
+        np.ndarray: Padded tensor matching target size, or original if no padding needed.
+                    Output maintains CHW format and float32 precision.
+    """
+    if image_format == ImageFormat.HWC:
+        image = convert_image_format(image, ImageFormat.CHW)
+    
+    # Extract dimensions
+    c, h, w = image.shape
+
+    # Return original image if no padding needed
+    if h >= target_h and w >= target_w:
+        return image
+
+    # Add padding only if necessary
+    padded_img = 114 * np.ones((c, target_h, target_w), dtype=np.float32)
+    padded_img[:, :h, :w] = image
+    return padded_img

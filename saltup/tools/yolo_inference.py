@@ -71,7 +71,10 @@ def main(args):
     """
     # Determine the YOLO model type and create the YOLO instance
     yolotype = YoloType.from_string(args.type)
-    yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
+    if args.anchors:
+        yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
+    else:
+        yolo = YoloFactory.create(yolotype, args.model, args.num_class)
     
     # Get the list of image paths (single image or directory of images)
     if os.path.isdir(args.img):

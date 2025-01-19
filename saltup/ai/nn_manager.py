@@ -115,7 +115,7 @@ class NeuralNetworkManager:
         elif isinstance(self.model, ort.InferenceSession):
             # ONNX inference
             input_name = self.model.get_inputs()[0].name
-            output = self.model.run(None, {input_name: input_data})[0]
+            output = self.model.run(None, {input_name: input_data})
         elif isinstance(self.model, tf.lite.Interpreter):
             # TensorFlow Lite inference
             input_details = self.model.get_input_details()

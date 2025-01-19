@@ -191,8 +191,12 @@ class BaseYolo(NeuralNetworkManager):
         self.model_path = model_path
         self.number_class = number_class
         self.model, self.model_input_shape, self.model_output_shape = self.load_model(model_path)  # Load model using inherited method
-        self.img_input_height  = self.model_input_shape[1]
-        self.img_input_width  = self.model_input_shape[2]
+        if yolot == YoloType.ANCHORS_BASED:
+            self.img_input_height  = self.model_input_shape[1]
+            self.img_input_width  = self.model_input_shape[2]
+        else:
+            self.img_input_height  = self.model_input_shape[2]
+            self.img_input_width  = self.model_input_shape[3]
         self.yolotype = yolot
 
     def getYoloType(self) -> YoloType:
@@ -418,7 +422,8 @@ class BaseYolo(NeuralNetworkManager):
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
-                   apply_padding: bool = True
+                   apply_padding: bool = True,
+                   **kwargs: Any
                    ) -> np.ndarray:
         """
         Preprocess the image before model inference.
