@@ -182,10 +182,6 @@ def main(args):
     metric = Metric()
     
     start_time = time.time()
-    
-    total_preprocess_time = 0.0
-    total_inference_time = 0.0
-    total_postprocess_time = 0.0
     num_images = len(image_paths)
 
     preprocess_times = []
