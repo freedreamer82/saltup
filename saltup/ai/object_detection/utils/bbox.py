@@ -76,7 +76,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Union
 from enum import auto, IntEnum ,Enum
-
+from typing import List, Tuple, Dict, Optional
+from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR 
+from saltup.utils.data.image.image_utils import Image
 
 class BBoxFormat(IntEnum):
     CORNERS = auto()
@@ -301,6 +303,7 @@ def is_normalized(box: Union[List, Tuple]) -> bool:
     return all(0 <= x <= 1 for x in box)
 
 
+
 def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
     """
     Normalize bounding box coordinates relative to image dimensions.
@@ -319,7 +322,7 @@ def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, fo
         All values are in range [0.0, 1.0]
 
     Raises:
-        ValueError: If coordinates are invalid or exceed image dimensions
+        ValueError: If coordinates are invalid (e.g., negative width/height)
         TypeError: If input types are incorrect
     """
     # Input validation
@@ -329,9 +332,8 @@ def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, fo
         raise TypeError("Image dimensions must be integers")
     if img_width <= 0 or img_height <= 0:
         raise ValueError("Image dimensions must be positive")
-    print(type(format))
     if not isinstance(format, BBoxFormat):
-        raise TypeError("Format must be a  BBoxFormat")
+        raise TypeError("Format must be a BBoxFormat")
 
     # Convert to float for calculations
     bbox = [float(x) for x in bbox]
@@ -341,12 +343,15 @@ def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, fo
 
         # Validate coordinates
         if x1 > x2 or y1 > y2:
-            raise ValueError(
-                "Invalid box coordinates: x1/y1 must be less than x2/y2")
+            raise ValueError("Invalid box coordinates: x1/y1 must be less than x2/y2")
         if any(c < 0 for c in [x1, y1, x2, y2]):
             raise ValueError("Coordinates must be non-negative")
-        if x2 > img_width or y2 > img_height:
-            raise ValueError("Coordinates exceed image dimensions")
+
+        # Clippare le coordinate ai limiti dell'immagine
+        x1 = max(0, min(x1, img_width))
+        y1 = max(0, min(y1, img_height))
+        x2 = max(0, min(x2, img_width))
+        y2 = max(0, min(y2, img_height))
 
         # Normalize
         return (
@@ -364,8 +369,12 @@ def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, fo
             raise ValueError("Width and height must be positive")
         if x1 < 0 or y1 < 0:
             raise ValueError("Coordinates must be non-negative")
-        if x1 + w > img_width or y1 + h > img_height:
-            raise ValueError("Box exceeds image dimensions")
+
+        # Clippare le coordinate ai limiti dell'immagine
+        x1 = max(0, min(x1, img_width))
+        y1 = max(0, min(y1, img_height))
+        w = min(w, img_width - x1)
+        h = min(h, img_height - y1)
 
         # Normalize
         return (
@@ -382,18 +391,23 @@ def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, fo
         if w <= 0 or h <= 0:
             raise ValueError("Width and height must be positive")
 
-        # Calculate corners from center
-        x1 = xc - w/2
-        y1 = yc - h/2
-        x2 = xc + w/2
-        y2 = yc + h/2
+        # Calcola gli angoli della bounding box
+        x1 = xc - w / 2
+        y1 = yc - h / 2
+        x2 = xc + w / 2
+        y2 = yc + h / 2
 
-        # Validate box is within image
-        if x1 < 0 or y1 < 0:
-            raise ValueError(
-                "Box extends outside image (negative coordinates)")
-        if x2 > img_width or y2 > img_height:
-            raise ValueError("Box extends outside image dimensions")
+        # Clippare le coordinate ai limiti dell'immagine
+        x1 = max(0, min(x1, img_width))
+        y1 = max(0, min(y1, img_height))
+        x2 = max(0, min(x2, img_width))
+        y2 = max(0, min(y2, img_height))
+
+        # Ricalcola le coordinate centrali e le dimensioni dopo il clippaggio
+        xc = (x1 + x2) / 2
+        yc = (y1 + y2) / 2
+        w = x2 - x1
+        h = y2 - y1
 
         # Normalize
         return (
@@ -402,7 +416,7 @@ def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, fo
             w / img_width,
             h / img_height
         )
-
+    
 
 def absolute_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
     """
@@ -658,12 +672,28 @@ class BBox:
             format: The format of the coordinates (CORNERS, CENTER, TOPLEFT).
             img_width: The width of the image (required for normalization).
             img_height: The height of the image (required for normalization).
+
+        Raises:
+            ValueError: If the coordinates are invalid or not in the correct format.
         """
-        self.coordinates = coordinates
+             # Imposta coordinates su una lista vuota se None
+        if coordinates is None:
+            self.coordinates = []
+        else:
+            # Se l'input è un array NumPy, convertilo in una lista
+            if isinstance(coordinates, np.ndarray):
+                coordinates = coordinates.tolist()
+
+            # Verifica che le coordinate siano una lista o una tupla di 4 elementi
+            if not isinstance(coordinates, (list, tuple)) or len(coordinates) != 4:
+                raise ValueError("bbox must be a list or tuple of 4 elements")
+
+            self.coordinates = coordinates
+
         self.format = format
         self.img_width = img_width
         self.img_height = img_height
-    
+
     def is_normalized(self) -> bool:
         """
         Check if the bounding box coordinates are normalized.
@@ -704,15 +734,23 @@ class BBox:
             Tuple[List[BBox], List[int]]: A tuple containing:
                 - A list of BBox objects (one for each annotation in the file).
                 - A list of class IDs (integers) corresponding to each bounding box.
+
+        Raises:
+            ValueError: If a line in the file does not contain exactly 5 values.
         """
         bboxes: List[BBox] = []
         class_ids: List[int] = []
         with open(file_path, 'r') as file:
             for line in file:
-                # Parse the line: class_id, x_center, y_center, width, height
-                class_id, x_center, y_center, width, height = map(float, line.strip().split())
-                # Convert class_id to int
+                # Split the line into components
+                components = line.strip().split()
+                if len(components) != 5:
+                    raise ValueError(f"Invalid YOLO format: expected 5 values, got {len(components)} in line: {line}")
+
+                # Parse the components
+                class_id, x_center, y_center, width, height = map(float, components)
                 class_id = int(class_id)
+
                 # Create a BBox object in CENTER format
                 bbox = cls(
                     [x_center, y_center, width, height], 
@@ -908,17 +946,38 @@ class BBox:
             x1, y1, w, h = self.coordinates
             return (x1, y1, x1 + w, y1 + h) 
 
+   
     def compute_iou(self, other: 'BBox', iou_type: IoUType = IoUType.IOU) -> float:
         """
         Calculate Intersection over Union (IoU) with another bounding box.
 
         Args:
             other: Another BBox object to calculate IoU with.
+            iou_type: Type of IoU to compute (default is standard IoU).
 
         Returns:
             float: IoU value between 0 and 1.
         """
-        return compute_iou(self.get_coordinates(BBoxFormat.CORNERS), other.get_coordinates(BBoxFormat.CORNERS), iou_type=iou_type)
+        # Verifica se le bounding boxes sono nello stesso formato (normalizzato o in pixel)
+        if self.is_normalized() != other.is_normalized():
+            # Se una è normalizzata e l'altra no, converti entrambe nello stesso formato
+            if self.is_normalized():
+                # Se self è normalizzata, normalizza anche other
+                if other.img_width is None or other.img_height is None:
+                    raise ValueError("Image dimensions must be set to normalize the bounding box.")
+                other.normalize(other.img_width, other.img_height)
+            else:
+                # Se self non è normalizzata, converti self in formato normalizzato
+                if self.img_width is None or self.img_height is None:
+                    raise ValueError("Image dimensions must be set to normalize the bounding box.")
+                self.normalize(self.img_width, self.img_height)
+
+        # Converti entrambe le bounding boxes in formato CORNERS
+        self_corners = self.get_coordinates(BBoxFormat.CORNERS)
+        other_corners = other.get_coordinates(BBoxFormat.CORNERS)
+
+        # Calcola l'IoU
+        return compute_iou(self_corners, other_corners, iou_type=iou_type)
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
@@ -962,21 +1021,25 @@ def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes
 
     return selected_bboxes
 
-def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> np.ndarray:
+
+def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> Image:
     """
     Draw bounding boxes on an image.
 
     Args:
-        image: Input image as a numpy array (H x W x C).
+        image: Input image as an instance of the Image class.
         bboxes: List of BBox objects to draw on the image.
         color: Color of the bounding boxes in BGR format (default is green).
         thickness: Thickness of the bounding box lines (default is 2).
 
     Returns:
-        Image with bounding boxes drawn as a numpy array.
+        A new instance of the Image class with bounding boxes drawn.
     """
+    # Get the image data as a numpy array
+    image_data = image.get_data()
+
     # Create a copy of the image to avoid modifying the original
-    image_with_boxes = image.copy()
+    image_with_boxes = image_data.copy()
 
     for bbox in bboxes:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
@@ -995,24 +1058,107 @@ def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int,
         # Draw the bounding box on the image
         cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
 
-    return image_with_boxes
+    # Create a new instance of the Image class with the modified image data
+    new_image = Image(image_with_boxes, color_mode=image.get_color_mode(), image_format=image.get_image_format())
+
+    return new_image
+
+def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> Image:
+    """
+    Draw bounding boxes on an image.
+
+    Args:
+        image: Input image as an instance of the Image class.
+        bboxes: List of BBox objects to draw on the image.
+        color: Color of the bounding boxes in BGR format (default is green).
+        thickness: Thickness of the bounding box lines (default is 2).
+
+    Returns:
+        A new instance of the Image class with bounding boxes drawn.
+    """
+    # Get the image data as a numpy array
+    image_data = image.get_data()
+
+    # Create a copy of the image to avoid modifying the original
+    image_with_boxes = image_data.copy()
+
+    for bbox in bboxes:
+        # Convert the bounding box to corners format (x1, y1, x2, y2)
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+
+        # Convert normalized coordinates to absolute pixel values if necessary
+        if bbox.img_width is not None and bbox.img_height is not None:
+            x1, y1, x2, y2 = corners
+            x1 = int(x1 * bbox.img_width)
+            y1 = int(y1 * bbox.img_height)
+            x2 = int(x2 * bbox.img_width)
+            y2 = int(y2 * bbox.img_height)
+        else:
+            x1, y1, x2, y2 = map(int, corners)
+
+        # Draw the bounding box on the image
+        cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
+
+    # Create a new instance of the Image class with the modified image data
+    new_image = Image(image_with_boxes, color_mode=image.get_color_mode(), image_format=image.get_image_format())
+
+    return new_image
+
 
 
 def draw_boxes_on_image_with_labels_score(
-    image: np.ndarray,
+    image: Image,
     bboxes_with_labels_score: List[Tuple[BBox, int, float]],
-    color: Tuple[int, int, int] = (0, 255, 0),
+    class_colors_bgr: Optional[Dict[int, Tuple[int, int, int]]] = None,
+    class_labels: Optional[Dict[int, str]] = None,
     thickness: int = 2,
     font: int = cv2.FONT_HERSHEY_SIMPLEX,
     font_scale: float = 0.6,
     font_thickness: int = 1,
-    text_color: Tuple[int, int, int] = (255, 255, 255),
-    text_background_color: Tuple[int, int, int] = (0, 0, 0),
-) -> np.ndarray:
+    text_color: Tuple[int, int, int] = (0, 0, 0),  # Black text by default
+    text_background_color: Tuple[int, int, int] = (255, 255, 255),  # White background by default
+) -> Image:
     """
     Draw bounding boxes on an image with class labels and scores.
+
+    Args:
+        image: The image on which to draw the bounding boxes, as an instance of the Image class.
+        bboxes_with_labels_score: A list of tuples containing the bounding box, class ID, and score.
+        class_colors_bgr: Optional dictionary mapping class IDs to colors (BGR format). Default is None.
+        class_labels: Optional dictionary mapping class IDs to label strings. Default is None.
+        thickness: Thickness of the bounding box lines.
+        font: Font type for the text.
+        font_scale: Font scale for the text.
+        font_thickness: Thickness of the text.
+        text_color: Color of the text. Default is black.
+        text_background_color: Color of the text background rectangle. Default is white.
+
+    Returns:
+        A new instance of the Image class with bounding boxes and labels drawn.
     """
-    image_with_boxes = image.copy()
+    # Get the image data as a numpy array
+    image_data = image.get_data()
+
+    # Determine the color mode of the input image
+    if len(image_data.shape) == 2 or (len(image_data.shape) == 3 and image_data.shape[-1] == 1):
+        input_color_mode = ColorMode.GRAY
+    elif image_data.shape[2] == 3:
+        # Check if the image is in RGB or BGR format (OpenCV uses BGR by default)
+        # Here we assume the input is BGR unless explicitly converted
+        input_color_mode = ColorMode.BGR
+    else:
+        raise ValueError("Unsupported image format. Expected grayscale (1 channel) or BGR/RGB (3 channels).")
+
+    # Convert grayscale images to BGR (3 channels) to support colored bounding boxes
+    if input_color_mode == ColorMode.GRAY:
+        image_with_boxes = cv2.cvtColor(image_data, cv2.COLOR_GRAY2BGR)
+        output_color_mode = ColorMode.BGR
+    else:
+        image_with_boxes = image_data.copy()
+        output_color_mode = input_color_mode
+
+    # Default color (white) if class_colors_bgr is not provided
+    default_color = (255, 255, 255)  # White in BGR format
 
     for bbox, class_id, score in bboxes_with_labels_score:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
@@ -1028,11 +1174,21 @@ def draw_boxes_on_image_with_labels_score(
         else:
             x1, y1, x2, y2 = map(int, corners)
 
+        # Get the color for the current class_id
+        if class_colors_bgr is not None:
+            color = class_colors_bgr.get(class_id, default_color)  # Use default color if class_id not found
+        else:
+            color = default_color  # Use default color if class_colors_bgr is not provided
+
         # Draw the bounding box on the image
         cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
 
-        # Prepare the label and score text
-        label = f"Class {class_id}"
+        # Get the label for the current class_id
+        if class_labels is not None:
+            label = class_labels.get(class_id, f"Class {class_id}")  # Use default label if class_id not found
+        else:
+            label = f"Class {class_id}"  # Use default label if class_labels is not provided
+
         score_text = f"{score:.2f}"
         text = f"{label} - {score_text}"
 
@@ -1068,4 +1224,7 @@ def draw_boxes_on_image_with_labels_score(
             lineType=cv2.LINE_AA,
         )
 
-    return image_with_boxes
+    # Create a new instance of the Image class with the modified image data
+    new_image = Image(image_with_boxes, color_mode=output_color_mode, image_format=image.get_image_format())
+
+    return new_image

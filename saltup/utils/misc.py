@@ -3,9 +3,31 @@ import fnmatch
 import shutil
 import os
 from tqdm import tqdm
-
 from saltup.utils import configure_logging
+from contextlib import contextmanager
+import sys
 
+
+@contextmanager
+def suppress_stdout():
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
+
+@contextmanager
+def suppress_stderr():
+    with open(os.devnull, 'w') as devnull:
+        old_stderr = sys.stderr
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stderr = old_stderr
+            
 
 def match_patterns(target: str, patterns: Iterable[Union[str, List[str]]]) -> bool:
     """

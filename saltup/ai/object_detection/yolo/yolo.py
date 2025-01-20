@@ -14,6 +14,7 @@ from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
 from saltup.utils.data.image.image_utils import load_image, ColorMode ,ImageFormat
 from saltup.ai.nn_manager import NeuralNetworkManager
+from saltup.utils.data.image.image_utils import Image
 
 
 class YoloOutput:
@@ -239,7 +240,7 @@ class BaseYolo(NeuralNetworkManager):
         return anchors_array
     
     @staticmethod
-    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR) -> np.ndarray:
+    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR, format = ImageFormat.HWC) ->  Image:
         """Load and convert image to specified color mode.
 
         Args:
@@ -253,14 +254,14 @@ class BaseYolo(NeuralNetworkManager):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        return load_image(image_path, color_mode)
+        return Image(image_path, color_mode , image_format=format)
     
     def get_number_image_channel(self) -> int:
         return self.model_input_shape[-1]
     
     def run(
         self,
-        image: np.ndarray,
+        image: Image,
         img_height: int, 
         img_width: int,
         confidence_thr: float=0.5,
@@ -324,10 +325,10 @@ class BaseYolo(NeuralNetworkManager):
         
         return yoloOut
 
-    @staticmethod
-    def evaluate(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], threshold_iou: float = 0.5) -> Dict[str, float]:
+    @classmethod
+    def evaluate(cls,predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], threshold_iou: float = 0.5) -> Dict[str, float]:
         """
-        Compute evaluation metrics (precision, recall, F1-score, mAP, mAP@50-95).
+        Compute evaluation metrics (precision, recall, F1-score, mAP, mAP@50-95) and TP, FP, FN.
 
         Args:
             predictions: YoloOutput object containing predicted bounding boxes, scores, and class IDs.
@@ -335,13 +336,13 @@ class BaseYolo(NeuralNetworkManager):
             threshold_iou: IoU threshold to consider a detection as a true positive.
 
         Returns:
-            Dictionary containing evaluation metrics.
+            Dictionary containing evaluation metrics and counts of TP, FP, FN.
         """
         if not ground_truth:  # No ground truth
-            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95"]}
+            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95", "tp", "fp", "fn"]}
 
         if not predictions.get_boxes():  # No predictions
-            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95"]}
+            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95", "tp", "fp", "fn"]}
 
         # Group ground truth and predictions by class ID
         gt_by_class = defaultdict(list)
@@ -415,10 +416,12 @@ class BaseYolo(NeuralNetworkManager):
             "f1": f1,
             "mAP": mAP,
             "mAP@50-95": mAP_50_95,
+            "tp": int(global_tp),  # True Positives
+            "fp": int(global_fp),  # False Positives
+            "fn": int(global_fn),  # False Negatives
         }
-
     def preprocess(self, 
-                   image: np.array,
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,

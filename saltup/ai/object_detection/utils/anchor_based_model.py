@@ -292,6 +292,12 @@ def tiny_anchors_based_nms(
     image_dims = np.array([width, height, width, height], dtype=np.float32)
     boxes = boxes * image_dims  # Convert to original image dimensions
     
+    #to avoid invalid boxes (negative values)
+    boxes[:, 0] = np.maximum(0, np.minimum(width, boxes[:, 0]))  # x1
+    boxes[:, 1] = np.maximum(0, np.minimum(height, boxes[:, 1]))  # y1
+    boxes[:, 2] = np.maximum(0, np.minimum(width, boxes[:, 2]))  # x2
+    boxes[:, 3] = np.maximum(0, np.minimum(height, boxes[:, 3]))  # y2
+
     # Wrap boxes into BBox objects
     bboxes = [BBox(box.tolist(), format=BBoxFormat.CORNERS, img_width=width, img_height=height) for box in boxes]
 
