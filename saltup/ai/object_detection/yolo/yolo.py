@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
 from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
-from saltup.utils.data.image.image_utils import load_image, ColorMode ,ImageFormat
+from saltup.utils.data.image.image_utils import ColorMode ,ImageFormat
 from saltup.ai.nn_manager import NeuralNetworkManager
 from saltup.utils.data.image.image_utils import Image
 

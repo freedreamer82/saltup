@@ -4,6 +4,7 @@ from typing import Optional, Union, Callable, Dict, Any, List, Tuple
 
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
+from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 
 class YoloDamo(BaseYolo):
@@ -50,7 +51,7 @@ class YoloDamo(BaseYolo):
          
 
     def preprocess(self,
-                   image: np.array,
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -73,10 +74,12 @@ class YoloDamo(BaseYolo):
         Raises:
             ValueError: For invalid or empty inputs
         """
-        self._validate_input(image)
+        
+        raw_image = image.get_data()
+        self._validate_input(raw_image)
 
         # Resize to target dimensions
-        image_data = cv2.resize(image, (target_width, target_height))
+        image_data = cv2.resize(raw_image, (target_width, target_height))
         
         # Convert to CHW format
         image_data = np.transpose(image_data, (2, 0, 1))
@@ -127,6 +130,11 @@ class YoloDamo(BaseYolo):
                 y1 *= y_factor
                 x2 *= x_factor
                 y2 *= y_factor
+                
+                x1 = np.maximum(0, np.minimum(image_width, x1))  # x1
+                y1 = np.maximum(0, np.minimum(image_height, y1))  # y1
+                x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
+                y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
                 
                 box_object = BBox((x1, y1, x2, y2), format=BBoxFormat.CORNERS,
                               img_width=image_width, img_height=image_height)

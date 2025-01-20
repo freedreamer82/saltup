@@ -57,7 +57,7 @@ class NeuralNetworkManager:
                 
             elif model_path.endswith(".keras") or model_path.endswith(".h5"):
                 # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
-                self.model = load_model(model_path, compile=False, safe_mode=False)  # Usa tf_keras.saving.load_model
+                self.model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
                 model_input_shape = self.model.input_shape  # Exclude the batch size
                 model_output_shape = self.model.output_shape  # Exclude the batch size
     
@@ -113,14 +113,17 @@ class NeuralNetworkManager:
             # PyTorch inference
             with torch.no_grad():
                 output = self.model(input_data)
-#        elif isinstance(self.model, tf.keras.Model):  #not worning...
+                return output
+#        elif isinstance(self.model, tf.keras.Model):  #not working...
         elif type(self.model).__name__ == 'Functional':  
             # TensorFlow/Keras inference
             output = self.model.predict(input_data)
+            return output
         elif isinstance(self.model, ort.InferenceSession):
             # ONNX inference
             input_name = self.model.get_inputs()[0].name
             output = self.model.run(None, {input_name: input_data})
+            return output
         elif isinstance(self.model, tf.lite.Interpreter):
             # TensorFlow Lite inference
             input_details = self.model.get_input_details()
@@ -134,6 +137,7 @@ class NeuralNetworkManager:
 
             # Get output tensor
             output = self.model.get_tensor(output_details[0]['index'])
+            return output
         else:
             raise RuntimeError("Unsupported model type.")
 

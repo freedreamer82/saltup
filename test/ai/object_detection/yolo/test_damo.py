@@ -7,6 +7,7 @@ from onnx import helper, TensorProto
 import tempfile
 from saltup.ai.object_detection.yolo.yolo import YoloType
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
+from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.yolo.impl.yolo_damo import YoloDamo
 
 # Function to create a simple ONNX model (mimicking YOLO output)
@@ -60,8 +61,8 @@ def yolo_damo_with_temp_model():
 # Test preprocess method
 def test_preprocess(yolo_damo_with_temp_model):
     # Generate a random image tensor
-    image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
-    
+    raw_image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
+    image = Image(raw_image)
     # Define target dimensions
     target_height, target_width = 320, 320
     

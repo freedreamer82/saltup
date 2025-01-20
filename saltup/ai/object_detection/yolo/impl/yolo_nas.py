@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from typing import Optional, Union, Callable, Dict, Any, List, Tuple
 
-from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, pad_image
+from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, Image
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 
@@ -50,7 +50,7 @@ class YoloNas(BaseYolo):
          
 
     def preprocess(self,
-                   image: np.array,
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -73,9 +73,10 @@ class YoloNas(BaseYolo):
         Raises:
             ValueError: For invalid or empty inputs
         """
-        self._validate_input(image)
+        raw_image = image.get_data()
+        self._validate_input(raw_image)
         
-        h, w = image.shape[:2]
+        h, w = raw_image.shape[:2]
 
         # Calculate size preserving aspect ratio
         aspect_ratio = min(target_width / w, target_height / h)
@@ -83,16 +84,18 @@ class YoloNas(BaseYolo):
         new_height = int(h * aspect_ratio)
 
         # Resize with high-quality algorithm
-        resized_image = cv2.resize(image, (new_width, new_height), 
+        resized_image = cv2.resize(raw_image, (new_width, new_height), 
                                  interpolation=cv2.INTER_AREA)
         
         if apply_padding:
-            image_data = pad_image(resized_image, target_height, target_width, 
+            image_data = Image.pad_image(resized_image, target_height, target_width, 
                                image_format=ImageFormat.HWC)
-        
+        else:
+            image_data = resized_image
         # Apply normalization
         image_data = normalize_method(image_data)
         
+        image_data = np.transpose(image_data, (2, 0, 1))    # HWC to CHW format (channel first)
         # Add batch dimension
         image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
         
@@ -138,6 +141,11 @@ class YoloNas(BaseYolo):
                 
                 # Extract the bounding box coordinates from the current row
                 x1, y1, x2, y2 = bboxes[i][0], bboxes[i][1], bboxes[i][2], bboxes[i][3]
+                
+                x1 = np.maximum(0, np.minimum(image_width, x1))  # x1
+                y1 = np.maximum(0, np.minimum(image_height, y1))  # y1
+                x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
+                y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
                 
                 box_object = BBox((x1, y1, x2, y2), format=BBoxFormat.CORNERS,
                               img_width=image_width, img_height=image_height)

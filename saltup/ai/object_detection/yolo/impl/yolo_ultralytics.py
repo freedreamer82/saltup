@@ -4,6 +4,7 @@ from typing import Optional, Union, Callable, Dict, Any, List, Tuple
 
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
+from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 
 class YoloUltralytics(BaseYolo):
@@ -113,7 +114,7 @@ class YoloUltralytics(BaseYolo):
         return img
     
     def preprocess(self,
-                   image: np.array,
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -138,7 +139,9 @@ class YoloUltralytics(BaseYolo):
         Returns:
             np.ndarray: Processed tensor ready for model input
         """
-        self._validate_input(image)
+        
+        raw_img = image.get_data()
+        self._validate_input(raw_img)
         
         # Override params temporarily if needed
         original_params = None
@@ -151,7 +154,7 @@ class YoloUltralytics(BaseYolo):
                                 if k in original_params)
         try:
             # Process image
-            processed_img = self.letterbox(image, (target_height, target_width), **kwargs)
+            processed_img = self.letterbox(raw_img, (target_height, target_width), **kwargs)
             
             # Normalize
             image_data = normalize_method(processed_img)
@@ -205,7 +208,12 @@ class YoloUltralytics(BaseYolo):
             y1 = (yc - h/2) * y_factor
             x2 = (xc + w/2) * x_factor
             y2 = (yc + h/2) * y_factor
-                
+            
+            x1 = np.maximum(0, np.minimum(image_width, x1))  # x1
+            y1 = np.maximum(0, np.minimum(image_height, y1))  # y1
+            x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
+            y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
+            
             box_object = BBox((x1, y1, x2, y2), format=BBoxFormat.CORNERS,
                             img_width=image_width, img_height=image_height)
             boxes.append(box_object)
