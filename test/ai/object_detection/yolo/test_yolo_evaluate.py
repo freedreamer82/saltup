@@ -21,16 +21,25 @@ class TestEvaluate(unittest.TestCase):
         self.create_simple_onnx_model(self.onnx_model_path)
 
         class MockYolo(BaseYolo):
-            def preprocess(self, image: np.array, target_height: int, target_width: int) -> np.ndarray:
+            def preprocess(self, 
+                   image: np.array,
+                   target_height:int, 
+                   target_width:int,        
+                   normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+                   apply_padding: bool = True,
+                   **kwargs: Any
+                   ) -> np.ndarray:
                 return image
 
-            def postprocess(self, raw_output: np.ndarray, image_height: int, image_width: int, confidence_thr: float = 0.5, iou_threshold: float = 0.5) -> List[Tuple[BBox, int, float]]:
+            def postprocess(self, raw_output: np.ndarray,
+                    image_height:int, image_width:int, confidence_thr:float=0.5, 
+                            iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
                 return []
 
         self.yolo = MockYolo(yolot=None, model_path=self.onnx_model_path, number_class=1)
 
     def create_simple_onnx_model(self, model_path: str):
-        # Creiamo un semplice modello ONNX con un solo nodo Identity
+        # We create a simple ONNX model with a single Identity node
         input = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 224, 224])
         output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
         node = helper.make_node('Identity', ['input'], ['output'])
@@ -44,7 +53,7 @@ class TestEvaluate(unittest.TestCase):
         os.rmdir(self.tmp_dir)
 
     def test_evaluate_perfect_match(self):
-        """Testa il caso in cui tutte le previsioni corrispondono esattamente alle verità fondamentali."""
+        """Test the case where all predictions correspond exactly to fundamental truths."""
         bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
         bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
@@ -58,7 +67,7 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["mAP@50-95"], 1.0)
 
     def test_evaluate_false_positives(self):
-        """Testa il caso in cui ci sono falsi positivi."""
+        """Test the case where there are false positives."""
         bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
         bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
         bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)   
@@ -136,7 +145,7 @@ class TestEvaluate(unittest.TestCase):
         Confronta i risultati della nostra implementazione con quella di torchmetrics.
         Verifica che entrambe le implementazioni producano risultati simili.
         """
-        # Crea i dati di test
+        # Create test data
         bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
         bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
         bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
@@ -149,15 +158,15 @@ class TestEvaluate(unittest.TestCase):
         
         ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 0)]
         
-        # Calcola le metriche con la nostra implementazione
+        # Calculate metrics with our implementation
         our_metrics = self.yolo.evaluate(predictions, ground_truth)
         
-        # Prepara i dati per torchmetrics
+        # Prepare data for torchmetrics
         pred_boxes = []
         pred_scores = []
         pred_labels = []
         
-        # Accedi ai dati di YoloOutput usando get_boxes()
+        # Access YoloOutput data using get_boxes()
         for box, cls, score in predictions.get_boxes():
             pred_boxes.append([
                 box.coordinates[0],
@@ -191,12 +200,12 @@ class TestEvaluate(unittest.TestCase):
             'labels': torch.tensor(gt_labels, dtype=torch.int32)
         }]
         
-        # Calcola le metriche con torchmetrics
+        # Calculate metrics with torchmetrics
         metric = MeanAveragePrecision(box_format='xyxy')
         metric.update(preds, target)
         torch_metrics = metric.compute()
         
-        # Confronta i risultati delle due implementazioni
+        # Compare the results of the two implementations
         self.assertAlmostEqual(
             our_metrics["mAP"],
             torch_metrics['map'].item(),
@@ -211,7 +220,7 @@ class TestEvaluate(unittest.TestCase):
             msg="Le metriche mAP@50-95 differiscono significativamente tra le implementazioni"
         )
         
-        # Verifica anche le altre metriche della nostra implementazione
+        # Check also the other metrics of our implementation
         self.assertGreater(our_metrics["precision"], 0.8)
         self.assertGreater(our_metrics["recall"], 0.8)
         self.assertGreater(our_metrics["f1"], 0.8)

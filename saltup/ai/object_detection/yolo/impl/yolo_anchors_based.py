@@ -75,7 +75,8 @@ class YoloAnchorsBased(BaseYolo):
         target_height: int,
         target_width: int,
         normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
-        apply_padding: bool = True
+        apply_padding: bool = True,
+        **kwargs: Any
     ) -> np.ndarray:
         """Process image for anchor-based object detection.
 
@@ -156,21 +157,17 @@ class YoloAnchorsBased(BaseYolo):
 
         Args:
             raw_output (np.ndarray): output matrix of the model
-            num_classes (int): number of classes
-            anchors (list[float]): anchors representting your dataset in normalized format
-            model_input_height (int): input height of the model
-            model_input_width (int): input width of the model
             image_height (int): input height of the current inferenced image
             image_width (int): input width of the current inferenced image
-            max_output_boxes (int): maximum number of bounding box to be considered for non-max suppression
             confidence_thr (float): the threshold of the confidence score
             iou_threshold (float): the threshold of the Intersection over Union for NMS
 
         Returns:
-            list[list]: list of the preicted bounding box in the image
+            List[Tuple[BBox, int, float]]: List of predicted bounding boxes in the image with their respective score and class_id.
         """
         anchors = np.array(self.anchors).reshape(-1, 2)
         input_shape = (self.img_input_height, self.img_input_width)
+        raw_output = raw_output[0]
         preds_decoded = postprocess_decode(
             raw_output, anchors, self.number_class, input_shape, calc_loss=False)
         input_image_shape = [image_height, image_width]

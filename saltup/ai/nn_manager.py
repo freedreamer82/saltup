@@ -108,35 +108,34 @@ class NeuralNetworkManager:
             raise RuntimeError("Model is not loaded. Call `load_model` first.")
 
         start_time = time.time()  # Capture start time
-       
-        with suppress_stdout():
-            if isinstance(self.model, torch.nn.Module):
-                # PyTorch inference
-                with torch.no_grad():
-                    output = self.model(input_data)
-    #        elif isinstance(self.model, tf.keras.Model):  #not worning...
-            elif type(self.model).__name__ == 'Functional':  
-                # TensorFlow/Keras inference
-                output = self.model.predict(input_data)
-            elif isinstance(self.model, ort.InferenceSession):
-                # ONNX inference
-                input_name = self.model.get_inputs()[0].name
-                output = self.model.run(None, {input_name: input_data})[0]
-            elif isinstance(self.model, tf.lite.Interpreter):
-                # TensorFlow Lite inference
-                input_details = self.model.get_input_details()
-                output_details = self.model.get_output_details()
 
-                # Set input tensor
-                self.model.set_tensor(input_details[0]['index'], input_data)
+        if isinstance(self.model, torch.nn.Module):
+            # PyTorch inference
+            with torch.no_grad():
+                output = self.model(input_data)
+#        elif isinstance(self.model, tf.keras.Model):  #not worning...
+        elif type(self.model).__name__ == 'Functional':  
+            # TensorFlow/Keras inference
+            output = self.model.predict(input_data)
+        elif isinstance(self.model, ort.InferenceSession):
+            # ONNX inference
+            input_name = self.model.get_inputs()[0].name
+            output = self.model.run(None, {input_name: input_data})
+        elif isinstance(self.model, tf.lite.Interpreter):
+            # TensorFlow Lite inference
+            input_details = self.model.get_input_details()
+            output_details = self.model.get_output_details()
 
-                # Run inference
-                self.model.invoke()
+            # Set input tensor
+            self.model.set_tensor(input_details[0]['index'], input_data)
 
-                # Get output tensor
-                output = self.model.get_tensor(output_details[0]['index'])
-            else:
-                raise RuntimeError("Unsupported model type.")
+            # Run inference
+            self.model.invoke()
+
+            # Get output tensor
+            output = self.model.get_tensor(output_details[0]['index'])
+        else:
+            raise RuntimeError("Unsupported model type.")
 
             end_time = time.time()  # Capture end time
             self.inference_time_ms = (end_time - start_time) * 1000  # Calculate inference time in milliseconds

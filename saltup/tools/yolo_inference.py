@@ -163,7 +163,10 @@ def main(args):
         class_labels = []
 
     yolotype = YoloType.from_string(args.type)
-    yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
+    if args.anchors:
+        yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
+    else:
+        yolo = YoloFactory.create(yolotype, args.model, args.num_class)
     
     if os.path.isdir(args.img):
         image_paths = [
