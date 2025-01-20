@@ -113,17 +113,17 @@ class NeuralNetworkManager:
             # PyTorch inference
             with torch.no_grad():
                 output = self.model(input_data)
-                return output
+                
 #        elif isinstance(self.model, tf.keras.Model):  #not working...
         elif type(self.model).__name__ == 'Functional':  
             # TensorFlow/Keras inference
             output = self.model.predict(input_data)
-            return output
+            
         elif isinstance(self.model, ort.InferenceSession):
             # ONNX inference
             input_name = self.model.get_inputs()[0].name
             output = self.model.run(None, {input_name: input_data})
-            return output
+            
         elif isinstance(self.model, tf.lite.Interpreter):
             # TensorFlow Lite inference
             input_details = self.model.get_input_details()
@@ -137,14 +137,14 @@ class NeuralNetworkManager:
 
             # Get output tensor
             output = self.model.get_tensor(output_details[0]['index'])
-            return output
+            
         else:
             raise RuntimeError("Unsupported model type.")
 
-            end_time = time.time()  # Capture end time
-            self.inference_time_ms = (end_time - start_time) * 1000  # Calculate inference time in milliseconds
+        end_time = time.time()  # Capture end time
+        self.inference_time_ms = (end_time - start_time) * 1000  # Calculate inference time in milliseconds
 
-            return output
+        return output
 
     def get_inference_time_ms(self) -> float:
         """
