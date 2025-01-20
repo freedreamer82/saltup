@@ -188,6 +188,11 @@ class YoloAnchorsBased(BaseYolo):
             score = scores[i]
             box_object = BBox(box, format=BBoxFormat.CORNERS,
                               img_width=image_width, img_height=image_height)
-            result.append((box_object, int(c), score))
+            if all(coord >= 0 for coord in box):
+                box_object = BBox(box, format=BBoxFormat.CORNERS,
+                                img_width=image_width, img_height=image_height)
+                result.append((box_object, int(c), score))
+            else:
+                print(f"Warning: Box {box} contiene valori negativi e verrà ignorata.")
 
         return result

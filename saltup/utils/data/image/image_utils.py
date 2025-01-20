@@ -3,7 +3,7 @@ import cv2
 from enum import IntEnum, auto ,Enum
 from pathlib import Path
 from typing import Union
- 
+import random 
 
 class ColorsBGR(Enum):
     RED = (0, 0, 255)        # Rosso in formato BGR
@@ -17,6 +17,15 @@ class ColorsBGR(Enum):
     WHITE = (255, 255, 255)  # Bianco in formato BGR
     BLACK = (0, 0, 0)        # Nero in formato BGR
 
+    def to_rgb(self):
+        """
+        Convert the BGR color to RGB format.
+        
+        Returns:
+            tuple: The color in RGB format.
+        """
+        return self.value[::-1]  # Reverse the BGR tuple to get RGB
+
 class ColorMode(IntEnum):
     RGB = auto()
     BGR = auto()
@@ -25,6 +34,37 @@ class ColorMode(IntEnum):
 class ImageFormat(IntEnum):
     HWC = auto()  # Height, Width, Channels (default)
     CHW = auto()  # Channels, Height, Width
+
+
+
+
+def generate_random_bgr_colors(num_colors):
+    """
+    Generates a list of distinct colors in BGR format. If the number of requested colors
+    exceeds the number of predefined colors in the ColorsBGR enum, the colors are reused
+    in a cyclic manner.
+    
+    Args:
+        num_colors (int): Number of colors to generate.
+    
+    Returns:
+        list: A list of colors in BGR format.
+    """
+    # Extract predefined colors from the ColorsBGR enum
+    predefined_colors = [color.value for color in ColorsBGR]
+    
+    # If the number of requested colors is less than or equal to the predefined colors,
+    # return a subset of the predefined colors.
+    if num_colors <= len(predefined_colors):
+        return predefined_colors[:num_colors]
+    
+    # If more colors are needed, reuse the predefined colors in a cyclic manner.
+    colors = []
+    for i in range(num_colors):
+        color = predefined_colors[i % len(predefined_colors)]  # Cycle through the predefined colors
+        colors.append(color)
+    
+    return colors
 
 def convert_image_format(image: np.ndarray, target_format: ImageFormat) -> np.ndarray:
     """Convert an image between HWC and CHW formats.
