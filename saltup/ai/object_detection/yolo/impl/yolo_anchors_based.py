@@ -8,8 +8,8 @@ from saltup.ai.object_detection.utils.anchor_based_model import (
     postprocess_decode, postprocess_filter_boxes, tiny_anchors_based_nms
 )
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
-
 from saltup.utils.data.image.image_utils import  ColorMode ,ImageFormat
+from saltup.utils.data.image.image_utils import Image
 
 class YoloAnchorsBased(BaseYolo):
     """
@@ -71,7 +71,7 @@ class YoloAnchorsBased(BaseYolo):
 
     def preprocess(
         self,
-        image: np.ndarray,
+        image: Image,
         target_height: int,
         target_width: int,
         normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -101,46 +101,48 @@ class YoloAnchorsBased(BaseYolo):
             ValueError: For invalid image formats
             TypeError: For incorrect input types
         """
+
+        raw_img = image.get_data()
         # Validate input format
-        self._validate_input(image)
+        self._validate_input(raw_img)
 
         # Determine channel configuration
-        is_single_channel = len(image.shape) == 2
+        is_single_channel = len(raw_img.shape) == 2
 
         # Extract dimensions
         if is_single_channel:
-            height, width = image.shape
+            height, width = raw_img.shape
             channels = 1
         else:
-            height, width, channels = image.shape
+            height, width, channels = raw_img.shape
 
         # Handle square padding if needed
         if target_height == target_width and apply_padding:
             max_dim = max(height, width)
             if is_single_channel:
                 padded = np.full((max_dim, max_dim), 114, dtype=np.uint8)
-                padded[0:height, 0:width] = image
+                padded[0:height, 0:width] = raw_img
             else:
                 padded = np.full((max_dim, max_dim, channels),
                                  114, dtype=np.uint8)
-                padded[0:height, 0:width, :] = image
-            image = padded
+                padded[0:height, 0:width, :] = raw_img
+            raw_img = padded
 
         # Scale to target dimensions
-        image = cv2.resize(image, (target_width, target_height),
+        raw_img = cv2.resize(raw_img, (target_width, target_height),
                            interpolation=cv2.INTER_LINEAR)
 
         # Normalize pixel values
-        image = normalize_method(image)
+        raw_img = normalize_method(raw_img)
 
         # Ensure proper channel dimension
         if channels == 1:
-            image = np.expand_dims(image, axis=-1)
+            raw_img = np.expand_dims(raw_img, axis=-1)
 
         # Prepare batch dimension
-        image = np.expand_dims(image, axis=0)
+        raw_img = np.expand_dims(raw_img, axis=0)
 
-        return image.astype(np.float32)
+        return raw_img.astype(np.float32)
 
     def postprocess(
         self,

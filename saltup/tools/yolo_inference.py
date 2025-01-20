@@ -47,13 +47,13 @@ def process_image(yolo, image_path, args):
         class_ids: Class IDs of the detected objects.
     """
     image = BaseYolo.load_image(image_path, ColorMode.GRAY if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
-    img_height, img_width, _ = image.shape
+    img_height, img_width, _ = image.get_shape()
     
     yoloOut = yolo.run(image, img_height, img_width, args.conf_thres, args.iou_thres)
     bboxes_with_labels_score = yoloOut.get_boxes()
     
     if args.gui:
-        image_with_boxes = draw_boxes_on_image_with_labels_score(image, bboxes_with_labels_score)
+        image_with_boxes = draw_boxes_on_image_with_labels_score(image.get_data(), bboxes_with_labels_score)
         cv2.imshow("YOLO Output", image_with_boxes)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
@@ -193,7 +193,7 @@ def main(args):
         try:
             # Process the image
             image = BaseYolo.load_image(image_path, ColorMode.GRAY if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
-            img_height, img_width, _ = image.shape
+            img_height, img_width, _ = image.get_shape()
             
             yoloOut = yolo.run(image, img_height, img_width, args.conf_thres, args.iou_thres)
                 
@@ -242,7 +242,7 @@ def main(args):
 
             if args.gui:               
                 # Draw bounding boxes on the image
-                image_with_boxes, _ = draw_boxes_on_image_with_labels_score(image, 
+                image_with_boxes, _ = draw_boxes_on_image_with_labels_score(image.get_data(), 
                                                                             yoloOut.get_boxes(format=BBoxFormat.CORNERS),
                                                                             class_colors_bgr=class_colors_dict,
                                                                             class_labels=class_labels_dict)

@@ -255,6 +255,9 @@ class Image:
         self.image_format = image_format
         self.image = self._load_image()
 
+    def get_shape(self) -> tuple:
+        return self.image.shape
+    
     def get_color_mode(self) -> ColorMode:
         """Get the color mode of the image."""
         return self.color_mode

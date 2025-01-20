@@ -14,6 +14,7 @@ from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
 from saltup.utils.data.image.image_utils import load_image, ColorMode ,ImageFormat
 from saltup.ai.nn_manager import NeuralNetworkManager
+from saltup.utils.data.image.image_utils import Image
 
 
 class YoloOutput:
@@ -235,7 +236,7 @@ class BaseYolo(NeuralNetworkManager):
         return anchors_array
     
     @staticmethod
-    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR) -> np.ndarray:
+    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR, format = ImageFormat.HWC) ->  Image:
         """Load and convert image to specified color mode.
 
         Args:
@@ -249,14 +250,14 @@ class BaseYolo(NeuralNetworkManager):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        return load_image(image_path, color_mode)
+        return Image(image_path, color_mode , image_format=format)
     
     def get_number_image_channel(self) -> int:
         return self.model_input_shape[-1]
     
     def run(
         self,
-        image: np.ndarray,
+        image: Image,
         img_height: int, 
         img_width: int,
         confidence_thr: float=0.5,
@@ -416,7 +417,7 @@ class BaseYolo(NeuralNetworkManager):
             "fn": int(global_fn),  # False Negatives
         }
     def preprocess(self, 
-                   image: np.array,
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
