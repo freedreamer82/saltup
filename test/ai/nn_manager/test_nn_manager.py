@@ -79,7 +79,7 @@ def sample_models():
             # Instantiate the model
             model = SimpleModel(input_shape, output_shape)
             torch.save(model.state_dict(), model_paths["pt"])
-        create_pytorch_model()
+        #create_pytorch_model()
 
     # Create and save a TensorFlow/Keras model (.keras)
     if not os.path.exists(model_paths["keras"]):
