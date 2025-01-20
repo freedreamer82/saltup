@@ -2,51 +2,49 @@ import unittest
 import numpy as np
 import cv2
 from typing import List, Tuple
-
-
-from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat , draw_boxes_on_image, draw_boxes_on_image_with_labels_score
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, draw_boxes_on_image, draw_boxes_on_image_with_labels_score
+from saltup.utils.data.image.image_utils import generate_random_bgr_colors
 
 class TestDrawBoxesOnImage(unittest.TestCase):
     def test_draw_boxes_on_image(self):
         """
-        Test per la funzione `draw_boxes_on_image`.
-        Verifica che le bounding box vengano disegnate correttamente sull'immagine.
+        Test for the `draw_boxes_on_image` function.
+        Verifies that bounding boxes are drawn correctly on the image.
         """
-        # Crea un'immagine vuota (480x640, 3 canali di colore)
+        # Create an empty image (480x640, 3 color channels)
         image = np.zeros((480, 640, 3), dtype=np.uint8)
 
-        # Crea alcune bounding box (in formato normalizzato)
+        # Create some bounding boxes (in normalized format)
         bbox1 = BBox([0.2, 0.3, 0.4, 0.5], format=BBoxFormat.CENTER, img_width=640, img_height=480)
         bbox2 = BBox([0.6, 0.5, 0.3, 0.4], format=BBoxFormat.CENTER, img_width=640, img_height=480)
 
-        # Lista di bounding box
+        # List of bounding boxes
         bboxes = [bbox1, bbox2]
 
-        # Disegna le bounding box sull'immagine
+        # Draw the bounding boxes on the image
         image_with_boxes = draw_boxes_on_image(image, bboxes, color=(0, 255, 0), thickness=2)
 
-        # Verifica che l'immagine non sia vuota
+        # Verify that the image is not empty
         self.assertFalse(np.array_equal(image, image_with_boxes))
 
-        # Verifica che ci siano pixel verdi (colore delle bounding box)
+        # Verify that there are green pixels (color of the bounding boxes)
         green_pixels = np.where(
             (image_with_boxes[:, :, 0] == 0) &
             (image_with_boxes[:, :, 1] == 255) &
             (image_with_boxes[:, :, 2] == 0)
         )
-        self.assertGreater(len(green_pixels[0]), 0)  # Ci dovrebbero essere pixel verdi
+        self.assertGreater(len(green_pixels[0]), 0)  # There should be green pixels
+
 
 class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
-  
-
     def test_draw_text(self):
-        # Crea un'immagine vuota
+        # Create an empty image
         image = np.zeros((100, 100, 3), dtype=np.uint8)
 
-        # Disegna un testo bianco
+        # Draw white text
         cv2.putText(image, "Test", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        # Verifica che ci siano pixel bianchi
+        # Verify that there are white pixels
         white_pixels = np.where(
             (image[:, :, 0] == 255) &
             (image[:, :, 1] == 255) &
@@ -56,58 +54,81 @@ class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
 
     def test_draw_boxes_on_image_with_labels_score(self):
         """
-        Test per la funzione `draw_boxes_on_image_with_labels_score`.
-        Verifica che le bounding box, le etichette e i punteggi vengano disegnati correttamente.
+        Test for the `draw_boxes_on_image_with_labels_score` function.
+        Verifies that bounding boxes, labels, and scores are drawn correctly.
         """
-        # Crea un'immagine vuota (480x640, 3 canali di colore)
+        # Create an empty image (480x640, 3 color channels)
         image = np.zeros((480, 640, 3), dtype=np.uint8)
 
-        # Crea alcune bounding box (in formato normalizzato)
+        # Create some bounding boxes (in normalized format)
         bbox1 = BBox([0.2, 0.3, 0.4, 0.5], format=BBoxFormat.CENTER, img_width=640, img_height=480)
         bbox2 = BBox([0.6, 0.5, 0.3, 0.4], format=BBoxFormat.CENTER, img_width=640, img_height=480)
 
-        # Lista di tuple (BBox, class_id, score)
+        # List of tuples (BBox, class_id, score)
         bboxes_with_labels_score = [
             (bbox1, 1, 0.95),  # (BBox, class_id, score)
             (bbox2, 2, 0.87),
         ]
 
-        # Disegna le bounding box con etichette e punteggi sull'immagine
-        image_with_boxes = draw_boxes_on_image_with_labels_score(
+        # Determine the number of unique class IDs
+        unique_class_ids = set(class_id for _, class_id, _ in bboxes_with_labels_score)
+        num_classes = len(unique_class_ids)
+
+        # Generate random colors for the classes
+        class_colors = generate_random_bgr_colors(num_classes)  # Generate colors for all classes
+        class_colors_dict = {class_id: color for class_id, color in zip(unique_class_ids, class_colors)}
+
+        # Draw bounding boxes, labels, and scores on the image
+        result = draw_boxes_on_image_with_labels_score(
             image,
             bboxes_with_labels_score,
-            color=(0, 255, 0),  # Colore delle box (verde)
-            thickness=10,        # Spessore delle linee
-            font_scale=1,     # Scala del font
-            text_color=(255, 255, 255),  # Colore del testo (bianco)
-            text_background_color=(0, 0, 0),  # Colore dello sfondo del testo (nero)
+            class_colors_bgr=class_colors_dict,
+            thickness=2,  # Line thickness
+            font_scale=0.5,  # Font scale
+            text_color=(255, 255, 255),  # Text color (white)
+            text_background_color=(0, 0, 0),  # Text background color (black)
         )
 
-        # Verifica che l'immagine non sia vuota
+        # Ensure the result is a NumPy array (image)
+        if isinstance(result, tuple):
+            image_with_boxes = result[0]  # Extract the image from the tuple
+        else:
+            image_with_boxes = result
+
+        # Verify that the image is not empty
         self.assertFalse(np.array_equal(image, image_with_boxes))
 
-        # Verifica che ci siano pixel verdi (colore delle bounding box)
-        green_pixels = np.where(
-            (image_with_boxes[:, :, 0] == 0) &
-            (image_with_boxes[:, :, 1] == 255) &
-            (image_with_boxes[:, :, 2] == 0)
-        )
-        self.assertGreater(len(green_pixels[0]), 0)  # Ci dovrebbero essere pixel verdi
+        # Verify that the bounding boxes are drawn with the correct colors
+        for bbox, class_id, _ in bboxes_with_labels_score:
+            # Get the color for the current class
+            color = class_colors_dict[class_id]
 
-            # Verifica che ci siano pixel bianchi (colore del testo)
-        # Usiamo una condizione rilassata per trovare pixel "quasi bianchi"
-        white_pixels = np.where(
-            (image_with_boxes[:, :, 0] > 250) &
-            (image_with_boxes[:, :, 1] > 250) &
-            (image_with_boxes[:, :, 2] > 250)
-        )
-     #   self.assertGreater(len(white_pixels[0]), 0)  # Ci dovrebbero essere pixel quasi bianchi
+            # Convert the bounding box coordinates to integers
+            x1, y1, x2, y2 = bbox.get_coordinates(BBoxFormat.CORNERS)
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
+            # Ensure coordinates are within the image dimensions
+            x1 = max(0, min(x1, image_with_boxes.shape[1] - 1))
+            y1 = max(0, min(y1, image_with_boxes.shape[0] - 1))
+            x2 = max(0, min(x2, image_with_boxes.shape[1] - 1))
+            y2 = max(0, min(y2, image_with_boxes.shape[0] - 1))
 
-        # # Debug: Visualizza l'immagine
-        # cv2.imshow("Image with Boxes and Labels", image_with_boxes)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+            # Check the color of the bounding box edges
+            # Top edge
+            top_edge = image_with_boxes[y1, x1:x2, :]
+            self.assertTrue(np.all(top_edge == color), f"Top edge color mismatch for class {class_id}")
+
+            # Bottom edge
+            bottom_edge = image_with_boxes[y2, x1:x2, :]
+            self.assertTrue(np.all(bottom_edge == color), f"Bottom edge color mismatch for class {class_id}")
+
+            # Left edge
+            left_edge = image_with_boxes[y1:y2, x1, :]
+            self.assertTrue(np.all(left_edge == color), f"Left edge color mismatch for class {class_id}")
+
+            # Right edge
+            right_edge = image_with_boxes[y1:y2, x2, :]
+            self.assertTrue(np.all(right_edge == color), f"Right edge color mismatch for class {class_id}")
 
 
 if __name__ == "__main__":
