@@ -5,7 +5,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logging
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable OneDNN optimizations
 import time
 import argparse
-import cv2
 import numpy as np
 from typing import List, Tuple, Dict
 from tqdm import tqdm
@@ -23,7 +22,6 @@ import sys
 def signal_handler(sig, frame):
     """Handle Ctrl+C signal to gracefully exit the program."""
     print("\nProgram interrupted with Ctrl + C!")
-    cv2.destroyAllWindows()  # Close all OpenCV windows
     sys.exit(0)  # Terminate the script
 
 def robust_mean(times):
@@ -53,10 +51,8 @@ def process_image(yolo, image_path, args):
     bboxes_with_labels_score = yoloOut.get_boxes()
     
     if args.gui:
-        image_with_boxes = draw_boxes_on_image_with_labels_score(image.get_data(), bboxes_with_labels_score)
-        cv2.imshow("YOLO Output", image_with_boxes)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        image_with_boxes = draw_boxes_on_image_with_labels_score(image, bboxes_with_labels_score)
+        image_with_boxes.show()    
     
     boxes = [bbox for bbox, _, _ in bboxes_with_labels_score]
     class_ids = [class_id for _, class_id, _ in bboxes_with_labels_score]
@@ -242,20 +238,13 @@ def main(args):
 
             if args.gui:               
                 # Draw bounding boxes on the image
-                image_with_boxes, _ = draw_boxes_on_image_with_labels_score(image.get_data(), 
-                                                                            yoloOut.get_boxes(format=BBoxFormat.CORNERS),
-                                                                            class_colors_bgr=class_colors_dict,
-                                                                            class_labels=class_labels_dict)
+                image_with_boxes = draw_boxes_on_image_with_labels_score(image, 
+                                                                        yoloOut.get_boxes(format=BBoxFormat.CORNERS),
+                                                                        class_colors_bgr=class_colors_dict,
+                                                                        class_labels=class_labels_dict)
                 
-                cv2.imshow("YOLO Output", image_with_boxes)
-                while True:
-                    key = cv2.waitKey(1) & 0xFF  # Wait for 1 ms and check the key pressed
-                    if key == ord('q') or key == 27:  # Press 'q' or 'ESC' to exit
-                        break
-                    if cv2.getWindowProperty("YOLO Output", cv2.WND_PROP_VISIBLE) < 1:  # If the window is closed
-                        break
-                cv2.destroyAllWindows()  # Close all OpenCV windows
-        
+                image_with_boxes.show()
+     
         except Exception as e:
             tqdm.write(f"Error processing image {image_path}: {e}")
             continue

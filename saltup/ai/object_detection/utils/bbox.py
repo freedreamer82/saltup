@@ -78,7 +78,7 @@ from typing import List, Tuple, Union
 from enum import auto, IntEnum ,Enum
 from typing import List, Tuple, Dict, Optional
 from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR 
-
+from saltup.utils.data.image.image_utils import Image
 
 class BBoxFormat(IntEnum):
     CORNERS = auto()
@@ -1021,21 +1021,25 @@ def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes
 
     return selected_bboxes
 
-def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> np.ndarray:
+
+def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> Image:
     """
     Draw bounding boxes on an image.
 
     Args:
-        image: Input image as a numpy array (H x W x C).
+        image: Input image as an instance of the Image class.
         bboxes: List of BBox objects to draw on the image.
         color: Color of the bounding boxes in BGR format (default is green).
         thickness: Thickness of the bounding box lines (default is 2).
 
     Returns:
-        Image with bounding boxes drawn as a numpy array.
+        A new instance of the Image class with bounding boxes drawn.
     """
+    # Get the image data as a numpy array
+    image_data = image.get_data()
+
     # Create a copy of the image to avoid modifying the original
-    image_with_boxes = image.copy()
+    image_with_boxes = image_data.copy()
 
     for bbox in bboxes:
         # Convert the bounding box to corners format (x1, y1, x2, y2)
@@ -1054,12 +1058,56 @@ def draw_boxes_on_image(image: np.ndarray, bboxes: List[BBox], color: Tuple[int,
         # Draw the bounding box on the image
         cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
 
-    return image_with_boxes
-  
- 
- 
+    # Create a new instance of the Image class with the modified image data
+    new_image = Image(image_with_boxes, color_mode=image.get_color_mode(), image_format=image.get_image_format())
+
+    return new_image
+
+def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> Image:
+    """
+    Draw bounding boxes on an image.
+
+    Args:
+        image: Input image as an instance of the Image class.
+        bboxes: List of BBox objects to draw on the image.
+        color: Color of the bounding boxes in BGR format (default is green).
+        thickness: Thickness of the bounding box lines (default is 2).
+
+    Returns:
+        A new instance of the Image class with bounding boxes drawn.
+    """
+    # Get the image data as a numpy array
+    image_data = image.get_data()
+
+    # Create a copy of the image to avoid modifying the original
+    image_with_boxes = image_data.copy()
+
+    for bbox in bboxes:
+        # Convert the bounding box to corners format (x1, y1, x2, y2)
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+
+        # Convert normalized coordinates to absolute pixel values if necessary
+        if bbox.img_width is not None and bbox.img_height is not None:
+            x1, y1, x2, y2 = corners
+            x1 = int(x1 * bbox.img_width)
+            y1 = int(y1 * bbox.img_height)
+            x2 = int(x2 * bbox.img_width)
+            y2 = int(y2 * bbox.img_height)
+        else:
+            x1, y1, x2, y2 = map(int, corners)
+
+        # Draw the bounding box on the image
+        cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
+
+    # Create a new instance of the Image class with the modified image data
+    new_image = Image(image_with_boxes, color_mode=image.get_color_mode(), image_format=image.get_image_format())
+
+    return new_image
+
+
+
 def draw_boxes_on_image_with_labels_score(
-    image: np.ndarray,
+    image: Image,
     bboxes_with_labels_score: List[Tuple[BBox, int, float]],
     class_colors_bgr: Optional[Dict[int, Tuple[int, int, int]]] = None,
     class_labels: Optional[Dict[int, str]] = None,
@@ -1069,12 +1117,12 @@ def draw_boxes_on_image_with_labels_score(
     font_thickness: int = 1,
     text_color: Tuple[int, int, int] = (0, 0, 0),  # Black text by default
     text_background_color: Tuple[int, int, int] = (255, 255, 255),  # White background by default
-) -> Tuple[np.ndarray, ColorMode]:
+) -> Image:
     """
     Draw bounding boxes on an image with class labels and scores.
 
     Args:
-        image: The image on which to draw the bounding boxes.
+        image: The image on which to draw the bounding boxes, as an instance of the Image class.
         bboxes_with_labels_score: A list of tuples containing the bounding box, class ID, and score.
         class_colors_bgr: Optional dictionary mapping class IDs to colors (BGR format). Default is None.
         class_labels: Optional dictionary mapping class IDs to label strings. Default is None.
@@ -1086,14 +1134,15 @@ def draw_boxes_on_image_with_labels_score(
         text_background_color: Color of the text background rectangle. Default is white.
 
     Returns:
-        A tuple containing:
-        - The image with bounding boxes and labels drawn.
-        - The color mode of the output image (ColorMode).
+        A new instance of the Image class with bounding boxes and labels drawn.
     """
+    # Get the image data as a numpy array
+    image_data = image.get_data()
+
     # Determine the color mode of the input image
-    if len(image.shape) == 2 or (len(image.shape) == 3 and image.shape[-1] == 1):
+    if len(image_data.shape) == 2 or (len(image_data.shape) == 3 and image_data.shape[-1] == 1):
         input_color_mode = ColorMode.GRAY
-    elif image.shape[2] == 3:
+    elif image_data.shape[2] == 3:
         # Check if the image is in RGB or BGR format (OpenCV uses BGR by default)
         # Here we assume the input is BGR unless explicitly converted
         input_color_mode = ColorMode.BGR
@@ -1102,10 +1151,10 @@ def draw_boxes_on_image_with_labels_score(
 
     # Convert grayscale images to BGR (3 channels) to support colored bounding boxes
     if input_color_mode == ColorMode.GRAY:
-        image_with_boxes = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        image_with_boxes = cv2.cvtColor(image_data, cv2.COLOR_GRAY2BGR)
         output_color_mode = ColorMode.BGR
     else:
-        image_with_boxes = image.copy()
+        image_with_boxes = image_data.copy()
         output_color_mode = input_color_mode
 
     # Default color (white) if class_colors_bgr is not provided
@@ -1175,4 +1224,7 @@ def draw_boxes_on_image_with_labels_score(
             lineType=cv2.LINE_AA,
         )
 
-    return image_with_boxes, output_color_mode
+    # Create a new instance of the Image class with the modified image data
+    new_image = Image(image_with_boxes, color_mode=output_color_mode, image_format=image.get_image_format())
+
+    return new_image

@@ -4,6 +4,11 @@ from enum import IntEnum, auto ,Enum
 from pathlib import Path
 from typing import Union
 import random 
+from typing import Union, Optional
+from pathlib import Path
+import numpy as np
+import cv2
+
 
 class ColorsBGR(Enum):
     RED = (0, 0, 255)        # Rosso in formato BGR
@@ -247,17 +252,87 @@ def invert_pixel(img: np.ndarray) -> np.ndarray:
 
     return inverted_img
 
+ 
 
 class Image:
-    def __init__(self, image_path: Union[str, Path], color_mode: ColorMode = ColorMode.BGR, image_format: ImageFormat = ImageFormat.HWC):
-        self.image_path = Path(image_path) if isinstance(image_path, str) else image_path
+    def __init__(
+        self,
+        image_input: Union[str, Path, np.ndarray],  # Accepts either a file path or a NumPy array
+        color_mode: ColorMode = ColorMode.BGR,
+        image_format: ImageFormat = ImageFormat.HWC,
+    ):
+        """
+        Initialize an Image instance.
+
+        Args:
+            image_input: Path to the image file (str or Path) or a NumPy array containing the image data.
+            color_mode: Color mode of the image (BGR, RGB, or GRAY). Default is BGR.
+            image_format: Format of the image (HWC or CHW). Default is HWC.
+        """
         self.color_mode = color_mode
         self.image_format = image_format
-        self.image = self._load_image()
 
+        # Check if the input is a NumPy array
+        if isinstance(image_input, np.ndarray):
+            self.image = self._process_image_data(image_input)
+        else:
+            # Otherwise, treat it as a file path
+            self.image_path = Path(image_input) if isinstance(image_input, str) else image_input
+            self.image = self._load_image()
+
+    def _process_image_data(self, image_data: np.ndarray) -> np.ndarray:
+        """
+        Process the provided NumPy array to ensure it matches the desired color mode and format.
+
+        Args:
+            image_data: NumPy array containing the image data.
+
+        Returns:
+            Processed image as a NumPy array.
+        """
+        if not isinstance(image_data, np.ndarray):
+            raise ValueError("image_data must be a NumPy array.")
+
+        # Convert the image to the desired color mode
+        try:
+            if self.color_mode == ColorMode.RGB:
+                if len(image_data.shape) == 3 and image_data.shape[2] == 3:  # If already RGB, do nothing
+                    pass
+                else:
+                    image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB)
+            elif self.color_mode == ColorMode.GRAY:
+                if len(image_data.shape) == 2:  # If already grayscale, do nothing
+                    pass
+                else:
+                    image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2GRAY)
+                    image_data = np.expand_dims(image_data, axis=-1)
+        except cv2.error as e:
+            raise ValueError(f"Error converting image color mode: {e}")
+
+        # Convert the image to the desired format (HWC or CHW)
+        return self.convert_image_format(image_data, self.image_format)
+
+    def _load_image(self) -> np.ndarray:
+        """
+        Load an image from the specified path and process it.
+
+        Returns:
+            Loaded and processed image as a NumPy array.
+        """
+        if not self.image_path.is_file():
+            raise FileNotFoundError(f"Image file not found: {self.image_path}")
+
+        image = cv2.imread(str(self.image_path))
+        if image is None:
+            raise FileNotFoundError(f"Failed to load image: {self.image_path}")
+
+        return self._process_image_data(image)
+
+    # The remaining methods of the class remain unchanged
     def get_shape(self) -> tuple:
+        """Get the shape of the image as a tuple (height, width, channels)."""
         return self.image.shape
-    
+
     def get_color_mode(self) -> ColorMode:
         """Get the color mode of the image."""
         return self.color_mode
@@ -270,54 +345,44 @@ class Image:
         """Get the image as a NumPy array."""
         return self.image
 
-    def _load_image(self) -> np.ndarray:
-        if not self.image_path.is_file():
-            raise FileNotFoundError(f"Image file not found: {self.image_path}")
-
-        image = cv2.imread(str(self.image_path))
-        if image is None:
-            raise FileNotFoundError(f"Failed to load image: {self.image_path}")
-
-        try:
-            if self.color_mode == ColorMode.RGB:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            elif self.color_mode == ColorMode.GRAY:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                image = np.expand_dims(image, axis=-1)
-        except cv2.error as e:
-            raise ValueError(f"Error converting image color mode: {e}")
-
-        return convert_image_format(image, self.image_format)
-
     def resize(self, new_size: tuple) -> 'Image':
+        """Resize the image to the specified dimensions."""
         self.image = cv2.resize(self.image, new_size)
         return self
 
     def crop(self, crop_window: dict) -> 'Image':
+        """Crop the image using the specified window."""
         self.image = self.image[crop_window['y_min']:crop_window['y_max'],
                                 crop_window['x_min']:crop_window['x_max']]
         return self
 
     def invert_pixels(self) -> 'Image':
+        """Invert the pixel values of the image."""
         self.image = cv2.bitwise_not(self.image)
         if len(self.image.shape) == 3 and self.image.shape[2] == 1:
             self.image = np.expand_dims(self.image, axis=-1)
         return self
 
     def save_raw(self, dest_path: str):
+        """Save the image data as a raw binary file."""
         with open(dest_path, 'wb') as f:
             f.write(self.image.tobytes())
 
     def save_jpg(self, dest_path: str):
+        """Save the image as a JPG file."""
         if len(self.image.shape) == 3 and self.image.shape[2] == 3:
             image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
         else:
             image = self.image
         cv2.imwrite(dest_path, image)
 
-    def show(self, window_name: str = "Image"):
+    def show(self, window_name: str = "Image", key: int = ord('q')):
+        """Display the image in a window. Close the window when the specified key is pressed."""
         cv2.imshow(window_name, self.image)
-        cv2.waitKey(0)
+        while True:
+            key_pressed = cv2.waitKey(1) & 0xFF  # Wait for 1 ms and check the key pressed
+            if key_pressed == key or cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                break
         cv2.destroyAllWindows()
 
     @classmethod
