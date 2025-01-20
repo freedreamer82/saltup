@@ -77,10 +77,14 @@ def print_bbox_info(boxes: List[BBox], class_ids: List[int], scores: List[float]
         # Get class name
         class_name = class_labels_dict.get(class_id, f"class_{class_id}")
         
+        # Get the coordinate format as a string
+        coordinate_format = bbox.get_format().to_string()
+
         # Print information
         print(f"Box {i + 1}:")
         print(f"  Class: {class_name} (ID: {class_id})")
         print(f"  Confidence: {score:.4f}")
+        print(f"  Coordinate Format: {coordinate_format}")
         print(f"  Coordinates: (x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2})")
         print("-" * 40)
 
