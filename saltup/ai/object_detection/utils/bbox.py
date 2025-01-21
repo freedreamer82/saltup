@@ -84,13 +84,31 @@ class BBoxFormat(IntEnum):
     CORNERS = auto()
     CENTER = auto()
     TOPLEFT = auto()
-
+    def to_string(self):
+        """Convert the BBoxFormat enum to a human-readable string."""
+        if self == BBoxFormat.CORNERS:
+            return "Corners (x1, y1, x2, y2)"
+        elif self == BBoxFormat.CENTER:
+            return "Center (center_x, center_y, width, height)"
+        elif self == BBoxFormat.TOPLEFT:
+            return "Top-left (x, y, width, height)"
+        else:
+            raise ValueError(f"Unknown BBoxFormat: {self}")
 
 class NotationFormat(IntEnum):
-    YOLO = auto()
-    COCO = auto()
-    PASCALVOC = auto()
-
+    YOLO = auto()       # YOLO format (normalized center-x, center-y, width, height)
+    COCO = auto()       # COCO format (absolute x1, y1, width, height)
+    PASCALVOC = auto()  # PASCAL VOC format (absolute x1, y1, x2, y2)
+    def to_string(self):
+        """Convert the NotationFormat enum to a human-readable string."""
+        if self == NotationFormat.YOLO:
+            return "YOLO (normalized center-x, center-y, width, height)"
+        elif self == NotationFormat.COCO:
+            return "COCO (absolute x1, y1, width, height)"
+        elif self == NotationFormat.PASCALVOC:
+            return "PASCAL VOC (absolute x1, y1, x2, y2)"
+        else:
+            raise ValueError(f"Unknown NotationFormat: {self}")
 
 def yolo_to_coco_bbox(yolo_bbox: Union[List, Tuple], img_width: int, img_height: int) -> list[float]:
     """Convert YOLO bbox format to COCO format.

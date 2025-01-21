@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from typing import List, Tuple
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, draw_boxes_on_image, draw_boxes_on_image_with_labels_score
-from saltup.utils.data.image.image_utils import generate_random_bgr_colors
+from saltup.utils.data.image.image_utils import generate_random_bgr_colors ,Image
 
 class TestDrawBoxesOnImage(unittest.TestCase):
     def test_draw_boxes_on_image(self):
@@ -11,8 +11,8 @@ class TestDrawBoxesOnImage(unittest.TestCase):
         Test for the `draw_boxes_on_image` function.
         Verifies that bounding boxes are drawn correctly on the image.
         """
-        # Create an empty image (480x640, 3 color channels)
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
+         # Create an empty image using the Image class (480x640, 3 color channels)
+        image = Image(np.zeros((480, 640, 3), dtype=np.uint8))
 
         # Create some bounding boxes (in normalized format)
         bbox1 = BBox([0.2, 0.3, 0.4, 0.5], format=BBoxFormat.CENTER, img_width=640, img_height=480)
@@ -29,9 +29,9 @@ class TestDrawBoxesOnImage(unittest.TestCase):
 
         # Verify that there are green pixels (color of the bounding boxes)
         green_pixels = np.where(
-            (image_with_boxes[:, :, 0] == 0) &
-            (image_with_boxes[:, :, 1] == 255) &
-            (image_with_boxes[:, :, 2] == 0)
+            (image_with_boxes.get_data()[:, :, 0] == 0) &
+            (image_with_boxes.get_data()[:, :, 1] == 255) &
+            (image_with_boxes.get_data()[:, :, 2] == 0)
         )
         self.assertGreater(len(green_pixels[0]), 0)  # There should be green pixels
 
@@ -57,8 +57,8 @@ class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
         Test for the `draw_boxes_on_image_with_labels_score` function.
         Verifies that bounding boxes, labels, and scores are drawn correctly.
         """
-        # Create an empty image (480x640, 3 color channels)
-        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Create an empty image using the Image class (480x640, 3 color channels)
+        image = Image(np.zeros((480, 640, 3), dtype=np.uint8))
 
         # Create some bounding boxes (in normalized format)
         bbox1 = BBox([0.2, 0.3, 0.4, 0.5], format=BBoxFormat.CENTER, img_width=640, img_height=480)
@@ -108,26 +108,26 @@ class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
             # Ensure coordinates are within the image dimensions
-            x1 = max(0, min(x1, image_with_boxes.shape[1] - 1))
-            y1 = max(0, min(y1, image_with_boxes.shape[0] - 1))
-            x2 = max(0, min(x2, image_with_boxes.shape[1] - 1))
-            y2 = max(0, min(y2, image_with_boxes.shape[0] - 1))
+            x1 = max(0, min(x1, image_with_boxes.get_shape()[1] - 1))
+            y1 = max(0, min(y1, image_with_boxes.get_shape()[0] - 1))
+            x2 = max(0, min(x2, image_with_boxes.get_shape()[1] - 1))
+            y2 = max(0, min(y2, image_with_boxes.get_shape()[0] - 1))
 
             # Check the color of the bounding box edges
             # Top edge
-            top_edge = image_with_boxes[y1, x1:x2, :]
+            top_edge = image_with_boxes.get_data()[y1, x1:x2, :]
             self.assertTrue(np.all(top_edge == color), f"Top edge color mismatch for class {class_id}")
 
             # Bottom edge
-            bottom_edge = image_with_boxes[y2, x1:x2, :]
+            bottom_edge = image_with_boxes.get_data()[y2, x1:x2, :]
             self.assertTrue(np.all(bottom_edge == color), f"Bottom edge color mismatch for class {class_id}")
 
             # Left edge
-            left_edge = image_with_boxes[y1:y2, x1, :]
+            left_edge = image_with_boxes.get_data()[y1:y2, x1, :]
             self.assertTrue(np.all(left_edge == color), f"Left edge color mismatch for class {class_id}")
 
             # Right edge
-            right_edge = image_with_boxes[y1:y2, x2, :]
+            right_edge = image_with_boxes.get_data()[y1:y2, x2, :]
             self.assertTrue(np.all(right_edge == color), f"Right edge color mismatch for class {class_id}")
 
 
