@@ -13,18 +13,20 @@ from saltup.utils.misc import suppress_stdout
 from saltup.ai.nn_manager import NeuralNetworkManager
 from saltup.ai.keras_utils.keras_to_onnx import convert_keras_to_onnx
 from onnx import helper, TensorProto
+from saltup.utils.misc import suppress_stdout
 
 # Fixture to create sample models and return their paths
 @pytest.fixture(scope="session")
-def sample_models():
+def sample_models(root_dir):
     # Directory to store sample models
-    model_dir = "sample_models"
+    model_dir = os.path.join(str(root_dir), "ai", "nn_manager", "sample_models")
     os.makedirs(model_dir, exist_ok=True)
 
     # Define paths for sample models
     model_paths = {
         "pt": os.path.join(model_dir, "sample_model.pt"),
         "keras": os.path.join(model_dir, "sample_model.keras"),
+        "h5": os.path.join(model_dir, "sample_model.h5"),
         "onnx": os.path.join(model_dir, "sample_model.onnx"),
         "tflite": os.path.join(model_dir, "sample_model.tflite"),
     }
@@ -88,6 +90,10 @@ def sample_models():
     if not os.path.exists(model_paths["keras"]):
         model = create_simple_model()
         model.save(model_paths["keras"])
+    
+    if not os.path.exists(model_paths["h5"]):
+        model = create_simple_model()
+        model.save(model_paths["h5"])
 
     # Create and save an ONNX model
     if not os.path.exists(model_paths["onnx"]):
@@ -130,7 +136,7 @@ def nn_manager():
     return NeuralNetworkManager()
 
 # Test loading models of different formats
-@pytest.mark.parametrize("model_format", ["pt", "keras", "onnx", "tflite"])
+@pytest.mark.parametrize("model_format", ["pt", "keras", "h5", "onnx", "tflite"])
 def test_load_model(nn_manager, sample_models, model_format):
     model_path = sample_models[model_format]
     model, input_shape, output_shape = nn_manager.load_model(model_path)
@@ -140,7 +146,7 @@ def test_load_model(nn_manager, sample_models, model_format):
     assert isinstance(output_shape, tuple)
 
 # Test inference for each model format
-@pytest.mark.parametrize("model_format", ["pt", "keras", "onnx", "tflite"])
+@pytest.mark.parametrize("model_format", ["pt", "keras", "h5", "onnx", "tflite"])
 def test_model_inference(nn_manager, sample_models, model_format):
     model_path = sample_models[model_format]
 
@@ -191,3 +197,5 @@ def test_inference_time(nn_manager, sample_models):
     assert inference_time is not None
     assert isinstance(inference_time, float)
     assert inference_time > 0
+    
+    
