@@ -1,5 +1,6 @@
 from typing import List, Tuple, Any
 import torch
+import os
 import onnxruntime as ort
 
 from saltup.utils.misc import suppress_stdout
@@ -34,10 +35,14 @@ class NeuralNetworkManager:
         Raises:
             ValueError: If the model format is not supported.
         """
+        if not os.path.exists(model_path):
+            raise ValueError(f"Model file not found: {model_path}")
+        
         with suppress_stdout():
             if model_path.endswith(".pt"):
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 # Load PyTorch model
-                self.model = torch.load(model_path)  # Generic PyTorch model loading
+                self.model = torch.jit.load(model_path, map_location=device)  # Generic PyTorch model loading
                 self.model.eval()  # Set the model to evaluation mode
                 # Assuming the model has an attribute `input_shape` or similar
                 if hasattr(self.model, 'input_shape'):
@@ -113,7 +118,6 @@ class NeuralNetworkManager:
             # PyTorch inference
             with torch.no_grad():
                 output = self.model(input_data)
-                
 #        elif isinstance(self.model, tf.keras.Model):  #not working...
         elif type(self.model).__name__ == 'Functional':  
             # TensorFlow/Keras inference

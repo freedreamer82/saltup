@@ -45,41 +45,44 @@ def sample_models():
 
     # Create and save a PyTorch model
     if not os.path.exists(model_paths["pt"]):
+        class SimpleModel(nn.Module):
+            def __init__(self, input_shape, output_shape):
+                super(SimpleModel, self).__init__()
+                self.input_shape = input_shape  # (28, 28, 1)
+                self.output_shape = output_shape  # (100, 28)
+                
+                # Define a convolutional neural network
+                self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
+                self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
+                self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+                self.fc1 = nn.Linear(64 * 14 * 14, 128)  # After pooling, the spatial dimensions are halved
+                self.fc2 = nn.Linear(128, output_shape[0] * output_shape[1])  # Output shape: (100, 28)
+                self.relu = nn.ReLU()
+
+            def forward(self, x):
+                # Input shape: (batch_size, 1, 28, 28)
+                x = self.relu(self.conv1(x))
+                x = self.pool(x)  # Output shape: (batch_size, 32, 14, 14)
+                x = self.relu(self.conv2(x))
+                x = self.pool(x)  # Output shape: (batch_size, 64, 7, 7)
+                x = x.view(x.size(0), -1)  # Flatten the tensor
+                x = self.relu(self.fc1(x))
+                x = self.fc2(x)
+                x = x.view(x.size(0), self.output_shape[0], self.output_shape[1])  # Reshape to (100, 28)
+                return x
+
+        # Example usage
         def create_pytorch_model():
-            class SimpleModel(nn.Module):
-                def __init__(self, input_shape, output_shape):
-                    super(SimpleModel, self).__init__()
-                    self.input_shape = input_shape  # (28, 28, 1)
-                    self.output_shape = output_shape  # (100, 28)
-                    
-                    # Define a convolutional neural network
-                    self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
-                    self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
-                    self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-                    self.fc1 = nn.Linear(64 * 14 * 14, 128)  # After pooling, the spatial dimensions are halved
-                    self.fc2 = nn.Linear(128, output_shape[0] * output_shape[1])  # Output shape: (100, 28)
-                    self.relu = nn.ReLU()
-
-                def forward(self, x):
-                    # Input shape: (batch_size, 1, 28, 28)
-                    x = self.relu(self.conv1(x))
-                    x = self.pool(x)  # Output shape: (batch_size, 32, 14, 14)
-                    x = self.relu(self.conv2(x))
-                    x = self.pool(x)  # Output shape: (batch_size, 64, 7, 7)
-                    x = x.view(x.size(0), -1)  # Flatten the tensor
-                    x = self.relu(self.fc1(x))
-                    x = self.fc2(x)
-                    x = x.view(x.size(0), self.output_shape[0], self.output_shape[1])  # Reshape to (100, 28)
-                    return x
-
-            # Define input and output shapes
             input_shape = (28, 28, 1)  # (height, width, channels)
             output_shape = (100, 28)   # (num_features, sequence_length)
-
-            # Instantiate the model
             model = SimpleModel(input_shape, output_shape)
-            torch.save(model.state_dict(), model_paths["pt"])
-        #create_pytorch_model()
+            return model
+        
+        model = create_pytorch_model()
+        torch.save(model, model_paths["pt"])
+
+        # Load the model
+        #loaded_model = SimpleModel(input_shape=(28, 28, 1), output_shape=(100, 28))
 
     # Create and save a TensorFlow/Keras model (.keras)
     if not os.path.exists(model_paths["keras"]):
@@ -131,7 +134,7 @@ def nn_manager():
 def test_load_model(nn_manager, sample_models, model_format):
     model_path = sample_models[model_format]
     model, input_shape, output_shape = nn_manager.load_model(model_path)
-
+    
     assert model is not None
     assert isinstance(input_shape, tuple)
     assert isinstance(output_shape, tuple)

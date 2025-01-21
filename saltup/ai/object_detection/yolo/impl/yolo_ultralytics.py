@@ -4,7 +4,7 @@ from typing import Optional, Union, Callable, Dict, Any, List, Tuple
 
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
-from saltup.utils.data.image.image_utils import Image
+from saltup.utils.data.image.image_utils import  Image, ColorMode ,ImageFormat
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 
 class YoloUltralytics(BaseYolo):
@@ -26,30 +26,16 @@ class YoloUltralytics(BaseYolo):
         """
         super().__init__(yolot, model_path, number_class)  # Initialize the BaseYolo class
     
-    def _validate_input(self, img: np.ndarray) -> None:
-        """Validate input image format and channel structure.
-
-        Extends base validation with specific checks for channel dimensions
-        and supported formats.
-
-        Args:
-            img: Input image to validate (single or multiple channels)
-
-        Raises:
-            ValueError: For invalid dimensions or unsupported channel counts
-            TypeError: For non-numpy array inputs (from parent class)
-        """
-        super()._validate_input_preprocessing_image(img)
-
-        if len(img.shape) not in [2, 3]:
-            raise ValueError(
-                "Input must be either 2D (single channel) or 3D (multiple channels) array")
-
-        if len(img.shape) == 3 and img.shape[2] not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
-         
-    def letterbox(self, 
+    def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+        input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+        return (
+            input_shape,  # Shape: (3, 480, 640)
+            ColorMode.RGB,
+            ImageFormat.CHW
+        )
+        
+    @staticmethod    
+    def letterbox(
                 img: np.ndarray,
                 target_shape: Tuple[int, int], 
                 shape_override: Optional[Tuple[int, int]] = None,
@@ -112,8 +98,8 @@ class YoloUltralytics(BaseYolo):
         )
 
         return img
-    
-    def preprocess(self,
+    @staticmethod
+    def preprocess(
                    image: Image,
                    target_height:int, 
                    target_width:int,        
@@ -141,20 +127,26 @@ class YoloUltralytics(BaseYolo):
         """
         
         raw_img = image.get_data()
-        self._validate_input(raw_img)
+        
+        num_channel = image.get_number_channel()
+        
+        # Validate input format
+        if num_channel not in [1, 3]:
+            raise ValueError(
+                "Only 1 or 3 channels are supported for multi-channel images")
         
         # Override params temporarily if needed
-        original_params = None
-        if kwargs:
-            # Store original parameters
-            original_params = self.__dict__.copy()
+        # original_params = None
+        # if kwargs:
+        #     # Store original parameters
+        #     original_params = self.__dict__.copy()
             
-            # Apply any provided overrides
-            self.__dict__.update((k, v) for k, v in kwargs.items() 
-                                if k in original_params)
+        #     # Apply any provided overrides
+        #     self.__dict__.update((k, v) for k, v in kwargs.items() 
+        #                         if k in original_params)
         try:
             # Process image
-            processed_img = self.letterbox(raw_img, (target_height, target_width), **kwargs)
+            processed_img = YoloUltralytics.letterbox(raw_img, (target_height, target_width))#, **kwargs)
             
             # Normalize
             image_data = normalize_method(processed_img)
@@ -164,11 +156,13 @@ class YoloUltralytics(BaseYolo):
             image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
             
             return image_data
-            
-        finally:
-            # Restore original parameters
-            if original_params:
-                self.__dict__.update(original_params)
+        except Exception as e:
+            raise e
+        
+        # finally:
+        #     # Restore original parameters
+        #     if original_params:
+        #         self.__dict__.update(original_params)
 
     def postprocess(self, 
                     raw_output: np.ndarray,

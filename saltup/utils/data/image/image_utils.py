@@ -150,7 +150,28 @@ class Image:
     def get_shape(self) -> tuple:
         """Get the shape of the image as a tuple (height, width, channels)."""
         return self.image.shape
+                 
+    def get_width(self) -> int:
+        """Get the width of the image."""
+        if self.image_format == ImageFormat.HWC:
+            return self.image.shape[1]
+        else:
+            return self.image.shape[2]
+        
+    def get_height(self) -> int:
+        """Get the height of the image."""
+        if self.image_format == ImageFormat.HWC:
+            return self.image.shape[0]
+        else:
+            return self.image.shape[1]
 
+    def get_number_channel(self) -> int:
+        """Get the number of channels in the image."""
+        if self.image_format == ImageFormat.HWC:
+            return self.image.shape[2]
+        elif self.image_format == ImageFormat.CHW:
+            return self.image.shape[0]
+        
     def get_color_mode(self) -> ColorMode:
         """Get the color mode of the image."""
         return self.color_mode

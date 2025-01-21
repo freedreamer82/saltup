@@ -38,39 +38,16 @@ class YoloAnchorsBased(BaseYolo):
         self.num_anchors = anchors.shape[0]  # Number of anchor boxes
         self.max_output_boxes = max_output_boxes
 
-    def get_input_image_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+    def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
         input_shape = self.model_input_shape[1:]  # Rimuove il batch size
         return (
-            input_shape,  # Shape: (640, 480,1)
+            input_shape,  # Shape: (480, 640,1)
             ColorMode.RGB,
             ImageFormat.HWC
         )
-
-    def _validate_input(self, img: np.ndarray) -> None:
-        """Validate input image format and channel structure.
-
-        Extends base validation with specific checks for channel dimensions
-        and supported formats.
-
-        Args:
-            img: Input image to validate (single or multiple channels)
-
-        Raises:
-            ValueError: For invalid dimensions or unsupported channel counts
-            TypeError: For non-numpy array inputs (from parent class)
-        """
-        super()._validate_input_preprocessing_image(img)
-
-        if len(img.shape) not in [2, 3]:
-            raise ValueError(
-                "Input must be either 2D (single channel) or 3D (multiple channels) array")
-
-        if len(img.shape) == 3 and img.shape[2] not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
-
+    
+    @staticmethod
     def preprocess(
-        self,
         image: Image,
         target_height: int,
         target_width: int,
@@ -102,25 +79,26 @@ class YoloAnchorsBased(BaseYolo):
             ValueError: For invalid image formats
             TypeError: For incorrect input types
         """
-
+        
+        
         raw_img = image.get_data()
+        
+        channels = image.get_number_channel()
+        
         # Validate input format
-        self._validate_input(raw_img)
-
-        # Determine channel configuration
-        is_single_channel = len(raw_img.shape) == 2
+        if channels not in [1, 3]:
+            raise ValueError(
+                "Only 1 or 3 channels are supported for multi-channel images")
 
         # Extract dimensions
-        if is_single_channel:
-            height, width = raw_img.shape
-            channels = 1
-        else:
-            height, width, channels = raw_img.shape
+        height = image.get_height()
+        width = image.get_width()
+
 
         # Handle square padding if needed
         if target_height == target_width and apply_padding:
             max_dim = max(height, width)
-            if is_single_channel:
+            if channels == 1:
                 padded = np.full((max_dim, max_dim), 114, dtype=np.uint8)
                 padded[0:height, 0:width] = raw_img
             else:
@@ -167,7 +145,10 @@ class YoloAnchorsBased(BaseYolo):
         """
         anchors = np.array(self.anchors).reshape(-1, 2)
         input_shape = (self.img_input_height, self.img_input_width)
-        raw_output = raw_output[0]
+        
+        if isinstance(raw_output, list):
+            raw_output = raw_output[0]
+            
         preds_decoded = postprocess_decode(
             raw_output, anchors, self.number_class, input_shape, calc_loss=False)
         input_image_shape = [image_height, image_width]

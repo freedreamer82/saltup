@@ -203,21 +203,6 @@ class BaseYolo(NeuralNetworkManager):
     def getYoloType(self) -> YoloType:
         return self.yolotype
     
-    def _validate_input_preprocessing_image(self, img: np.ndarray) -> None:
-        """Validate the input image format and type.
-        
-        Args:
-            img: Input image to validate
-
-        Raises:
-            ValueError: If image is None
-            TypeError: If image is not a numpy array
-        """
-        if img is None:
-            raise ValueError("Input image cannot be None")
-        if not isinstance(img, np.ndarray):
-            raise TypeError("Input must be numpy array")
-    
 
     @abstractmethod
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
@@ -257,7 +242,12 @@ class BaseYolo(NeuralNetworkManager):
         return Image(image_path, color_mode , image_format=format)
     
     def get_number_image_channel(self) -> int:
-        return self.model_input_shape[-1]
+        info = self.get_input_info()
+        if info[2] == ImageFormat.HWC:
+            return info[0][2]
+        else:
+            return info[0][0]
+    
     
     def run(
         self,
@@ -420,8 +410,9 @@ class BaseYolo(NeuralNetworkManager):
             "fp": int(global_fp),  # False Positives
             "fn": int(global_fn),  # False Negatives
         }
-    def preprocess(self, 
-                   image: Image,
+    @staticmethod
+    @abstractmethod
+    def preprocess(image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -435,8 +426,9 @@ class BaseYolo(NeuralNetworkManager):
         :return: Preprocessed image.
         """
         raise NotImplementedError("The preprocess method must be overridden in the derived class.")
-
-    def postprocess(self, raw_output: np.ndarray,
+    
+    def postprocess(self,
+                    raw_output: np.ndarray,
                     image_height:int, image_width:int, confidence_thr:float=0.5, 
                             iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
         """
