@@ -62,7 +62,10 @@ class NeuralNetworkManager:
                 
             elif model_path.endswith(".keras") or model_path.endswith(".h5"):
                 # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
-                self.model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+                try:
+                    self.model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+                except:
+                    self.model = load_model(model_path, compile=False, safe_mode=False)
                 model_input_shape = self.model.input_shape  # Exclude the batch size
                 model_output_shape = self.model.output_shape  # Exclude the batch size
     
