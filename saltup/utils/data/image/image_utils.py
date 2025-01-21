@@ -295,26 +295,34 @@ class Image:
         """Add padding if image dimensions are smaller than target size.
 
         Args:
-            image: Input image in CHW format (channels, height, width)
-            target_size: Required dimensions as (width, height)
+            image: Input image in CHW or HWC format.
+            target_h: Target height.
+            target_w: Target width.
+            image_format: Input image format (CHW or HWC).
 
         Returns:
             np.ndarray: Padded tensor matching target size, or original if no padding needed.
-                        Output maintains CHW format and float32 precision.
+                        Output maintains the specified format and float32 precision.
         """
+        # Convert to CHW format for consistent processing
         if image_format == ImageFormat.HWC:
             image = cls.convert_image_format(image, ImageFormat.CHW)
-        
+
         # Extract dimensions
         c, h, w = image.shape
 
         # Return original image if no padding needed
         if h >= target_h and w >= target_w:
-            image = cls.convert_image_format(image, image_format)
+            if image_format == ImageFormat.HWC:
+                image = cls.convert_image_format(image, ImageFormat.HWC)
             return image
 
         # Add padding only if necessary
         padded_img = 114 * np.ones((c, target_h, target_w), dtype=np.float32)
         padded_img[:, :h, :w] = image
-        padded_img = cls.convert_image_format(padded_img, image_format)
+
+        # Convert back to the original format
+        if image_format == ImageFormat.HWC:
+            padded_img = cls.convert_image_format(padded_img, ImageFormat.HWC)
+
         return padded_img

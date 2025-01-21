@@ -187,7 +187,7 @@ class TestImageProcessing:
         expected_output = image
 
         # Test
-        result = Image.pad_image(image, target_h, target_w, ImageFormat.HWC)
+        result = Image.pad_image(image, target_h, target_w, ImageFormat.CHW)
         np.testing.assert_array_equal(result, expected_output)
 
     def test_pad_image_hwc_format(self):
