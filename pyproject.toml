@@ -24,3 +24,6 @@ dependencies = [
     "tf_keras"
 ]
 
+[project.scripts]
+saltup_yolo_inference = "saltup.tools.yolo_inference:main"
+ 

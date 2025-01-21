@@ -7,6 +7,7 @@ import random
 from typing import Union, Optional
 from pathlib import Path
 import numpy as np
+import copy
 import cv2
 
 
@@ -79,6 +80,7 @@ class Image:
         color_mode: ColorMode = ColorMode.BGR,
         image_format: ImageFormat = ImageFormat.HWC,
     ):
+    
         """
         Initialize an Image instance.
 
@@ -98,6 +100,7 @@ class Image:
             self.image_path = Path(image_input) if isinstance(image_input, str) else image_input
             self.image = self._load_image()
 
+
     def _process_image_data(self, image_data: np.ndarray) -> np.ndarray:
         """
         Process the provided NumPy array to ensure it matches the desired color mode and format.
@@ -106,7 +109,7 @@ class Image:
             image_data: NumPy array containing the image data.
 
         Returns:
-            Processed image as a NumPy array.
+            Processed image as a NumPy array with shape (h, w, 1) for grayscale or (h, w, 3) for RGB/BGR.
         """
         if not isinstance(image_data, np.ndarray):
             raise ValueError("image_data must be a NumPy array.")
@@ -114,14 +117,18 @@ class Image:
         # Convert the image to the desired color mode
         try:
             if self.color_mode == ColorMode.RGB:
-                if len(image_data.shape) == 3 and image_data.shape[2] == 3:  # If already RGB, do nothing
+                if len(image_data.shape) == 3 and image_data.shape[-1] == 3:  # If already RGB, do nothing
                     pass
                 else:
+                    # Convert BGR to RGB if necessary
                     image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB)
             elif self.color_mode == ColorMode.GRAY:
-                if len(image_data.shape) == 2:  # If already grayscale, do nothing
+                if len(image_data.shape) == 2:  # If grayscale with shape (h, w), expand to (h, w, 1)
+                    image_data = np.expand_dims(image_data, axis=-1)
+                elif len(image_data.shape) == 3 and image_data.shape[-1] == 1:  # If already (h, w, 1), do nothing
                     pass
                 else:
+                    # If it's a 3-channel image but not grayscale, convert to grayscale
                     image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2GRAY)
                     image_data = np.expand_dims(image_data, axis=-1)
         except cv2.error as e:
@@ -135,16 +142,36 @@ class Image:
         Load an image from the specified path and process it.
 
         Returns:
-            Loaded and processed image as a NumPy array.
+            Loaded and processed image as a NumPy array with shape (h, w, 1) for grayscale or (h, w, 3) for RGB/BGR.
         """
+        # Check if the image file exists
         if not self.image_path.is_file():
             raise FileNotFoundError(f"Image file not found: {self.image_path}")
 
+        # Load the image using OpenCV
         image = cv2.imread(str(self.image_path))
         if image is None:
             raise FileNotFoundError(f"Failed to load image: {self.image_path}")
 
+        # Process the loaded image to ensure it matches the desired color mode and format
         return self._process_image_data(image)
+
+
+    def copy(self) -> 'Image':
+        """
+        Create a deep copy of the current Image instance.
+
+        Returns:
+            A new Image instance with the same attributes as the current one.
+        """
+        # Create a new Image instance with the same image data, color mode, and format
+        new_image = Image(
+            image_input=copy.deepcopy(self.image),
+            color_mode= self.color_mode,
+            image_format=self.image_format
+        )
+        return new_image
+
 
     # The remaining methods of the class remain unchanged
     def get_shape(self) -> tuple:
@@ -184,9 +211,31 @@ class Image:
         """Get the image as a NumPy array."""
         return self.image
 
+
     def resize(self, new_size: tuple) -> 'Image':
-        """Resize the image to the specified dimensions."""
+        """
+        Resize the image to the specified dimensions while maintaining 3 dimensions.
+
+        Args:
+            new_size: A tuple (width, height) representing the new dimensions.
+
+        Returns:
+            self: The Image instance with the resized image.
+        """
+        # Resize the image using OpenCV
         self.image = cv2.resize(self.image, new_size)
+
+        # Ensure the image has 3 dimensions
+        if len(self.image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1)
+            self.image = np.expand_dims(self.image, axis=-1)
+        elif len(self.image.shape) == 3 and self.image.shape[2] == 1:  # If already (h, w, 1), do nothing
+            pass
+        elif len(self.image.shape) == 3 and self.image.shape[2] == 3:  # If already (h, w, 3), do nothing
+            pass
+        else:
+            # Handle unexpected shapes (e.g., 4D or invalid)
+            raise ValueError(f"Unexpected image shape after resizing: {self.image.shape}")
+
         return self
 
     def crop(self, crop_window: dict) -> 'Image':
