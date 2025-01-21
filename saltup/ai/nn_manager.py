@@ -1,5 +1,6 @@
 from typing import List, Tuple, Any
 import torch
+import os
 import onnxruntime as ort
 
 from saltup.utils.misc import suppress_stdout
@@ -34,10 +35,14 @@ class NeuralNetworkManager:
         Raises:
             ValueError: If the model format is not supported.
         """
+        if not os.path.exists(model_path):
+            raise ValueError(f"Model file not found: {model_path}")
+        
         with suppress_stdout():
             if model_path.endswith(".pt"):
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 # Load PyTorch model
-                self.model = torch.load(model_path)  # Generic PyTorch model loading
+                self.model = torch.jit.load(model_path, map_location=device)  # Generic PyTorch model loading
                 self.model.eval()  # Set the model to evaluation mode
                 # Assuming the model has an attribute `input_shape` or similar
                 if hasattr(self.model, 'input_shape'):
@@ -57,7 +62,7 @@ class NeuralNetworkManager:
                 
             elif model_path.endswith(".keras") or model_path.endswith(".h5"):
                 # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
-                self.model = load_model(model_path, compile=False, safe_mode=False)  # Usa tf_keras.saving.load_model
+                self.model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
                 model_input_shape = self.model.input_shape  # Exclude the batch size
                 model_output_shape = self.model.output_shape  # Exclude the batch size
     
@@ -113,14 +118,16 @@ class NeuralNetworkManager:
             # PyTorch inference
             with torch.no_grad():
                 output = self.model(input_data)
-#        elif isinstance(self.model, tf.keras.Model):  #not worning...
+#        elif isinstance(self.model, tf.keras.Model):  #not working...
         elif type(self.model).__name__ == 'Functional':  
             # TensorFlow/Keras inference
             output = self.model.predict(input_data)
+            
         elif isinstance(self.model, ort.InferenceSession):
             # ONNX inference
             input_name = self.model.get_inputs()[0].name
             output = self.model.run(None, {input_name: input_data})
+            
         elif isinstance(self.model, tf.lite.Interpreter):
             # TensorFlow Lite inference
             input_details = self.model.get_input_details()
@@ -134,13 +141,14 @@ class NeuralNetworkManager:
 
             # Get output tensor
             output = self.model.get_tensor(output_details[0]['index'])
+            
         else:
             raise RuntimeError("Unsupported model type.")
 
-            end_time = time.time()  # Capture end time
-            self.inference_time_ms = (end_time - start_time) * 1000  # Calculate inference time in milliseconds
+        end_time = time.time()  # Capture end time
+        self.inference_time_ms = (end_time - start_time) * 1000  # Calculate inference time in milliseconds
 
-            return output
+        return output
 
     def get_inference_time_ms(self) -> float:
         """

@@ -44,7 +44,7 @@ class TestEvaluate(unittest.TestCase):
         output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
         node = helper.make_node('Identity', ['input'], ['output'])
         graph = helper.make_graph([node], 'simple_model', [input], [output])
-        model = helper.make_model(graph)
+        model = helper.make_model(graph, producer_name='onnx-yolo-example', opset_imports=[helper.make_opsetid("", 16)])
         onnx.save(model, model_path)
 
     def tearDown(self):

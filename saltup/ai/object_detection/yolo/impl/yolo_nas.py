@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from typing import Optional, Union, Callable, Dict, Any, List, Tuple
 
-from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, pad_image
+from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, Image
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 
@@ -25,32 +25,17 @@ class YoloNas(BaseYolo):
         """
         super().__init__(yolot, model_path, number_class)  # Initialize the BaseYolo class
     
-    def _validate_input(self, img: np.ndarray) -> None:
-        """Validate input image format and channel structure.
-
-        Extends base validation with specific checks for channel dimensions
-        and supported formats.
-
-        Args:
-            img: Input image to validate (single or multiple channels)
-
-        Raises:
-            ValueError: For invalid dimensions or unsupported channel counts
-            TypeError: For non-numpy array inputs (from parent class)
-        """
-        super()._validate_input_preprocessing_image(img)
-
-        if len(img.shape) not in [2, 3]:
-            raise ValueError(
-                "Input must be either 2D (single channel) or 3D (multiple channels) array")
-
-        if len(img.shape) == 3 and img.shape[2] not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
+    def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+        input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+        return (
+            input_shape,  # Shape: (3, 480, 640)
+            ColorMode.RGB,
+            ImageFormat.CHW
+        )
          
-
-    def preprocess(self,
-                   image: np.array,
+    @staticmethod
+    def preprocess(
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -73,9 +58,18 @@ class YoloNas(BaseYolo):
         Raises:
             ValueError: For invalid or empty inputs
         """
-        self._validate_input(image)
+        raw_image = image.get_data()
         
-        h, w = image.shape[:2]
+        num_channel = image.get_number_channel()
+        
+        # Validate input format
+        if num_channel not in [1, 3]:
+            raise ValueError(
+                "Only 1 or 3 channels are supported for multi-channel images")
+        
+        h = image.get_height()
+        w = image.get_width()
+        c = num_channel
 
         # Calculate size preserving aspect ratio
         aspect_ratio = min(target_width / w, target_height / h)
@@ -83,16 +77,18 @@ class YoloNas(BaseYolo):
         new_height = int(h * aspect_ratio)
 
         # Resize with high-quality algorithm
-        resized_image = cv2.resize(image, (new_width, new_height), 
+        resized_image = cv2.resize(raw_image, (new_width, new_height), 
                                  interpolation=cv2.INTER_AREA)
         
         if apply_padding:
-            image_data = pad_image(resized_image, target_height, target_width, 
+            image_data = Image.pad_image(resized_image, target_height, target_width, 
                                image_format=ImageFormat.HWC)
-        
+        else:
+            image_data = resized_image
         # Apply normalization
         image_data = normalize_method(image_data)
         
+        image_data = np.transpose(image_data, (2, 0, 1))    # HWC to CHW format (channel first)
         # Add batch dimension
         image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
         
@@ -138,6 +134,11 @@ class YoloNas(BaseYolo):
                 
                 # Extract the bounding box coordinates from the current row
                 x1, y1, x2, y2 = bboxes[i][0], bboxes[i][1], bboxes[i][2], bboxes[i][3]
+                
+                x1 = np.maximum(0, np.minimum(image_width, x1))  # x1
+                y1 = np.maximum(0, np.minimum(image_height, y1))  # y1
+                x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
+                y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
                 
                 box_object = BBox((x1, y1, x2, y2), format=BBoxFormat.CORNERS,
                               img_width=image_width, img_height=image_height)

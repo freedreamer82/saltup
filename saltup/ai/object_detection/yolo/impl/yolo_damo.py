@@ -4,6 +4,7 @@ from typing import Optional, Union, Callable, Dict, Any, List, Tuple
 
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
+from saltup.utils.data.image.image_utils import  Image, ColorMode ,ImageFormat
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 
 class YoloDamo(BaseYolo):
@@ -25,32 +26,17 @@ class YoloDamo(BaseYolo):
         """
         super().__init__(yolot, model_path, number_class)  # Initialize the BaseYolo class
     
-    def _validate_input(self, img: np.ndarray) -> None:
-        """Validate input image format and channel structure.
-
-        Extends base validation with specific checks for channel dimensions
-        and supported formats.
-
-        Args:
-            img: Input image to validate (single or multiple channels)
-
-        Raises:
-            ValueError: For invalid dimensions or unsupported channel counts
-            TypeError: For non-numpy array inputs (from parent class)
-        """
-        super()._validate_input_preprocessing_image(img)
-
-        if len(img.shape) not in [2, 3]:
-            raise ValueError(
-                "Input must be either 2D (single channel) or 3D (multiple channels) array")
-
-        if len(img.shape) == 3 and img.shape[2] not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
+    def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+        input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+        return (
+            input_shape,  # Shape: (3, 480, 640)
+            ColorMode.RGB,
+            ImageFormat.CHW
+        )
          
-
-    def preprocess(self,
-                   image: np.array,
+    @staticmethod
+    def preprocess(
+                   image: Image,
                    target_height:int, 
                    target_width:int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -73,10 +59,17 @@ class YoloDamo(BaseYolo):
         Raises:
             ValueError: For invalid or empty inputs
         """
-        self._validate_input(image)
+        
+        raw_image = image.get_data()
+        num_channel = image.get_number_channel()
+        
+        # Validate input format
+        if num_channel not in [1, 3]:
+            raise ValueError(
+                "Only 1 or 3 channels are supported for multi-channel images")
 
         # Resize to target dimensions
-        image_data = cv2.resize(image, (target_width, target_height))
+        image_data = cv2.resize(raw_image, (target_width, target_height))
         
         # Convert to CHW format
         image_data = np.transpose(image_data, (2, 0, 1))
@@ -127,6 +120,11 @@ class YoloDamo(BaseYolo):
                 y1 *= y_factor
                 x2 *= x_factor
                 y2 *= y_factor
+                
+                x1 = np.maximum(0, np.minimum(image_width, x1))  # x1
+                y1 = np.maximum(0, np.minimum(image_height, y1))  # y1
+                x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
+                y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
                 
                 box_object = BBox((x1, y1, x2, y2), format=BBoxFormat.CORNERS,
                               img_width=image_width, img_height=image_height)
