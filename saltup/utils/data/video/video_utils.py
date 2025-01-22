@@ -202,7 +202,6 @@ def get_video_properties(video_path: Union[str, Path]) -> tuple[float, int, int,
 
     # If the format is in the custom_formats list, manually calculate FPS and total_frames
     if video_path.suffix.lower() in custom_formats:
-        print(f"Format {video_path.suffix} detected. Manually calculating FPS and total_frames...")
         total_frames = 0
         frame_timestamps = []  # Store frame timestamps to calculate FPS
         while True:
@@ -225,7 +224,6 @@ def get_video_properties(video_path: Union[str, Path]) -> tuple[float, int, int,
         fps = round(fps)
     else:
         # Use OpenCV's default implementation for other formats
-        print(f"Format {video_path.suffix} detected. Using video metadata...")
         total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = video.get(cv2.CAP_PROP_FPS)
 
