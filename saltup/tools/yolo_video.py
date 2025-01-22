@@ -87,7 +87,31 @@ def process_frame(yolo, frame, frame_number, args, class_colors_dict, class_labe
     # frame_with_boxes.show()
     return frame_with_boxes.get_data()
 
-def main(args):
+def main(args=None):
+    # Se args non è fornito, usa sys.argv[1:]
+    if args is None:
+        args = sys.argv[1:]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, help="Input NN model.")
+    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
+    parser.add_argument("--input_video", type=str, required=True, help="Path to input video.")
+    parser.add_argument("--output_video", type=str, help="Path to save the output video.")
+    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
+    parser.add_argument("--label", type=str, help="Path to frame labels folder.")
+    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
+    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
+    parser.add_argument("--num_class", type=int, help="Number of the classes.")
+    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
+    parser.add_argument("--fps", type=int, default=None, help="FPS of the output video (default: same as input).")
+
+    # Analizza gli argomenti
+    args = parser.parse_args(args)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+
+
+
     """
     Main function to process a video using the YOLO model.
     
@@ -145,21 +169,4 @@ def main(args):
     print(f"Video processing complete. Output saved to {args.output_video}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, help="Input NN model.")
-    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
-    parser.add_argument("--input_video", type=str, required=True, help="Path to input video.")
-    parser.add_argument("--output_video", type=str, help="Path to save the output video.")
-    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
-    parser.add_argument("--label", type=str, help="Path to frame labels folder.")
-    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
-    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
-    parser.add_argument("--num_class", type=int, help="Number of the classes.")
-    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
-    parser.add_argument("--fps", type=int, default=None, help="FPS of the output video (default: same as input).")
-
-    args = parser.parse_args()
-    
-    signal.signal(signal.SIGINT, signal_handler)
-
-    main(args)
+    main()

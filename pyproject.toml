@@ -25,5 +25,6 @@ dependencies = [
 ]
 
 [project.scripts]
-saltup_yolo_inference = "saltup.tools.yolo_inference:main"
+saltup_yolo_image_inference = "saltup.tools.yolo_inference:main"
+saltup_yolo_video_inference = "saltup.tools.yolo_video:main"
  

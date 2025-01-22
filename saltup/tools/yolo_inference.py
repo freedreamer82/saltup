@@ -23,24 +23,7 @@ def signal_handler(sig, frame):
     """Handle Ctrl+C signal to gracefully exit the program."""
     print("\nProgram interrupted with Ctrl + C!")
     sys.exit(0)  # Terminate the script
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, help="Input NN model.")
-    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
-    parser.add_argument("--img", type=str, default="bus.jpg", help="Path to input image or folder.")
-    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
-    parser.add_argument("--preprocess", type=str, default='true', help="Preprocess the image before entering the model.")
-    parser.add_argument("--label", type=str, help="Path to image label or folder.")
-    parser.add_argument("--gui", action='store_true', help="Open GUI to draw bounding boxes.")
-    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
-    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
-    parser.add_argument("--num_class", type=int, help="Number of the classes.")
-    parser.add_argument("--show_bbox", type=str, help="Print bounding box information.")
-    parser.add_argument("--max_images", type=int, default=0, help="Maximum number of images to process.")
-    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
-    return parser.parse_args()
-
+ 
 
 def robust_mean(times):
     """Calculate the robust mean by excluding the smallest and largest values."""
@@ -139,15 +122,30 @@ def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox,
         "f1_score": f1_score,
     }
 
-def main(args= None):
-    """
-    Main function to process images and evaluate predictions.
-    
-    Args:
-        args: Command-line arguments.
-    """
+def main(args=None):
     if args is None:
-         args = get_args()
+        args = sys.argv[1:]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, help="Input NN model.")
+    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
+    parser.add_argument("--img", type=str, default="bus.jpg", help="Path to input image or folder.")
+    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
+    parser.add_argument("--preprocess", type=str, default='true', help="Preprocess the image before entering the model.")
+    parser.add_argument("--label", type=str, help="Path to image label or folder.")
+    parser.add_argument("--gui", action='store_true', help="Open GUI to draw bounding boxes.")
+    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
+    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
+    parser.add_argument("--num_class", type=int, help="Number of the classes.")
+    parser.add_argument("--show_bbox", type=str, help="Print bounding box information.")
+    parser.add_argument("--max_images", type=int, default=0, help="Maximum number of images to process.")
+    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
+
+        # Analizza gli argomenti
+    args = parser.parse_args(args)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+
 
     if args.cls_name:
         class_labels = args.cls_name.split(',')
@@ -279,7 +277,4 @@ def main(args= None):
 
 
 if __name__ == "__main__":
-    # Register a signal handler to catch Ctrl+C 
-    signal.signal(signal.SIGINT, signal_handler)
-
     main()
