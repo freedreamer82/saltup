@@ -1,207 +1,176 @@
 import pytest
 import numpy as np
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, NotationFormat, IoUType
+from saltup.ai.object_detection.utils.bbox import nms, convert_matrix_boxes
+# Test data
+TEST_IMAGE_WIDTH = 640
+TEST_IMAGE_HEIGHT = 480
 
-from saltup.ai.object_detection.utils.bbox import (
-    yolo_to_coco_bbox, coco_to_yolo_bbox, pascalvoc_to_yolo_bbox,
-    corners_to_center_format, corners_to_topleft_format,
-    center_to_corners_format, center_to_topleft_format,
-    topleft_to_center_format, normalize_bbox, absolute_bbox,
-    compute_iou, is_normalized, BBoxFormat, NotationFormat
-)
 
-class TestBBoxUtils:
-    @pytest.fixture
-    def image_dimensions(self):
-        """Standard image dimensions for testing."""
-        return 640, 480  # width, height
-        
-    @pytest.fixture
-    def sample_boxes(self):
-        """Sample bounding boxes in different formats."""
-        return {
-            'yolo': [0.5, 0.5, 0.2, 0.3],         # center_x, center_y, width, height
-            'coco': [100, 100, 40, 60],           # x1, y1, width, height
-            'pascal': [90, 80, 140, 160],         # x1, y1, x2, y2
-            'pascal_norm': [0.2, 0.2, 0.4, 0.5],  # normalized pascal coordinates
-            'topleft': [100, 100, 50, 60],        # x1, y1, width, height
-            'center': [125, 130, 50, 60]          # center_x, center_y, width, height
-        }
+# Test cases for convert_matrix_boxes function
+def test_convert_matrix_boxes():
+    # Test case 1: Single bounding box
+    box_xy = np.array([[50, 50]])  # Center coordinates (x_center, y_center)
+    box_wh = np.array([[40, 60]])  # Width and height (width, height)
 
-    def test_yolo_to_coco_bbox(self, sample_boxes, image_dimensions):
-        """Test YOLO to COCO bbox format conversion."""
-        img_width, img_height = image_dimensions
-        yolo_bbox = sample_boxes['yolo']
-        
-        coco_bbox = yolo_to_coco_bbox(yolo_bbox, img_width, img_height)
-        
-        # Basic format checks
-        assert len(coco_bbox) == 4
-        assert all(isinstance(x, (int, float)) for x in coco_bbox)
-        
-        # Convert back to verify
-        yolo_again = coco_to_yolo_bbox(coco_bbox, img_width, img_height)
-        np.testing.assert_array_almost_equal(yolo_bbox, yolo_again)
+    expected_corners = np.array([[30, 20, 70, 80]])  # Expected corners (xmin, ymin, xmax, ymax)
+    expected_centers = np.array([[50, 50, 40, 60]])  # Expected centers (x, y, w, h)
 
-    def test_coco_to_yolo_bbox(self, sample_boxes, image_dimensions):
-        """Test COCO to YOLO bbox format conversion."""
-        img_width, img_height = image_dimensions
-        coco_bbox = sample_boxes['coco']
-        
-        yolo_bbox = coco_to_yolo_bbox(coco_bbox, img_width, img_height)
-        
-        # Verify format
-        assert len(yolo_bbox) == 4
-        assert all(0 <= x <= 1 for x in yolo_bbox)  # YOLO coordinates should be normalized
-        
-        # Convert back to verify
-        coco_again = yolo_to_coco_bbox(yolo_bbox, img_width, img_height)
-        np.testing.assert_array_almost_equal(coco_bbox, coco_again, decimal=0)  # Using decimal=0 due to rounding
+    corners, centers = convert_matrix_boxes(box_xy, box_wh)
 
-    def test_pascalvoc_to_yolo_bbox(self, sample_boxes, image_dimensions):
-        """Test Pascal VOC to YOLO bbox format conversion."""
-        img_width, img_height = image_dimensions
-        pascal_bbox = sample_boxes['pascal']
-        
-        yolo_bbox = pascalvoc_to_yolo_bbox(pascal_bbox, img_width, img_height)
-        
-        # Check format and normalization
-        assert len(yolo_bbox) == 4
-        assert all(0 <= x <= 1 for x in yolo_bbox)
-        
-        # Verify the center coordinates make sense
-        x_center, y_center, w, h = yolo_bbox
-        assert 0 < x_center < 1
-        assert 0 < y_center < 1
-        assert 0 < w < 1
-        assert 0 < h < 1
+    # Assert that the output matches the expected values
+    assert np.array_equal(corners, expected_corners), "Corners do not match expected output"
+    assert np.array_equal(centers, expected_centers), "Centers do not match expected output"
 
-    def test_corners_to_center_format(self, sample_boxes):
-        """Test conversion from corners (x1,y1,x2,y2) to center format (xc,yc,w,h)."""
-        corners = sample_boxes['pascal']
-        
-        center = corners_to_center_format(corners)
-        
-        # Format check
-        assert len(center) == 4
-        xc, yc, w, h = center
-        x1, y1, x2, y2 = corners
-        
-        # Verify calculations
-        assert xc == (x1 + x2) / 2
-        assert yc == (y1 + y2) / 2
-        assert w == x2 - x1
-        assert h == y2 - y1
-        
-        # Convert back
-        corners_again = center_to_corners_format(center)
-        np.testing.assert_array_almost_equal(corners, corners_again)
+    # Test case 2: Multiple bounding boxes
+    box_xy = np.array([[50, 50], [100, 100]])  # Center coordinates for two boxes
+    box_wh = np.array([[40, 60], [80, 120]])   # Width and height for two boxes
 
-    def test_corners_to_topleft_format(self, sample_boxes):
-        """Test conversion from corners to top-left format."""
-        corners = sample_boxes['pascal']
-        topleft = corners_to_topleft_format(corners)
-        
-        # Check format
-        assert len(topleft) == 4
-        x1, y1, w, h = topleft
-        x1_orig, y1_orig, x2_orig, y2_orig = corners
-        
-        # Verify calculations
-        assert x1 == x1_orig
-        assert y1 == y1_orig
-        assert w == x2_orig - x1_orig
-        assert h == y2_orig - y1_orig
+    expected_corners = np.array([
+        [30, 20, 70, 80],   # Box 1 corners
+        [60, 40, 140, 160]  # Box 2 corners
+    ])
+    expected_centers = np.array([
+        [50, 50, 40, 60],   # Box 1 centers
+        [100, 100, 80, 120] # Box 2 centers
+    ])
 
-    def test_center_to_topleft_format(self, sample_boxes):
-        """Test conversion from center to top-left format."""
-        center = sample_boxes['center']
-        topleft = center_to_topleft_format(center)
-        
-        # Format check
-        assert len(topleft) == 4
-        x, y, w, h = topleft
-        xc, yc, w_orig, h_orig = center
-        
-        # Verify calculations
-        assert x == xc - w_orig/2
-        assert y == yc - h_orig/2
-        assert w == w_orig
-        assert h == h_orig
+    corners, centers = convert_matrix_boxes(box_xy, box_wh)
 
-    def test_topleft_to_center_format(self, sample_boxes):
-        """Test conversion from top-left to center format."""
-        topleft = sample_boxes['topleft']
-        center = topleft_to_center_format(topleft)
-        
-        # Check format
-        assert len(center) == 4
-        xc, yc, w, h = center
-        x, y, w_orig, h_orig = topleft
-        
-        # Verify calculations
-        assert xc == x + w_orig/2
-        assert yc == y + h_orig/2
-        assert w == w_orig
-        assert h == h_orig
+    # Assert that the output matches the expected values
+    assert np.array_equal(corners, expected_corners), "Corners do not match expected output for multiple boxes"
+    assert np.array_equal(centers, expected_centers), "Centers do not match expected output for multiple boxes"
 
-    def test_normalize_bbox(self, sample_boxes, image_dimensions):
-        """Test bbox normalization for different formats."""
-        img_width, img_height = image_dimensions
-        
-        # Test corners format
-        norm_corners = normalize_bbox(sample_boxes['pascal'], img_width, img_height, format=BBoxFormat.CORNERS)
-        assert all(0 <= x <= 1 for x in norm_corners)
-        
-        # Test top-left format
-        norm_topleft = normalize_bbox(sample_boxes['topleft'], img_width, img_height, format=BBoxFormat.TOPLEFT)
-        assert all(0 <= x <= 1 for x in norm_topleft)
-        
-        # Test center format
-        norm_center = normalize_bbox(sample_boxes['center'], img_width, img_height, format=BBoxFormat.CENTER)
-        assert all(0 <= x <= 1 for x in norm_center)
+    # Test case 3: Edge case with zero width and height
+    box_xy = np.array([[50, 50]])
+    box_wh = np.array([[0, 0]])
 
-        # Test invalid format
-        with pytest.raises(TypeError):
-            normalize_bbox(sample_boxes['pascal'], img_width, img_height, format='invalid')
+    expected_corners = np.array([[50, 50, 50, 50]])  # All corners should be the center point
+    expected_centers = np.array([[50, 50, 0, 0]])    # Width and height should be zero
 
-    def test_absolute_bbox(self, sample_boxes, image_dimensions):
-        """Test conversion from normalized to absolute coordinates."""
-        img_width, img_height = image_dimensions
-        
-        # Test with normalized pascal format
-        abs_pascal = absolute_bbox(sample_boxes['pascal_norm'], img_width, img_height, format=BBoxFormat.CORNERS)
-        assert all(x > 1 for x in abs_pascal)  # Should be in pixels now
-        
-        # Normalize back to verify
-        norm_again = normalize_bbox(abs_pascal, img_width, img_height, format=BBoxFormat.CORNERS)
-        np.testing.assert_array_almost_equal(sample_boxes['pascal_norm'], norm_again)
+    corners, centers = convert_matrix_boxes(box_xy, box_wh)
 
-    def test_compute_iou(self):
-        """Test IoU calculation between bounding boxes."""
-        # Perfect overlap
-        box1 = [0, 0, 1, 1]
-        np.testing.assert_almost_equal(compute_iou(box1, box1, format=BBoxFormat.CORNERS), 1.0)
-        
-        # No overlap
-        box2 = [2, 2, 3, 3]
-        assert compute_iou(box1, box2, format=BBoxFormat.CORNERS) == 0.0
-        
-        # Partial overlap
-        box3 = [0.5, 0.5, 1.5, 1.5]
-        iou = compute_iou(box1, box3, format=BBoxFormat.CORNERS)
-        assert 0 < iou < 1
-        
-        # Test with center format
-        center_box1 = [0.5, 0.5, 1, 1]  # center_x, center_y, w, h
-        center_box2 = [0.5, 0.5, 1, 1]
-        np.testing.assert_almost_equal(compute_iou(center_box1, center_box2, format=BBoxFormat.CENTER), 1.0)
+    # Assert that the output matches the expected values
+    assert np.array_equal(corners, expected_corners), "Corners do not match expected output for zero width/height"
+    assert np.array_equal(centers, expected_centers), "Centers do not match expected output for zero width/height"
 
-    def test_is_normalized(self, sample_boxes):
-        """Test bbox normalization check."""
-        assert is_normalized(sample_boxes['yolo'])
-        assert not is_normalized(sample_boxes['coco'])
-        assert not is_normalized(sample_boxes['pascal'])
-        assert is_normalized(sample_boxes['pascal_norm'])
+    # Test case 4: Negative width and height (should still work)
+    box_xy = np.array([[50, 50]])
+    box_wh = np.array([[-40, -60]])
 
-if __name__ == '__main__':
-    pytest.main(['-v', __file__])
+    expected_corners = np.array([[70, 80, 30, 20]])  # Corners should flip due to negative width/height
+    expected_centers = np.array([[50, 50, -40, -60]])
+
+    corners, centers = convert_matrix_boxes(box_xy, box_wh)
+
+    # Assert that the output matches the expected values
+    assert np.array_equal(corners, expected_corners), "Corners do not match expected output for negative width/height"
+    assert np.array_equal(centers, expected_centers), "Centers do not match expected output for negative width/height"
+    
+
+# Test cases for BBox class
+def test_bbox_initialization():
+    # Test initialization with CORNERS format
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    assert bbox.coordinates == [100, 150, 200, 250]
+    assert bbox.format == BBoxFormat.CORNERS
+    assert bbox.img_width == TEST_IMAGE_WIDTH
+    assert bbox.img_height == TEST_IMAGE_HEIGHT
+
+    # Test initialization with CENTER format
+    bbox = BBox([150, 200, 100, 100], BBoxFormat.CENTER, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    assert bbox.coordinates == [150, 200, 100, 100]
+    assert bbox.format == BBoxFormat.CENTER
+
+    # Test initialization with TOPLEFT format
+    bbox = BBox([100, 150, 100, 100], BBoxFormat.TOPLEFT, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    assert bbox.coordinates == [100, 150, 100, 100]
+    assert bbox.format == BBoxFormat.TOPLEFT
+
+def test_bbox_copy():
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox_copy = bbox.copy()
+    assert bbox_copy.coordinates == bbox.coordinates
+    assert bbox_copy.format == bbox.format
+    assert bbox_copy.img_width == bbox.img_width
+    assert bbox_copy.img_height == bbox.img_height
+
+def test_bbox_is_normalized():
+    # Test normalized coordinates
+    bbox = BBox([0.1, 0.2, 0.3, 0.4], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    assert bbox.is_normalized() == True
+
+    # Test non-normalized coordinates
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    assert bbox.is_normalized() == False
+
+def test_bbox_pascalvoc_to_yolo_bbox():
+    voc_bbox = [100, 150, 200, 250]
+    yolo_bbox = BBox.pascalvoc_to_yolo_bbox(voc_bbox, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    expected_yolo_bbox = (0.234375, 0.4166666666666667, 0.15625, 0.20833333333333334)
+    assert yolo_bbox == pytest.approx(expected_yolo_bbox)
+
+def test_bbox_corners_to_center_format():
+    corners = [100, 150, 200, 250]
+    center = BBox.corners_to_center_format(corners)
+    expected_center = (150.0, 200.0, 100.0, 100.0)
+    assert center == expected_center
+
+def test_bbox_center_to_corners_format():
+    center = [150, 200, 100, 100]
+    corners = BBox.center_to_corners_format(center)
+    expected_corners = (100.0, 150.0, 200.0, 250.0)
+    assert corners == expected_corners
+
+def test_bbox_normalize():
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox.normalize(TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    assert bbox.coordinates == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+
+def test_bbox_absolute():
+    bbox = BBox([0.1, 0.2, 0.3, 0.4], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    absolute_coords = bbox.absolute()
+    expected_coords = (64, 96, 192, 192)
+    assert absolute_coords == expected_coords
+
+def test_bbox_to_yolo():
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    yolo_coords = bbox.to_yolo()
+    expected_yolo_coords = (0.234375, 0.4166666666666667, 0.15625, 0.20833333333333334)
+    assert yolo_coords == pytest.approx(expected_yolo_coords)
+
+def test_bbox_to_coco():
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    coco_coords = bbox.to_coco()
+    expected_coco_coords = (100, 150, 100, 100)
+    assert coco_coords == expected_coco_coords
+
+def test_bbox_to_pascal_voc():
+    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    pascal_coords = bbox.to_pascal_voc()
+    expected_pascal_coords = (100, 150, 200, 250)
+    assert pascal_coords == expected_pascal_coords
+
+def test_bbox_compute_iou():
+    bbox1 = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox2 = BBox([150, 200, 250, 300], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    iou = bbox1.compute_iou(bbox2)
+    expected_iou = 0.14285714285714285
+    assert iou == pytest.approx(expected_iou)
+
+# Test cases for utility functions
+def test_nms():
+    bboxes = [
+        BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT),
+        BBox([150, 200, 250, 300], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT),
+        BBox([50, 100, 150, 200], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    ]
+    scores = [0.9, 0.8, 0.7]
+    iou_threshold = 0.5
+    selected_bboxes = nms(bboxes, scores, iou_threshold)
+    assert isinstance(selected_bboxes, list)
+
+# Add more test cases as needed
+
+if __name__ == "__main__":
+    pytest.main()

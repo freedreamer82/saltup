@@ -109,539 +109,13 @@ class NotationFormat(IntEnum):
             return "PASCAL VOC (absolute x1, y1, x2, y2)"
         else:
             raise ValueError(f"Unknown NotationFormat: {self}")
-
-def yolo_to_coco_bbox(yolo_bbox: Union[List, Tuple], img_width: int, img_height: int) -> list[float]:
-    """Convert YOLO bbox format to COCO format.
-
-    YOLO: (x_center, y_center, width, height) normalized [0-1]
-    COCO: (x_min, y_min, width, height) in pixels
-    """
-    x_center, y_center, width, height = yolo_bbox
-
-    x_min = int((x_center - width/2) * img_width)
-    y_min = int((y_center - height/2) * img_height)
-    w = width * img_width
-    h = height * img_height
-
-    return [x_min, y_min, w, h]
-
-
-def coco_to_yolo_bbox(coco_bbox: Union[List, Tuple], img_width: int, img_height: int) -> list[float]:
-    """Convert COCO bbox format to YOLO format.
-
-    COCO: (x_min, y_min, width, height) in pixels
-    YOLO: (x_center, y_center, width, height) normalized [0-1]
-    """
-    x_min, y_min, w, h = coco_bbox
-
-    x_center = (x_min + w/2) / img_width
-    y_center = (y_min + h/2) / img_height
-    width = w / img_width
-    height = h / img_height
-
-    return [x_center, y_center, width, height]
-
-
-def pascalvoc_to_yolo_bbox(voc_bbox: Union[List, Tuple], img_width: int, img_height: int) -> list[float]:
-    """Convert Pascal VOC bbox format to YOLO format.
-
-    Pascal VOC: (xmin, ymin, xmax, ymax) in pixels
-    YOLO: (x_center, y_center, width, height) normalized [0-1]
-    """
-    xmin, ymin, xmax, ymax = voc_bbox
-
-    x_center = (xmin + xmax)/(2.0 * img_width)
-    y_center = (ymin + ymax)/(2.0 * img_height)
-    width = (xmax - xmin)/img_width
-    height = (ymax - ymin)/img_height
-
-    return (x_center, y_center, width, height)
-
-
-def corners_to_center_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
-    """
-    Convert box from (x1, y1, x2, y2) format to (xc, yc, w, h) format.
-
-    Args:
-        box: List or tuple containing [x1, y1, x2, y2] coordinates
-
-    Returns:
-        Tuple containing (xc, yc, w, h) coordinates
-
-    Raises:
-        ValueError: If input box doesn't contain exactly 4 values
-    """
-    if len(box) != 4:
-        raise ValueError("Box must contain exactly 4 values: [x1, y1, x2, y2]")
-
-    x1, y1, x2, y2 = box
-    xc = (x1 + x2) / 2
-    yc = (y1 + y2) / 2
-    w = abs(x2 - x1)  # Using abs to handle reversed coordinates
-    h = abs(y2 - y1)
-    return xc, yc, w, h
-
-
-def corners_to_topleft_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
-    """
-    Convert box from (x1, y1, x2, y2) format to top-left format (x1, y1, w, h).
-
-    Args:
-        box: List or tuple containing [x1, y1, x2, y2] coordinates
-
-    Returns:
-        Tuple containing (x1, y1, w, h) coordinates in top-left format
-
-    Raises:
-        ValueError: If input box doesn't contain exactly 4 values
-    """
-    if len(box) != 4:
-        raise ValueError("Box must contain exactly 4 values: [x1, y1, x2, y2]")
-
-    x1, y1, x2, y2 = box
-    w = abs(x2 - x1)
-    h = abs(y2 - y1)
-    return x1, y1, w, h
-
-
-def center_to_corners_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
-    """
-    Convert box from (xc, yc, w, h) format to (x1, y1, x2, y2) format.
-
-    Args:
-        box: List or tuple containing [xc, yc, w, h] coordinates
-
-    Returns:
-        Tuple containing (x1, y1, x2, y2) coordinates
-
-    Raises:
-        ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
-    """
-    if len(box) != 4:
-        raise ValueError("Box must contain exactly 4 values: [xc, yc, w, h]")
-
-    xc, yc, w, h = box
-    if w < 0 or h < 0:
-        raise ValueError("Width and height must be non-negative")
-
-    # Clamp coordinates
-    x1 = max(0, xc - w / 2)
-    y1 = max(0, yc - h / 2)
-    x2 = max(0, xc + w / 2)
-    y2 = max(0, yc + h / 2)
-    
-    return x1, y1, x2, y2
-
-
-def center_to_topleft_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
-    """
-    Convert box from (xc, yc, w, h) format to top-left format (x1, y1, w, h).
-
-    Args:
-        box: List or tuple containing [xc, yc, w, h] coordinates
-
-    Returns:
-        Tuple containing (x1, y1, w, h) coordinates in top-left format
         
-    Raises:
-        ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
-    """
-    if len(box) != 4:
-        raise ValueError("Box must contain exactly 4 values: [xc, yc, w, h]")
-    
-    xc, yc, w, h = box
-    if w < 0 or h < 0:
-        raise ValueError("Width and height must be non-negative")
-    
-    x1 = xc - w / 2
-    y1 = yc - h / 2
-    return x1, y1, w, h
-
-
-def topleft_to_center_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
-    """
-    Convert box from (x1, y1, w, h) format to center format (xc, yc, w, h).
-
-    Args:
-        box: List or tuple containing [x1, y1, w, h] coordinates
-
-    Returns:
-        Tuple containing (xc, yc, w, h) coordinates in center format
-
-    Raises:
-        ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
-    """
-    if len(box) != 4:
-        raise ValueError("Box must contain exactly 4 values: [x1, y1 w, h]")
-    
-    x1, y1, w, h = box
-    if w < 0 or h < 0:
-        raise ValueError("Width and height must be non-negative")
-    
-    xc = x1 + w / 2
-    yc = y1 + h / 2
-    return xc, yc, w, h
-
-
-def topleft_to_corners_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
-    """
-    Convert box from (x1, y1, w, h) format to corners (x1, y1, x2, y2) format.
-
-    Args:
-        box: List or tuple containing [x1, y1, w, h] coordinates
-
-    Returns:
-        Tuple containing (x1, y1, x2, y2) coordinates.
-
-    Raises:
-        ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
-    """
-    if len(box) != 4:
-        raise ValueError("Box must contain exactly 4 values: [x1, y1, w, h]")
-    
-    x1, y1, w, h = box
-    if w < 0 or h < 0:
-        raise ValueError("Width and height must be non-negative")
-    
-    x2 = x1 + w
-    y2 = y1 + h
-    return x1, y1, x2, y2
-
-
-def is_normalized(box: Union[List, Tuple]) -> bool:
-    """
-    Check if a bounding box is normalized (all values between 0 and 1).
-
-    Args:
-        box: Box coordinates to check
-
-    Returns:
-        bool: True if all coordinates are between 0 and 1, False otherwise
-    """
-    return all(0 <= x <= 1 for x in box)
-
-
-
-def normalize_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
-    """
-    Normalize bounding box coordinates relative to image dimensions.
-
-    Args:
-        bbox: Bounding box coordinates in one of three formats:
-            - corners: (x1, y1, x2, y2) where (x1,y1) is top-left and (x2,y2) is bottom-right
-            - topleft: (x1, y1, width, height) where (x1,y1) is top-left corner
-            - center: (xc, yc, width, height) where (xc,yc) is center point
-        img_width: Width of the image in pixels
-        img_height: Height of the image in pixels
-        format: Format of input bbox ('corners', 'topleft', or 'center')
-
-    Returns:
-        Tuple of normalized coordinates in same format as input
-        All values are in range [0.0, 1.0]
-
-    Raises:
-        ValueError: If coordinates are invalid (e.g., negative width/height)
-        TypeError: If input types are incorrect
-    """
-    # Input validation
-    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-        raise TypeError("bbox must be a list or tuple of 4 elements")
-    if not isinstance(img_width, (int, np.integer)) or not isinstance(img_height, (int, np.integer)):
-        raise TypeError("Image dimensions must be integers")
-    if img_width <= 0 or img_height <= 0:
-        raise ValueError("Image dimensions must be positive")
-    if not isinstance(format, BBoxFormat):
-        raise TypeError("Format must be a BBoxFormat")
-
-    # Convert to float for calculations
-    bbox = [float(x) for x in bbox]
-
-    if format == BBoxFormat.CORNERS:
-        x1, y1, x2, y2 = bbox
-
-        # Validate coordinates
-        if x1 > x2 or y1 > y2:
-            raise ValueError("Invalid box coordinates: x1/y1 must be less than x2/y2")
-        if any(c < 0 for c in [x1, y1, x2, y2]):
-            raise ValueError("Coordinates must be non-negative")
-
-        # Clippare le coordinate ai limiti dell'immagine
-        x1 = max(0, min(x1, img_width))
-        y1 = max(0, min(y1, img_height))
-        x2 = max(0, min(x2, img_width))
-        y2 = max(0, min(y2, img_height))
-
-        # Normalize
-        return (
-            x1 / img_width,
-            y1 / img_height,
-            x2 / img_width,
-            y2 / img_height
-        )
-
-    elif format == BBoxFormat.TOPLEFT:
-        x1, y1, w, h = bbox
-
-        # Validate coordinates and dimensions
-        if w <= 0 or h <= 0:
-            raise ValueError("Width and height must be positive")
-        if x1 < 0 or y1 < 0:
-            raise ValueError("Coordinates must be non-negative")
-
-        # Clippare le coordinate ai limiti dell'immagine
-        x1 = max(0, min(x1, img_width))
-        y1 = max(0, min(y1, img_height))
-        w = min(w, img_width - x1)
-        h = min(h, img_height - y1)
-
-        # Normalize
-        return (
-            x1 / img_width,
-            y1 / img_height,
-            w / img_width,
-            h / img_height
-        )
-
-    elif format == BBoxFormat.CENTER:
-        xc, yc, w, h = bbox
-
-        # Validate coordinates and dimensions
-        if w <= 0 or h <= 0:
-            raise ValueError("Width and height must be positive")
-
-        # Calcola gli angoli della bounding box
-        x1 = xc - w / 2
-        y1 = yc - h / 2
-        x2 = xc + w / 2
-        y2 = yc + h / 2
-
-        # Clippare le coordinate ai limiti dell'immagine
-        x1 = max(0, min(x1, img_width))
-        y1 = max(0, min(y1, img_height))
-        x2 = max(0, min(x2, img_width))
-        y2 = max(0, min(y2, img_height))
-
-        # Ricalcola le coordinate centrali e le dimensioni dopo il clippaggio
-        xc = (x1 + x2) / 2
-        yc = (y1 + y2) / 2
-        w = x2 - x1
-        h = y2 - y1
-
-        # Normalize
-        return (
-            xc / img_width,
-            yc / img_height,
-            w / img_width,
-            h / img_height
-        )
-    
-
-def absolute_bbox(bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
-    """
-    Convert normalized bounding box coordinates to absolute pixel coordinates.
-
-    Args:
-        bbox: Normalized coordinates [0.0-1.0] in specified format
-        img_width: Image width in pixels
-        img_height: Image height in pixels
-        format: Box format ('corners', 'topleft', or 'center')
-
-    Returns:
-        Tuple of absolute coordinates in same format as input
-    """
-    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-        raise TypeError("bbox must be a list/tuple of 4 elements")
-    if not isinstance(img_width, (int, np.integer)) or not isinstance(img_height, (int, np.integer)):
-        raise TypeError("Image dimensions must be integers")
-    if img_width <= 0 or img_height <= 0:
-        raise ValueError("Image dimensions must be positive")
-    if not all(0 <= x <= 1 for x in bbox):
-        raise ValueError("Normalized coordinates must be in range [0,1]")
-    if not isinstance(format, BBoxFormat):
-        raise TypeError("Format must be a  BBoxFormat")
-
-    bbox = [float(x) for x in bbox]
-
-    if format == BBoxFormat.CORNERS:
-        x1, y1, x2, y2 = bbox
-        if x1 > x2 or y1 > y2:
-            raise ValueError("Invalid box: x1/y1 must be less than x2/y2")
-        return tuple(map(int, (
-            x1 * img_width,
-            y1 * img_height,
-            x2 * img_width,
-            y2 * img_height
-        )))
-
-    elif format == BBoxFormat.TOPLEFT:
-        x, y, w, h = bbox
-        if w <= 0 or h <= 0:
-            raise ValueError("Width and height must be positive")
-        return tuple(map(int, (
-            x * img_width,
-            y * img_height,
-            w * img_width,
-            h * img_height
-        )))
-
-    elif format == BBoxFormat.CENTER:
-        xc, yc, w, h = bbox
-        if w <= 0 or h <= 0:
-            raise ValueError("Width and height must be positive")
-        if (xc - w/2) < 0 or (yc - h/2) < 0 or (xc + w/2) > 1 or (yc + h/2) > 1:
-            raise ValueError("Box extends outside normalized bounds")
-        return tuple(map(int, (
-            xc * img_width,
-            yc * img_height,
-            w * img_width,
-            h * img_height
-        )))
-
-    raise ValueError(f"Unsupported format: {format}. Must be 'corners', 'topleft', or 'center'")
-
 class IoUType(Enum):
     IOU = "iou"
     DIOU = "diou"
     CIOU = "ciou"
     GIOU = "giou"
 
-def compute_iou(
-    box1: Union[List, Tuple], 
-    box2: Union[List, Tuple], 
-    format: BBoxFormat = BBoxFormat.CORNERS,
-    iou_type: IoUType = IoUType.IOU
-) -> float:
-    """
-    Calculate Intersection over Union (IoU) between two bounding boxes.
-
-    Args:
-        box1: First bounding box coordinates
-        box2: Second bounding box coordinates
-        format: Format of the input boxes, either "corners" (x1,y1,x2,y2), "center" (xc,yc,w,h) or "topleft" (x1,y1,w,h)
-        iou_type: Type of IoU to compute, either "iou", "diou", "ciou", or "giou"
-
-    Returns:
-        float: IoU value between 0 and 1
-
-    Raises:
-        ValueError: If format is not "corners", "center" or "topleft"
-        ValueError: If iou_type is not "iou", "diou", "ciou", or "giou"
-    """
-    if not isinstance(format, BBoxFormat):
-        raise TypeError("Format must be a BBoxFormat")
-    if not isinstance(iou_type, IoUType):
-        raise TypeError("IoU type must be an IoUType")
-
-    # Convert to corners format if necessary
-    if format == BBoxFormat.CENTER:
-        box1 = center_to_corners_format(box1)
-        box2 = center_to_corners_format(box2)
-    elif format == BBoxFormat.TOPLEFT:
-        box1 = topleft_to_corners_format(box1)
-        box2 = topleft_to_corners_format(box2)
-
-    # Extract coordinates
-    x1_1, y1_1, x2_1, y2_1 = box1
-    x1_2, y1_2, x2_2, y2_2 = box2
-
-    # Calculate intersection coordinates
-    x1 = max(x1_1, x1_2)
-    y1 = max(y1_1, y1_2)
-    x2 = min(x2_1, x2_2)
-    y2 = min(y2_1, y2_2)
-
-    # Calculate intersection area
-    intersection = max(0, x2 - x1) * max(0, y2 - y1)
-
-    # Calculate areas of the bounding boxes
-    area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-    area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-    union = area1 + area2 - intersection
-
-    # Calculate IoU
-    iou = intersection / (union + np.finfo(float).eps)
-
-    if iou_type == IoUType.IOU:
-        return iou
-
-    # Calculate DIoU, CIoU, or GIoU
-    elif iou_type in [IoUType.DIOU, IoUType.CIOU, IoUType.GIOU]:
-        # Calculate the coordinates of the smallest enclosing box
-        x1_c = min(x1_1, x1_2)
-        y1_c = min(y1_1, y1_2)
-        x2_c = max(x2_1, x2_2)
-        y2_c = max(y2_1, y2_2)
-
-        # Calculate the diagonal distance of the smallest enclosing box
-        c = (x2_c - x1_c) ** 2 + (y2_c - y1_c) ** 2
-
-        # Calculate the distance between the centers of the two boxes
-        x1_m = (x1_1 + x2_1) / 2
-        y1_m = (y1_1 + y2_1) / 2
-        x2_m = (x1_2 + x2_2) / 2
-        y2_m = (y1_2 + y2_2) / 2
-        d = (x1_m - x2_m) ** 2 + (y1_m - y2_m) ** 2
-
-        # Calculate DIoU
-        diou = iou - d / (c + np.finfo(float).eps)
-
-        if iou_type == IoUType.DIOU:
-            return diou
-
-        # Calculate CIoU
-        elif iou_type == IoUType.CIOU:
-            # Calculate aspect ratio consistency
-            v = (4 / (np.pi ** 2)) * (np.arctan((x2_1 - x1_1) / (y2_1 - y1_1 + np.finfo(float).eps)) - np.arctan((x2_2 - x1_2) / (y2_2 - y1_2 + np.finfo(float).eps))) ** 2
-            alpha = v / (1 - iou + v + np.finfo(float).eps)
-            ciou = diou - alpha * v
-            return ciou
-
-        # Calculate GIoU
-        elif iou_type == IoUType.GIOU:
-            # Calculate the area of the smallest enclosing box
-            area_c = (x2_c - x1_c) * (y2_c - y1_c)
-            giou = iou - (area_c - union) / (area_c + np.finfo(float).eps)
-            return giou
-
-    else:
-        raise ValueError("Invalid IoU type")
-
-
-def plot_image_with_boxes(image_file: str, label_file: str):
-    """Plot a image with its bounding boxes
-
-    Args:
-        image_file (str): path to the image
-        label_file (str): path to the label
-    """
-    from saltup.ai.object_detection.dataset.yolo_darknet import read_label
-
-    # Read image
-    image = cv2.imread(image_file)
-    # Read image dimensions
-    image_height, image_width, _ = image.shape
-    # Read YOLO label file
-    boxes = read_label(label_file)
-    # Draw bounding boxes
-    for box in boxes:
-        xc, yc, w, h, class_id = box
-        x1, y1, x2, y2 = center_to_corners_format((xc, yc, w, h))
-
-        x1 *= image_width
-        y1 *= image_height
-        x2 *= image_width
-        y2 *= image_height
-
-        # Define color based on class ID
-        color = (0, 255, 255)  # Green color for bounding boxes
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-    # Display image with bounding boxes using matplotlib
-    plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    plt.axis('off')
-    plt.show()
-
- 
-from tensorflow.python.keras import backend as K
 
 def convert_matrix_boxes(box_xy, box_wh):
     """
@@ -751,6 +225,452 @@ class BBox:
             return (0 <= x1 <= 1 and 0 <= y1 <= 1 and 0 <= w <= 1 and 0 <= h <= 1)
         else:
             raise ValueError(f"Unsupported format: {self.format}")
+
+    @classmethod
+    def pascalvoc_to_yolo_bbox(cls, voc_bbox: Union[List, Tuple], img_width: int, img_height: int) -> list[float]:
+        """Convert Pascal VOC bbox format to YOLO format.
+
+        Pascal VOC: (xmin, ymin, xmax, ymax) in pixels
+        YOLO: (x_center, y_center, width, height) normalized [0-1]
+        """
+        xmin, ymin, xmax, ymax = voc_bbox
+
+        x_center = (xmin + xmax)/(2.0 * img_width)
+        y_center = (ymin + ymax)/(2.0 * img_height)
+        width = (xmax - xmin)/img_width
+        height = (ymax - ymin)/img_height
+
+        return (x_center, y_center, width, height)
+
+    @classmethod
+    def corners_to_center_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+        """
+        Convert box from (x1, y1, x2, y2) format to (xc, yc, w, h) format.
+
+        Args:
+            box: List or tuple containing [x1, y1, x2, y2] coordinates
+
+        Returns:
+            Tuple containing (xc, yc, w, h) coordinates
+
+        Raises:
+            ValueError: If input box doesn't contain exactly 4 values
+        """
+        if len(box) != 4:
+            raise ValueError("Box must contain exactly 4 values: [x1, y1, x2, y2]")
+
+        x1, y1, x2, y2 = box
+        xc = (x1 + x2) / 2
+        yc = (y1 + y2) / 2
+        w = abs(x2 - x1)  # Using abs to handle reversed coordinates
+        h = abs(y2 - y1)
+        return xc, yc, w, h
+
+    @classmethod
+    def corners_to_topleft_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+        """
+        Convert box from (x1, y1, x2, y2) format to top-left format (x1, y1, w, h).
+
+        Args:
+            box: List or tuple containing [x1, y1, x2, y2] coordinates
+
+        Returns:
+            Tuple containing (x1, y1, w, h) coordinates in top-left format
+
+        Raises:
+            ValueError: If input box doesn't contain exactly 4 values
+        """
+        if len(box) != 4:
+            raise ValueError("Box must contain exactly 4 values: [x1, y1, x2, y2]")
+
+        x1, y1, x2, y2 = box
+        w = abs(x2 - x1)
+        h = abs(y2 - y1)
+        return x1, y1, w, h
+
+    @classmethod
+    def center_to_corners_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+        """
+        Convert box from (xc, yc, w, h) format to (x1, y1, x2, y2) format.
+
+        Args:
+            box: List or tuple containing [xc, yc, w, h] coordinates
+
+        Returns:
+            Tuple containing (x1, y1, x2, y2) coordinates
+
+        Raises:
+            ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
+        """
+        if len(box) != 4:
+            raise ValueError("Box must contain exactly 4 values: [xc, yc, w, h]")
+
+        xc, yc, w, h = box
+        if w < 0 or h < 0:
+            raise ValueError("Width and height must be non-negative")
+
+        # Clamp coordinates
+        x1 = max(0, xc - w / 2)
+        y1 = max(0, yc - h / 2)
+        x2 = max(0, xc + w / 2)
+        y2 = max(0, yc + h / 2)
+        
+        return x1, y1, x2, y2
+
+
+    def center_to_topleft_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+        """
+        Convert box from (xc, yc, w, h) format to top-left format (x1, y1, w, h).
+
+        Args:
+            box: List or tuple containing [xc, yc, w, h] coordinates
+
+        Returns:
+            Tuple containing (x1, y1, w, h) coordinates in top-left format
+            
+        Raises:
+            ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
+        """
+        if len(box) != 4:
+            raise ValueError("Box must contain exactly 4 values: [xc, yc, w, h]")
+        
+        xc, yc, w, h = box
+        if w < 0 or h < 0:
+            raise ValueError("Width and height must be non-negative")
+        
+        x1 = xc - w / 2
+        y1 = yc - h / 2
+        return x1, y1, w, h
+
+    @classmethod
+    def topleft_to_center_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+        """
+        Convert box from (x1, y1, w, h) format to center format (xc, yc, w, h).
+
+        Args:
+            box: List or tuple containing [x1, y1, w, h] coordinates
+
+        Returns:
+            Tuple containing (xc, yc, w, h) coordinates in center format
+
+        Raises:
+            ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
+        """
+        if len(box) != 4:
+            raise ValueError("Box must contain exactly 4 values: [x1, y1 w, h]")
+        
+        x1, y1, w, h = box
+        if w < 0 or h < 0:
+            raise ValueError("Width and height must be non-negative")
+        
+        xc = x1 + w / 2
+        yc = y1 + h / 2
+        return xc, yc, w, h
+
+    @classmethod
+    def topleft_to_corners_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+        """
+        Convert box from (x1, y1, w, h) format to corners (x1, y1, x2, y2) format.
+
+        Args:
+            box: List or tuple containing [x1, y1, w, h] coordinates
+
+        Returns:
+            Tuple containing (x1, y1, x2, y2) coordinates.
+
+        Raises:
+            ValueError: If input box doesn't contain exactly 4 values or if w/h are negative
+        """
+        if len(box) != 4:
+            raise ValueError("Box must contain exactly 4 values: [x1, y1, w, h]")
+        
+        x1, y1, w, h = box
+        if w < 0 or h < 0:
+            raise ValueError("Width and height must be non-negative")
+        
+        x2 = x1 + w
+        y2 = y1 + h
+        return x1, y1, x2, y2
+
+    @classmethod
+    def _normalize_bbox(cls, bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
+        """
+        Normalize bounding box coordinates relative to image dimensions.
+
+        Args:
+            bbox: Bounding box coordinates in one of three formats:
+                - corners: (x1, y1, x2, y2) where (x1,y1) is top-left and (x2,y2) is bottom-right
+                - topleft: (x1, y1, width, height) where (x1,y1) is top-left corner
+                - center: (xc, yc, width, height) where (xc,yc) is center point
+            img_width: Width of the image in pixels
+            img_height: Height of the image in pixels
+            format: Format of input bbox ('corners', 'topleft', or 'center')
+
+        Returns:
+            Tuple of normalized coordinates in same format as input
+            All values are in range [0.0, 1.0]
+
+        Raises:
+            ValueError: If coordinates are invalid (e.g., negative width/height)
+            TypeError: If input types are incorrect
+        """
+        # Input validation
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            raise TypeError("bbox must be a list or tuple of 4 elements")
+        if not isinstance(img_width, (int, np.integer)) or not isinstance(img_height, (int, np.integer)):
+            raise TypeError("Image dimensions must be integers")
+        if img_width <= 0 or img_height <= 0:
+            raise ValueError("Image dimensions must be positive")
+        if not isinstance(format, BBoxFormat):
+            raise TypeError("Format must be a BBoxFormat")
+
+        # Convert to float for calculations
+        bbox = [float(x) for x in bbox]
+
+        if format == BBoxFormat.CORNERS:
+            x1, y1, x2, y2 = bbox
+
+            # Validate coordinates
+            if x1 > x2 or y1 > y2:
+                raise ValueError("Invalid box coordinates: x1/y1 must be less than x2/y2")
+            if any(c < 0 for c in [x1, y1, x2, y2]):
+                raise ValueError("Coordinates must be non-negative")
+
+            # Clippare le coordinate ai limiti dell'immagine
+            x1 = max(0, min(x1, img_width))
+            y1 = max(0, min(y1, img_height))
+            x2 = max(0, min(x2, img_width))
+            y2 = max(0, min(y2, img_height))
+
+            # Normalize
+            return (
+                x1 / img_width,
+                y1 / img_height,
+                x2 / img_width,
+                y2 / img_height
+            )
+
+        elif format == BBoxFormat.TOPLEFT:
+            x1, y1, w, h = bbox
+
+            # Validate coordinates and dimensions
+            if w <= 0 or h <= 0:
+                raise ValueError("Width and height must be positive")
+            if x1 < 0 or y1 < 0:
+                raise ValueError("Coordinates must be non-negative")
+
+            # Clippare le coordinate ai limiti dell'immagine
+            x1 = max(0, min(x1, img_width))
+            y1 = max(0, min(y1, img_height))
+            w = min(w, img_width - x1)
+            h = min(h, img_height - y1)
+
+            # Normalize
+            return (
+                x1 / img_width,
+                y1 / img_height,
+                w / img_width,
+                h / img_height
+            )
+
+        elif format == BBoxFormat.CENTER:
+            xc, yc, w, h = bbox
+
+            # Validate coordinates and dimensions
+            if w <= 0 or h <= 0:
+                raise ValueError("Width and height must be positive")
+
+            # Calcola gli angoli della bounding box
+            x1 = xc - w / 2
+            y1 = yc - h / 2
+            x2 = xc + w / 2
+            y2 = yc + h / 2
+
+            # Clippare le coordinate ai limiti dell'immagine
+            x1 = max(0, min(x1, img_width))
+            y1 = max(0, min(y1, img_height))
+            x2 = max(0, min(x2, img_width))
+            y2 = max(0, min(y2, img_height))
+
+            # Ricalcola le coordinate centrali e le dimensioni dopo il clippaggio
+            xc = (x1 + x2) / 2
+            yc = (y1 + y2) / 2
+            w = x2 - x1
+            h = y2 - y1
+
+            # Normalize
+            return (
+                xc / img_width,
+                yc / img_height,
+                w / img_width,
+                h / img_height
+            )
+        
+    @classmethod
+    def absolute_bbox(cls, bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
+        """
+        Convert normalized bounding box coordinates to absolute pixel coordinates.
+
+        Args:
+            bbox: Normalized coordinates [0.0-1.0] in specified format
+            img_width: Image width in pixels
+            img_height: Image height in pixels
+            format: Box format ('corners', 'topleft', or 'center')
+
+        Returns:
+            Tuple of absolute coordinates in same format as input
+        """
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            raise TypeError("bbox must be a list/tuple of 4 elements")
+        if not isinstance(img_width, (int, np.integer)) or not isinstance(img_height, (int, np.integer)):
+            raise TypeError("Image dimensions must be integers")
+        if img_width <= 0 or img_height <= 0:
+            raise ValueError("Image dimensions must be positive")
+        if not all(0 <= x <= 1 for x in bbox):
+            raise ValueError("Normalized coordinates must be in range [0,1]")
+        if not isinstance(format, BBoxFormat):
+            raise TypeError("Format must be a  BBoxFormat")
+
+        bbox = [float(x) for x in bbox]
+
+        if format == BBoxFormat.CORNERS:
+            x1, y1, x2, y2 = bbox
+            if x1 > x2 or y1 > y2:
+                raise ValueError("Invalid box: x1/y1 must be less than x2/y2")
+            return tuple(map(int, (
+                x1 * img_width,
+                y1 * img_height,
+                x2 * img_width,
+                y2 * img_height
+            )))
+
+        elif format == BBoxFormat.TOPLEFT:
+            x, y, w, h = bbox
+            if w <= 0 or h <= 0:
+                raise ValueError("Width and height must be positive")
+            return tuple(map(int, (
+                x * img_width,
+                y * img_height,
+                w * img_width,
+                h * img_height
+            )))
+
+        elif format == BBoxFormat.CENTER:
+            xc, yc, w, h = bbox
+            if w <= 0 or h <= 0:
+                raise ValueError("Width and height must be positive")
+            if (xc - w/2) < 0 or (yc - h/2) < 0 or (xc + w/2) > 1 or (yc + h/2) > 1:
+                raise ValueError("Box extends outside normalized bounds")
+            return tuple(map(int, (
+                xc * img_width,
+                yc * img_height,
+                w * img_width,
+                h * img_height
+            )))
+
+        raise ValueError(f"Unsupported format: {format}. Must be 'corners', 'topleft', or 'center'")
+
+    @classmethod
+    def _compute_iou(cls,
+        box1: Union[List, Tuple], 
+        box2: Union[List, Tuple], 
+        format: BBoxFormat = BBoxFormat.CORNERS,
+        iou_type: IoUType = IoUType.IOU
+    ) -> float:
+        """
+        Calculate Intersection over Union (IoU) between two bounding boxes.
+
+        Args:
+            box1: First bounding box coordinates
+            box2: Second bounding box coordinates
+            format: Format of the input boxes, either "corners" (x1,y1,x2,y2), "center" (xc,yc,w,h) or "topleft" (x1,y1,w,h)
+            iou_type: Type of IoU to compute, either "iou", "diou", "ciou", or "giou"
+
+        Returns:
+            float: IoU value between 0 and 1
+
+        Raises:
+            ValueError: If format is not "corners", "center" or "topleft"
+            ValueError: If iou_type is not "iou", "diou", "ciou", or "giou"
+        """
+        if not isinstance(format, BBoxFormat):
+            raise TypeError("Format must be a BBoxFormat")
+        if not isinstance(iou_type, IoUType):
+            raise TypeError("IoU type must be an IoUType")
+
+        # Convert to corners format if necessary
+        if format == BBoxFormat.CENTER:
+            box1 = cls.center_to_corners_format(box1)
+            box2 = cls.center_to_corners_format(box2)
+        elif format == BBoxFormat.TOPLEFT:
+            box1 = cls.topleft_to_corners_format(box1)
+            box2 = cls.topleft_to_corners_format(box2)
+
+        # Extract coordinates
+        x1_1, y1_1, x2_1, y2_1 = box1
+        x1_2, y1_2, x2_2, y2_2 = box2
+
+        # Calculate intersection coordinates
+        x1 = max(x1_1, x1_2)
+        y1 = max(y1_1, y1_2)
+        x2 = min(x2_1, x2_2)
+        y2 = min(y2_1, y2_2)
+
+        # Calculate intersection area
+        intersection = max(0, x2 - x1) * max(0, y2 - y1)
+
+        # Calculate areas of the bounding boxes
+        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+        union = area1 + area2 - intersection
+
+        # Calculate IoU
+        iou = intersection / (union + np.finfo(float).eps)
+
+        if iou_type == IoUType.IOU:
+            return iou
+
+        # Calculate DIoU, CIoU, or GIoU
+        elif iou_type in [IoUType.DIOU, IoUType.CIOU, IoUType.GIOU]:
+            # Calculate the coordinates of the smallest enclosing box
+            x1_c = min(x1_1, x1_2)
+            y1_c = min(y1_1, y1_2)
+            x2_c = max(x2_1, x2_2)
+            y2_c = max(y2_1, y2_2)
+
+            # Calculate the diagonal distance of the smallest enclosing box
+            c = (x2_c - x1_c) ** 2 + (y2_c - y1_c) ** 2
+
+            # Calculate the distance between the centers of the two boxes
+            x1_m = (x1_1 + x2_1) / 2
+            y1_m = (y1_1 + y2_1) / 2
+            x2_m = (x1_2 + x2_2) / 2
+            y2_m = (y1_2 + y2_2) / 2
+            d = (x1_m - x2_m) ** 2 + (y1_m - y2_m) ** 2
+
+            # Calculate DIoU
+            diou = iou - d / (c + np.finfo(float).eps)
+
+            if iou_type == IoUType.DIOU:
+                return diou
+
+            # Calculate CIoU
+            elif iou_type == IoUType.CIOU:
+                # Calculate aspect ratio consistency
+                v = (4 / (np.pi ** 2)) * (np.arctan((x2_1 - x1_1) / (y2_1 - y1_1 + np.finfo(float).eps)) - np.arctan((x2_2 - x1_2) / (y2_2 - y1_2 + np.finfo(float).eps))) ** 2
+                alpha = v / (1 - iou + v + np.finfo(float).eps)
+                ciou = diou - alpha * v
+                return ciou
+
+            # Calculate GIoU
+            elif iou_type == IoUType.GIOU:
+                # Calculate the area of the smallest enclosing box
+                area_c = (x2_c - x1_c) * (y2_c - y1_c)
+                giou = iou - (area_c - union) / (area_c + np.finfo(float).eps)
+                return giou
+
+        else:
+            raise ValueError("Invalid IoU type")
         
     @classmethod
     def from_yolo_file(cls, file_path: str, img_width: int, img_height: int) -> Tuple[List['BBox'], List[int]]:
@@ -864,19 +784,19 @@ class BBox:
 
         if self.format == BBoxFormat.CORNERS:
             if format == BBoxFormat.CENTER:
-                return corners_to_center_format(self.coordinates)
+                return self.corners_to_center_format(self.coordinates)
             elif format == BBoxFormat.TOPLEFT:
-                return corners_to_topleft_format(self.coordinates)
+                return self.corners_to_topleft_format(self.coordinates)
         elif self.format == BBoxFormat.CENTER:
             if format == BBoxFormat.CORNERS:
-                return center_to_corners_format(self.coordinates)
+                return self.center_to_corners_format(self.coordinates)
             elif format == BBoxFormat.TOPLEFT:
-                return center_to_topleft_format(self.coordinates)
+                return self.center_to_topleft_format(self.coordinates)
         elif self.format == BBoxFormat.TOPLEFT:
             if format == BBoxFormat.CORNERS:
-                return topleft_to_corners_format(self.coordinates)
+                return self.topleft_to_corners_format(self.coordinates)
             elif format == BBoxFormat.CENTER:
-                return topleft_to_center_format(self.coordinates)
+                return self.topleft_to_center_format(self.coordinates)
 
         raise ValueError(f"Unsupported format conversion: {self.format} to {format}")
 
@@ -916,7 +836,7 @@ class BBox:
             img_width: The width of the image.
             img_height: The height of the image.
         """
-        self.coordinates = normalize_bbox(self.coordinates, img_width, img_height, self.format)
+        self.coordinates = self._normalize_bbox(self.coordinates, img_width, img_height, self.format)
         self.img_width = img_width
         self.img_height = img_height
 
@@ -929,7 +849,7 @@ class BBox:
         """
         if self.img_width is None or self.img_height is None:
             raise ValueError("Image dimensions must be set for absolute conversion")
-        return absolute_bbox(self.coordinates, self.img_width, self.img_height, self.format)
+        return self.absolute_bbox(self.coordinates, self.img_width, self.img_height, self.format)
 
     def to_yolo(self) -> Tuple[float, float, float, float]:
         """
@@ -939,11 +859,11 @@ class BBox:
             Tuple of YOLO format coordinates.
         """
         if self.format == BBoxFormat.CORNERS:
-            return pascalvoc_to_yolo_bbox(self.coordinates, self.img_width, self.img_height)
+            return self.pascalvoc_to_yolo_bbox(self.coordinates, self.img_width, self.img_height)
         elif self.format == BBoxFormat.CENTER:
             return self.coordinates
         elif self.format == BBoxFormat.TOPLEFT:
-            return topleft_to_center_format(self.coordinates)
+            return self.topleft_to_center_format(self.coordinates)
 
     def to_coco(self) -> Tuple[float, float, float, float]:
         """
@@ -1008,8 +928,8 @@ class BBox:
         self_corners = self.get_coordinates(BBoxFormat.CORNERS)
         other_corners = other.get_coordinates(BBoxFormat.CORNERS)
 
-        # Calcola l'IoU
-        return compute_iou(self_corners, other_corners, iou_type=iou_type)
+        # Calcola l'IoU tra le due bounding boxes
+        return self._compute_iou(self_corners, other_corners, iou_type=iou_type)
 
     def __repr__(self):
         return f"BBox(coordinates={self.coordinates}, format={self.format}, img_width={self.img_width}, img_height={self.img_height})"
