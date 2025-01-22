@@ -1,9 +1,9 @@
 import numpy as np
 import cv2
-from enum import IntEnum, auto ,Enum
+from enum import IntEnum, auto, Enum
 from pathlib import Path
 from typing import Union
-import random 
+import random
 from typing import Union, Optional
 from pathlib import Path
 import numpy as np
@@ -26,16 +26,18 @@ class ColorsBGR(Enum):
     def to_rgb(self):
         """
         Convert the BGR color to RGB format.
-        
+
         Returns:
             tuple: The color in RGB format.
         """
         return self.value[::-1]  # Reverse the BGR tuple to get RGB
 
+
 class ColorMode(IntEnum):
     RGB = auto()
     BGR = auto()
     GRAY = auto()
+
 
 class ImageFormat(IntEnum):
     HWC = auto()  # Height, Width, Channels (default)
@@ -47,27 +49,28 @@ def generate_random_bgr_colors(num_colors):
     Generates a list of distinct colors in BGR format. If the number of requested colors
     exceeds the number of predefined colors in the ColorsBGR enum, the colors are reused
     in a cyclic manner.
-    
+
     Args:
         num_colors (int): Number of colors to generate.
-    
+
     Returns:
         list: A list of colors in BGR format.
     """
     # Extract predefined colors from the ColorsBGR enum
     predefined_colors = [color.value for color in ColorsBGR]
-    
+
     # If the number of requested colors is less than or equal to the predefined colors,
     # return a subset of the predefined colors.
     if num_colors <= len(predefined_colors):
         return predefined_colors[:num_colors]
-    
+
     # If more colors are needed, reuse the predefined colors in a cyclic manner.
     colors = []
     for i in range(num_colors):
-        color = predefined_colors[i % len(predefined_colors)]  # Cycle through the predefined colors
+        # Cycle through the predefined colors
+        color = predefined_colors[i % len(predefined_colors)]
         colors.append(color)
-    
+
     return colors
 
 
@@ -93,7 +96,8 @@ class Image:
              self.image = self._process_image_data(image_input)
         else:
             # Otherwise, treat it as a file path
-            self.image_path = Path(image_input) if isinstance(image_input, str) else image_input
+            self.image_path = Path(image_input) if isinstance(
+                image_input, str) else image_input
             self.image = self._load_image()
 
 
@@ -154,7 +158,6 @@ class Image:
         # Process the loaded image to ensure it matches the desired color mode and format
         return self._process_image_data(image)
 
-
     def convert_color_mode(self, new_color_mode: ColorMode):
         """
         Convert the image to a new color mode in-place, ensuring the output has the correct shape
@@ -171,19 +174,25 @@ class Image:
                 # Convert in HWC format
                 if new_color_mode == ColorMode.RGB:
                     if self.color_mode == ColorMode.BGR:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+                        self.image = cv2.cvtColor(
+                            self.image, cv2.COLOR_BGR2RGB)
                     elif self.color_mode == ColorMode.GRAY:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
+                        self.image = cv2.cvtColor(
+                            self.image, cv2.COLOR_GRAY2RGB)
                 elif new_color_mode == ColorMode.BGR:
                     if self.color_mode == ColorMode.RGB:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+                        self.image = cv2.cvtColor(
+                            self.image, cv2.COLOR_RGB2BGR)
                     elif self.color_mode == ColorMode.GRAY:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
+                        self.image = cv2.cvtColor(
+                            self.image, cv2.COLOR_GRAY2BGR)
                 elif new_color_mode == ColorMode.GRAY:
                     if self.color_mode == ColorMode.RGB:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
+                        self.image = cv2.cvtColor(
+                            self.image, cv2.COLOR_RGB2GRAY)
                     elif self.color_mode == ColorMode.BGR:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+                        self.image = cv2.cvtColor(
+                            self.image, cv2.COLOR_BGR2GRAY)
                     # Ensure grayscale image has shape (h, w, 1) in HWC format
                     self.image = np.expand_dims(self.image, axis=-1)
 
@@ -199,8 +208,7 @@ class Image:
 
         # Update the color mode
         self.color_mode = new_color_mode
-        
-    
+
     def copy(self) -> 'Image':
         """
         Create a deep copy of the current Image instance.
@@ -214,7 +222,6 @@ class Image:
             color_mode= self.color_mode
             )
         return new_image
-
 
     # The remaining methods of the class remain unchanged
     def get_shape(self,format : ImageFormat = ImageFormat.HWC ) -> tuple:
@@ -264,9 +271,11 @@ class Image:
         # Ensure the image has 3 dimensions
         if len(self.image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1)
             self.image = np.expand_dims(self.image, axis=-1)
-        elif len(self.image.shape) == 3 and self.image.shape[2] == 1:  # If already (h, w, 1), do nothing
+        # If already (h, w, 1), do nothing
+        elif len(self.image.shape) == 3 and self.image.shape[2] == 1:
             pass
-        elif len(self.image.shape) == 3 and self.image.shape[2] == 3:  # If already (h, w, 3), do nothing
+        # If already (h, w, 3), do nothing
+        elif len(self.image.shape) == 3 and self.image.shape[2] == 3:
             pass
         else:
             # Handle unexpected shapes (e.g., 4D or invalid)
@@ -304,7 +313,8 @@ class Image:
         """Display the image in a window. Close the window when the specified key is pressed."""
         cv2.imshow(window_name, self.image)
         while True:
-            key_pressed = cv2.waitKey(1) & 0xFF  # Wait for 1 ms and check the key pressed
+            # Wait for 1 ms and check the key pressed
+            key_pressed = cv2.waitKey(1) & 0xFF
             if key_pressed == key or cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                 break
         cv2.destroyAllWindows()
@@ -374,7 +384,7 @@ class Image:
         if len(img.shape) == 3 and img.shape[2] == 1:
             inverted_img = np.expand_dims(inverted_img, axis=-1)
         return inverted_img
-    
+
     @classmethod
     def pad_image(cls, image: np.ndarray, target_h: int, target_w: int, image_format: ImageFormat = ImageFormat.HWC) -> np.ndarray:
         """Add padding if image dimensions are smaller than target size.

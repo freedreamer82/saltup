@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
-from saltup.utils.data.image.image_utils import load_image, ColorMode
+from saltup.utils.data.image.image_utils import Image, ColorMode, ImageFormat
 
 
 class BaseDatasetLoader(ABC):
@@ -22,7 +22,7 @@ class BaseDatasetLoader(ABC):
         raise NotImplementedError
 
     @staticmethod
-    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR) -> np.ndarray:
+    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR, image_format: ImageFormat = ImageFormat.HWC) -> np.ndarray:
         """Load and convert image to specified color mode.
 
         Args:
@@ -36,4 +36,4 @@ class BaseDatasetLoader(ABC):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        return load_image(image_path, color_mode)
+        return Image(image_path, color_mode, image_format)

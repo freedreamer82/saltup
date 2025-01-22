@@ -29,7 +29,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Union
 import random
 
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
 from saltup.utils.configure_logging import logging
 
 
@@ -38,7 +38,8 @@ class COCODatasetLoader(BaseDatasetLoader):
         self,
         image_dir: str,
         annotations_file: str,
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        image_format: ImageFormat = ImageFormat.HWC
     ):
         """
         Initialize COCO dataset loader.
@@ -64,6 +65,7 @@ class COCODatasetLoader(BaseDatasetLoader):
         self.image_dir = Path(image_dir)
         self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
+        self.image_format = image_format
         self._current_index = 0
         
         # Load annotations and create pairs
@@ -86,7 +88,7 @@ class COCODatasetLoader(BaseDatasetLoader):
         image_path, annotation = self.image_annotation_pairs[self._current_index]
         self._current_index += 1
         
-        return self.load_image(image_path, self.color_mode), annotation
+        return self.load_image(image_path, self.color_mode, self.image_format), annotation
 
     def __len__(self):
         """Return total number of samples in dataset."""

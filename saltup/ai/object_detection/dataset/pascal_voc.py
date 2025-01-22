@@ -43,7 +43,7 @@ import random
 from tqdm import tqdm
 from collections import defaultdict, Counter
 
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
 from saltup.utils import configure_logging
 
 
@@ -52,7 +52,8 @@ class PascalVOCLoader(BaseDatasetLoader):
         self,
         image_dir: str,
         annotations_dir: str,
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        image_format: ImageFormat = ImageFormat.HWC
     ):
         """
         Initialize Pascal VOC dataset loader.
@@ -77,6 +78,7 @@ class PascalVOCLoader(BaseDatasetLoader):
         self.image_dir = Path(image_dir)
         self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
+        self.image_format = image_format
         self._current_index = 0
         
         # Load image-annotation pairs
