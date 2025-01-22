@@ -317,8 +317,8 @@ class BBox:
         
         return x1, y1, x2, y2
 
-
-    def center_to_topleft_format(box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
+    @classmethod
+    def center_to_topleft_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
         """
         Convert box from (xc, yc, w, h) format to top-left format (x1, y1, w, h).
 
