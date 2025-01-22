@@ -12,7 +12,7 @@ from tqdm import tqdm
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloOutput
 from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
-from saltup.ai.object_detection.utils.bbox import BBox, draw_boxes_on_image_with_labels_score, BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox, draw_boxes_on_image_with_labels_score, BBoxFormat , print_bbox_info
 from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR
 from saltup.ai.object_detection.utils.metrics import Metric
 from saltup.utils.data.image.image_utils import generate_random_bgr_colors
@@ -23,6 +23,24 @@ def signal_handler(sig, frame):
     """Handle Ctrl+C signal to gracefully exit the program."""
     print("\nProgram interrupted with Ctrl + C!")
     sys.exit(0)  # Terminate the script
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, help="Input NN model.")
+    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
+    parser.add_argument("--img", type=str, default="bus.jpg", help="Path to input image or folder.")
+    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
+    parser.add_argument("--preprocess", type=str, default='true', help="Preprocess the image before entering the model.")
+    parser.add_argument("--label", type=str, help="Path to image label or folder.")
+    parser.add_argument("--gui", action='store_true', help="Open GUI to draw bounding boxes.")
+    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
+    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
+    parser.add_argument("--num_class", type=int, help="Number of the classes.")
+    parser.add_argument("--show_bbox", type=str, help="Print bounding box information.")
+    parser.add_argument("--max_images", type=int, default=0, help="Maximum number of images to process.")
+    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
+    return parser.parse_args()
+
 
 def robust_mean(times):
     """Calculate the robust mean by excluding the smallest and largest values."""
@@ -58,35 +76,6 @@ def process_image(yolo, image_path, args):
     class_ids = [class_id for _, class_id, _ in bboxes_with_labels_score]
     
     return boxes, class_ids
-
-def print_bbox_info(boxes: List[BBox], class_ids: List[int], scores: List[float], class_labels_dict: Dict[int, str]):
-    """
-    Print information about the detected bounding boxes.
-    
-    Args:
-        boxes: List of bounding boxes.
-        class_ids: List of class IDs.
-        scores: List of confidence scores.
-        class_labels_dict: Dictionary mapping class IDs to class names.
-    """
-    print("\nDetected bounding boxes:")
-    for i, (bbox, class_id, score) in enumerate(zip(boxes, class_ids, scores)):
-        # Get bounding box coordinates
-        x1, y1, x2, y2 = bbox.get_coordinates(BBoxFormat.CORNERS)
-        
-        # Get class name
-        class_name = class_labels_dict.get(class_id, f"class_{class_id}")
-        
-        # Get the coordinate format as a string
-        coordinate_format = bbox.get_format().to_string()
-
-        # Print information
-        print(f"Box {i + 1}:")
-        print(f"  Class: {class_name} (ID: {class_id})")
-        print(f"  Confidence: {score:.4f}")
-        print(f"  Coordinate Format: {coordinate_format}")
-        print(f"  Coordinates: (x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2})")
-        print("-" * 40)
 
 def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], iou_thres: float) -> Dict[str, float]:
     """Evaluate predictions against ground truth and compute metrics.
@@ -150,13 +139,16 @@ def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox,
         "f1_score": f1_score,
     }
 
-def main(args):
+def main(args= None):
     """
     Main function to process images and evaluate predictions.
     
     Args:
         args: Command-line arguments.
     """
+    if args is None:
+         args = get_args()
+
     if args.cls_name:
         class_labels = args.cls_name.split(',')
     else:
@@ -284,24 +276,10 @@ def main(args):
     print(f"  - F1 Score: {metric.getF1Score():.4f}")
     
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, help="Input NN model.")
-    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
-    parser.add_argument("--img", type=str, default="bus.jpg", help="Path to input image or folder.")
-    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
-    parser.add_argument("--preprocess", type=str, default='true', help="Preprocess the image before entering the model.")
-    parser.add_argument("--label", type=str, help="Path to image label or folder.")
-    parser.add_argument("--gui", action='store_true', help="Open GUI to draw bounding boxes.")
-    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
-    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
-    parser.add_argument("--num_class", type=int, help="Number of the classes.")
-    parser.add_argument("--show_bbox", type=str, help="Print bounding box information.")
-    parser.add_argument("--max_images", type=int, default=0, help="Maximum number of images to process.")
-    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
 
-    args = parser.parse_args()
-    
+
+if __name__ == "__main__":
+    # Register a signal handler to catch Ctrl+C 
     signal.signal(signal.SIGINT, signal_handler)
 
-    main(args)
+    main()

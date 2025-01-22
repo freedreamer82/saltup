@@ -339,6 +339,78 @@ class Image:
         return self._process_image_data(image)
 
 
+    def convert_color_mode(self, new_color_mode: ColorMode):
+        """
+        Convert the image to a new color mode in-place, ensuring the output has the correct shape
+        based on the image format (HWC or CHW).
+
+        Args:
+            new_color_mode: The target color mode (BGR, RGB, or GRAY).
+        """
+        if self.color_mode == new_color_mode:
+            return  # No conversion needed
+
+        # Convert the image to the new color mode
+        try:
+            if self.image_format == ImageFormat.HWC:
+                # Convert in HWC format
+                if new_color_mode == ColorMode.RGB:
+                    if self.color_mode == ColorMode.BGR:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+                    elif self.color_mode == ColorMode.GRAY:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
+                elif new_color_mode == ColorMode.BGR:
+                    if self.color_mode == ColorMode.RGB:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+                    elif self.color_mode == ColorMode.GRAY:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
+                elif new_color_mode == ColorMode.GRAY:
+                    if self.color_mode == ColorMode.RGB:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
+                    elif self.color_mode == ColorMode.BGR:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+                    # Ensure grayscale image has shape (h, w, 1) in HWC format
+                    self.image = np.expand_dims(self.image, axis=-1)
+
+            elif self.image_format == ImageFormat.CHW:
+                # Temporarily convert to HWC for OpenCV operations
+                self.image = np.transpose(self.image, (1, 2, 0))  # CHW -> HWC
+
+                if new_color_mode == ColorMode.RGB:
+                    if self.color_mode == ColorMode.BGR:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+                    elif self.color_mode == ColorMode.GRAY:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
+                elif new_color_mode == ColorMode.BGR:
+                    if self.color_mode == ColorMode.RGB:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+                    elif self.color_mode == ColorMode.GRAY:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
+                elif new_color_mode == ColorMode.GRAY:
+                    if self.color_mode == ColorMode.RGB:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
+                    elif self.color_mode == ColorMode.BGR:
+                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+                    # Ensure grayscale image has shape (h, w, 1) in HWC format
+                    self.image = np.expand_dims(self.image, axis=-1)
+
+                # Convert back to CHW format
+                self.image = np.transpose(self.image, (2, 0, 1))  # HWC -> CHW
+
+        except cv2.error as e:
+            raise ValueError(f"Error converting image color mode: {e}")
+
+        # Ensure the image has the correct number of dimensions
+        if len(self.image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1) or (1, h, w)
+            if self.image_format == ImageFormat.HWC:
+                self.image = np.expand_dims(self.image, axis=-1)
+            elif self.image_format == ImageFormat.CHW:
+                self.image = np.expand_dims(self.image, axis=0)
+
+        # Update the color mode
+        self.color_mode = new_color_mode
+        
+    
     def copy(self) -> 'Image':
         """
         Create a deep copy of the current Image instance.

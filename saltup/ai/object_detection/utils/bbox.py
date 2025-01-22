@@ -78,7 +78,7 @@ from typing import List, Tuple, Union
 from enum import auto, IntEnum ,Enum
 from typing import List, Tuple, Dict, Optional
 from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR 
-from saltup.utils.data.image.image_utils import Image
+from saltup.utils.data.image.image_utils import Image,ImageFormat
 
 class BBoxFormat(IntEnum):
     CORNERS = auto()
@@ -712,6 +712,20 @@ class BBox:
         self.img_width = img_width
         self.img_height = img_height
 
+    def copy(self) -> 'BBox':
+        """
+        Create a deep copy of the BBox object.
+
+        Returns:
+            BBox: A new BBox object with the same attributes as the current instance.
+        """
+        return BBox(
+            coordinates=self.coordinates.copy(),  
+            format=self.format,                   
+            img_width=self.img_width,            
+            img_height=self.img_height           
+        )
+    
     def is_normalized(self) -> bool:
         """
         Check if the bounding box coordinates are normalized.
@@ -1039,7 +1053,6 @@ def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes
 
     return selected_bboxes
 
-
 def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> Image:
     """
     Draw bounding boxes on an image.
@@ -1059,69 +1072,89 @@ def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int,
     # Create a copy of the image to avoid modifying the original
     image_with_boxes = image_data.copy()
 
+    # Determine the color mode of the input image
+    if len(image_data.shape) == 2 or (len(image_data.shape) == 3 and image_data.shape[-1] == 1):
+        input_color_mode = ColorMode.GRAY
+    elif image_data.shape[2] == 3:
+        # Check if the image is in RGB or BGR format (OpenCV uses BGR by default)
+        # Here we assume the input is BGR unless explicitly converted
+        input_color_mode = ColorMode.BGR
+    else:
+        raise ValueError("Unsupported image format. Expected grayscale (1 channel) or BGR/RGB (3 channels).")
+
+    # Convert grayscale images to BGR (3 channels) to support colored bounding boxes
+    if input_color_mode == ColorMode.GRAY:
+        tmpimg = image.copy()
+        tmpimg.convert_color_mode( ColorMode.BGR)
+        image_with_boxes = tmpimg.get_data()
+        output_color_mode = ColorMode.BGR
+    else:
+        image_with_boxes = image_data.copy()
+        output_color_mode = input_color_mode
+
     for bbox in bboxes:
+        # Check if the bbox is an instance of the BBox class
+        if not isinstance(bbox, BBox):
+            raise TypeError(f"Expected an instance of BBox, but got {type(bbox)}")
+
         # Convert the bounding box to corners format (x1, y1, x2, y2)
         corners = bbox.get_coordinates(BBoxFormat.CORNERS)
 
-        # Convert normalized coordinates to absolute pixel values if necessary
-        if bbox.img_width is not None and bbox.img_height is not None:
-            x1, y1, x2, y2 = corners
-            x1 = int(x1 * bbox.img_width)
-            y1 = int(y1 * bbox.img_height)
-            x2 = int(x2 * bbox.img_width)
-            y2 = int(y2 * bbox.img_height)
-        else:
-            x1, y1, x2, y2 = map(int, corners)
+        # Normalize the coordinates if they are not already normalized
+        if not bbox.is_normalized():
+            bbox.normalize(bbox.img_width, bbox.img_height)  # Normalizza le coordinate
+            corners = bbox.get_coordinates(BBoxFormat.CORNERS)  # Ottieni le coordinate normalizzate
 
+        x1, y1, x2, y2 = corners
+
+        img_width = image.get_width()
+        img_height = image.get_height()
+        # Convert normalized coordinates to absolute pixel values
+        x1 = int(x1 * img_width)
+        y1 = int(y1 * img_height)
+        x2 = int(x2 * img_width)
+        y2 = int(y2 * img_height)
+     
         # Draw the bounding box on the image
         cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
 
     # Create a new instance of the Image class with the modified image data
-    new_image = Image(image_with_boxes, color_mode=image.get_color_mode(), image_format=image.get_image_format())
+    new_image = Image(image_with_boxes, color_mode=output_color_mode, image_format=image.get_image_format())
 
     return new_image
 
-def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int, int] = (0, 255, 0), thickness: int = 2) -> Image:
-    """
-    Draw bounding boxes on an image.
 
+
+def print_bbox_info(boxes: List[BBox], class_ids: List[int], scores: List[float], class_labels_dict: Dict[int, str]):
+    """
+    Print information about the detected bounding boxes.
+    
     Args:
-        image: Input image as an instance of the Image class.
-        bboxes: List of BBox objects to draw on the image.
-        color: Color of the bounding boxes in BGR format (default is green).
-        thickness: Thickness of the bounding box lines (default is 2).
-
-    Returns:
-        A new instance of the Image class with bounding boxes drawn.
+        boxes: List of bounding boxes.
+        class_ids: List of class IDs.
+        scores: List of confidence scores.
+        class_labels_dict: Dictionary mapping class IDs to class names.
     """
-    # Get the image data as a numpy array
-    image_data = image.get_data()
+    print("\nDetected bounding boxes:")
+    for i, (bbox, class_id, score) in enumerate(zip(boxes, class_ids, scores)):
+        # Get bounding box coordinates
+        x1, y1, x2, y2 = bbox.get_coordinates(BBoxFormat.CORNERS)
+        
+        # Get class name
+        class_name = class_labels_dict.get(class_id, f"class_{class_id}")
+        
+        # Get the coordinate format as a string
+        coordinate_format = bbox.get_format().to_string()
 
-    # Create a copy of the image to avoid modifying the original
-    image_with_boxes = image_data.copy()
+        # Print information
+        print(f"Box {i + 1}:")
+        print(f"  Class: {class_name} (ID: {class_id})")
+        print(f"  Confidence: {score:.4f}")
+        print(f"  Coordinate Format: {coordinate_format}")
+        print(f"  Coordinates: (x1: {x1}, y1: {y1}, x2: {x2}, y2: {y2})")
+        print("-" * 40)
 
-    for bbox in bboxes:
-        # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
-
-        # Convert normalized coordinates to absolute pixel values if necessary
-        if bbox.img_width is not None and bbox.img_height is not None:
-            x1, y1, x2, y2 = corners
-            x1 = int(x1 * bbox.img_width)
-            y1 = int(y1 * bbox.img_height)
-            x2 = int(x2 * bbox.img_width)
-            y2 = int(y2 * bbox.img_height)
-        else:
-            x1, y1, x2, y2 = map(int, corners)
-
-        # Draw the bounding box on the image
-        cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
-
-    # Create a new instance of the Image class with the modified image data
-    new_image = Image(image_with_boxes, color_mode=image.get_color_mode(), image_format=image.get_image_format())
-
-    return new_image
-
+ 
 
 
 def draw_boxes_on_image_with_labels_score(
@@ -1169,37 +1202,29 @@ def draw_boxes_on_image_with_labels_score(
 
     # Convert grayscale images to BGR (3 channels) to support colored bounding boxes
     if input_color_mode == ColorMode.GRAY:
-        image_with_boxes = cv2.cvtColor(image_data, cv2.COLOR_GRAY2BGR)
+        tmpimg = image.copy()
+        tmpimg.convert_color_mode( ColorMode.BGR)
+        image_with_boxes = tmpimg.get_data()
         output_color_mode = ColorMode.BGR
     else:
         image_with_boxes = image_data.copy()
         output_color_mode = input_color_mode
+    
+    img_height =image.get_height()   
+    img_width = image.get_width()
 
     # Default color (white) if class_colors_bgr is not provided
     default_color = (255, 255, 255)  # White in BGR format
 
     for bbox, class_id, score in bboxes_with_labels_score:
-        # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
-
-        # Convert normalized coordinates to absolute pixel values if necessary
-        if bbox.is_normalized():
-            x1, y1, x2, y2 = corners
-            x1 = int(x1 * bbox.img_width)
-            y1 = int(y1 * bbox.img_height)
-            x2 = int(x2 * bbox.img_width)
-            y2 = int(y2 * bbox.img_height)
-        else:
-            x1, y1, x2, y2 = map(int, corners)
-
         # Get the color for the current class_id
         if class_colors_bgr is not None:
             color = class_colors_bgr.get(class_id, default_color)  # Use default color if class_id not found
         else:
             color = default_color  # Use default color if class_colors_bgr is not provided
 
-        # Draw the bounding box on the image
-        cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
+        # Draw the bounding box on the image using the draw_boxes_on_image function
+        image_with_boxes = draw_boxes_on_image(Image(image_with_boxes, output_color_mode), [bbox], color, thickness).get_data()
 
         # Get the label for the current class_id
         if class_labels is not None:
@@ -1210,16 +1235,20 @@ def draw_boxes_on_image_with_labels_score(
         score_text = f"{score:.2f}"
         text = f"{label} - {score_text}"
 
+        # Get the bounding box corners in absolute coordinates
+        corners = bbox.get_coordinates(BBoxFormat.CORNERS)
+        x1, y1, x2, y2 = corners
+
         # Calculate text size and position
         (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-        text_x = x1
-        text_y = y1 - 10 if y1 - 10 > 10 else y1 + 20  # Adjust text position to avoid going out of the image
+        text_x = int(x1 * img_width)
+        text_y = int(y1 * img_height) - 10 if int(y1 * img_height) - 10 > 10 else int(y1 * img_height) + 20
 
         # Ensure text is within image bounds
         if text_y - text_height < 0:
-            text_y = y1 + 20  # Move text below the box if it goes above the image
-        if text_x + text_width > image_with_boxes.shape[1]:
-            text_x = image_with_boxes.shape[1] - text_width  # Move text left if it goes beyond the image width
+            text_y = int(y1 * img_height) + 20  # Move text below the box if it goes above the image
+        if text_x + text_width > img_width:
+            text_x = img_width - text_width  # Move text left if it goes beyond the image width
 
         # Draw a background rectangle for the text
         cv2.rectangle(

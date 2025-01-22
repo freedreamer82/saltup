@@ -1,8 +1,9 @@
 import os
 import cv2
+import numpy as np
 from pathlib import Path
 import subprocess
-from typing import List, Optional
+from typing import Callable, Union , List, Optional
 
 def create_avi_from_jpg(folder: str, output_filename: str, fps: int = 4) -> None:
     """
@@ -168,3 +169,162 @@ def extract_jpg_frames_from_video(
 
     # Return the count of the images we saved
     return saved_count
+ 
+ 
+
+def get_video_properties(video_path: Union[str, Path]) -> tuple[float, int, int, int]:
+
+    """
+    Get video properties such as FPS, total frames, width, and height.
+    - For .ts files, FPS is calculated manually using frame timestamps and rounded to the nearest integer.
+    - For other formats, use OpenCV's default implementation.
+    tuple: A tuple containing (fps, total_frames, width, height).
+        float: The FPS (frames per second).
+        int: The total number of frames.
+        int: The width of the video.
+        int: The height of the video.
+    """
+    video_path = Path(video_path)
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+
+    # List of formats that require manual FPS calculation
+    custom_formats = ['.ts']
+
+    # Open the video
+    video = cv2.VideoCapture(str(video_path))
+    if not video.isOpened():
+        raise RuntimeError(f"Unable to open video: {video_path}")
+
+    # Get width and height (usually reliable)
+    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # If the format is in the custom_formats list, manually calculate FPS and total_frames
+    if video_path.suffix.lower() in custom_formats:
+        print(f"Format {video_path.suffix} detected. Manually calculating FPS and total_frames...")
+        total_frames = 0
+        frame_timestamps = []  # Store frame timestamps to calculate FPS
+        while True:
+            ret, _ = video.read()
+            if not ret:
+                break
+            total_frames += 1
+            # Get the current frame's timestamp
+            timestamp = video.get(cv2.CAP_PROP_POS_MSEC)  # Timestamp in milliseconds
+            frame_timestamps.append(timestamp)
+
+        # Manually calculate FPS using frame timestamps
+        if len(frame_timestamps) > 1:
+            time_diff = (frame_timestamps[-1] - frame_timestamps[0]) / 1000.0  # Time difference in seconds
+            fps = total_frames / time_diff if time_diff > 0 else 0
+        else:
+            fps = 0
+
+        # Round FPS to the nearest integer
+        fps = round(fps)
+    else:
+        # Use OpenCV's default implementation for other formats
+        print(f"Format {video_path.suffix} detected. Using video metadata...")
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = video.get(cv2.CAP_PROP_FPS)
+
+    video.release()
+    return fps, total_frames, width, height
+ 
+# def get_video_properties(video_path: Union[str, Path]):
+#     """
+#     Get video properties such as FPS, total frames, width, and height.
+
+#     Args:
+#         video_path: Path to the video file.
+
+#     Returns:
+#         A tuple containing (fps, total_frames, width, height).
+#     """
+#     video = cv2.VideoCapture(str(video_path))
+#     if not video.isOpened():
+#         raise FileNotFoundError(f"Unable to open video: {video_path}")
+
+#     fps = video.get(cv2.CAP_PROP_FPS)
+#     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+#     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+#     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+#     video.release()
+#     return fps, total_frames, width, height
+
+def _infer_codec_from_filename(filename: Union[str, Path]) -> str:
+    """
+    Infer the video codec based on the file extension.
+
+    Args:
+        filename: Path to the output video file.
+
+    Returns:
+        A string representing the fourcc codec.
+    """
+    extension = Path(filename).suffix.lower()
+    codec_mapping = {
+        '.avi': 'XVID',
+        '.mp4': 'mp4v',
+        '.mov': 'avc1',
+        '.mkv': 'X264',
+        '.ts': 'MPEG',   
+     }
+    return codec_mapping.get(extension, 'XVID')   
+
+def process_video(
+    video_input: Union[str, Path],
+    callback: Callable[[np.ndarray, int, int], np.ndarray],  # Updated callback signature
+    video_output: Union[str, Path] = None,
+    fps: int = None,
+):
+    """
+    Process a video frame by frame, applying a callback to each frame.
+
+    Args:
+        video_input: Path to the input video.
+        callback: Callback function that receives a frame (as a NumPy array), the frame number, and the total frame count.
+        video_output: Path to the output video (optional).
+        fps: FPS of the output video (if not specified, uses the same FPS as the input video).
+
+    Returns:
+        None
+    """
+    # Open the input video
+    input_video = cv2.VideoCapture(str(video_input))
+    if not input_video.isOpened():
+        raise FileNotFoundError(f"Unable to open video: {video_input}")
+
+    # Get video properties using the get_video_properties function
+    input_fps, total_frames, width, height = get_video_properties(video_input)
+
+    # Define the codec and create a VideoWriter object if an output video is specified
+    if video_output:
+        codec = _infer_codec_from_filename(video_output)
+        fourcc = cv2.VideoWriter_fourcc(*codec)
+        output_fps = fps if fps is not None else input_fps
+        out = cv2.VideoWriter(str(video_output), fourcc, output_fps, (width, height))
+    else:
+        out = None
+
+    frame_number = 0
+    while input_video.isOpened():
+        ret, frame = input_video.read()
+        if not ret:
+            break
+
+        # Apply the callback to the frame
+        processed_frame = callback(frame, frame_number, total_frames)  # Pass total_frames to callback
+
+        # If an output video is specified, write the processed frame
+        if out is not None:
+            out.write(processed_frame)
+
+        frame_number += 1
+
+    # Release everything when done
+    input_video.release()
+    if out is not None:
+        out.release()
