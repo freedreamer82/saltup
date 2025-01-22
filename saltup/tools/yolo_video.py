@@ -49,26 +49,14 @@ def process_frame(yolo, frame, frame_number, args, class_colors_dict, class_labe
         frame_with_boxes: Frame with bounding boxes drawn.
     """
     # Get input information from the YOLO model
-    input_info = yolo.get_input_info()
-    
-    # Provide default values if get_input_info() returns None
-    assert(input_info is not None)
-    input_shape, color_mode, image_format = input_info
+    model_color = yolo.get_input_model_color()
+    channels = yolo.get_input_model_channel()
     
     # Convert frame to Image object using the input information
-    image = Image(frame, color_mode=ColorMode.BGR if input_shape[-1] == 3 else ColorMode.GRAY, 
-                  image_format=image_format)
-    
-    # Resize the image to match the input shape expected by the YOLO model
-    input_image = image.copy()
-    if input_shape:
-        input_image.resize((input_shape[1], input_shape[0]))  # Resize to (width, height)
-    
-    # Get the shape of the processed image
-    img_height, img_width, _ = input_image.get_shape()
-
+    image = Image(frame, color_mode=  model_color if channels > 1 else ColorMode.GRAY)
+   
     # Run YOLO inference
-    yoloOut = yolo.run(input_image, img_height, img_width, args.conf_thres, args.iou_thres)
+    yoloOut = yolo.run(image, args.conf_thres, args.iou_thres)
     boxes_with_info = yoloOut.get_boxes()
     
     boxes_list = [box[0] for box in boxes_with_info]
@@ -129,9 +117,11 @@ def main(args=None):
     class_colors_dict = {i: color for i, color in enumerate(class_colors)}
     class_labels_dict = {i: label for i, label in enumerate(class_labels)} if class_labels else {i: f"class_{i}" for i in range(num_classes)}
 
-    # Load YOLO model
     yolotype = YoloType.from_string(args.type)
-    yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
+    if args.anchors:
+        yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
+    else:
+        yolo = YoloFactory.create(yolotype, args.model, args.num_class)
 
     # Get video properties using OpenCV (manual counting)
     input_fps, total_frames,w,h = get_video_properties(args.input_video)

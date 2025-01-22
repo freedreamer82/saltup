@@ -75,9 +75,8 @@ class Image:
     def __init__(
         self,
         image_input: Union[str, Path, np.ndarray],  # Accepts either a file path or a NumPy array
-        color_mode: ColorMode = ColorMode.BGR,
-        image_format: ImageFormat = ImageFormat.HWC,
-    ):
+        color_mode: ColorMode = ColorMode.BGR
+        ):
     
         """
         Initialize an Image instance.
@@ -88,18 +87,17 @@ class Image:
             image_format: Format of the image (HWC or CHW). Default is HWC.
         """
         self.color_mode = color_mode
-        self.image_format = image_format
 
         # Check if the input is a NumPy array
         if isinstance(image_input, np.ndarray):
-            self.image = self._process_image_data(image_input)
+             self.image = self._process_image_data(image_input)
         else:
             # Otherwise, treat it as a file path
             self.image_path = Path(image_input) if isinstance(image_input, str) else image_input
             self.image = self._load_image()
 
 
-    def _process_image_data(self, image_data: np.ndarray) -> np.ndarray:
+    def _process_image_data(self, image_data: np.ndarray)  -> np.ndarray :
         """
         Process the provided NumPy array to ensure it matches the desired color mode and format.
 
@@ -112,28 +110,30 @@ class Image:
         if not isinstance(image_data, np.ndarray):
             raise ValueError("image_data must be a NumPy array.")
 
+        self.image = self.convert_image_format(image_data, ImageFormat.HWC)  # Ensure the image is in HWC format because opencv works with HWC on that
+
         # Convert the image to the desired color mode
         try:
             if self.color_mode == ColorMode.RGB:
-                if len(image_data.shape) == 3 and image_data.shape[-1] == 3:  # If already RGB, do nothing
+                if len(self.image .shape) == 3 and self.image .shape[-1] == 3:  # If already RGB, do nothing
                     pass
                 else:
                     # Convert BGR to RGB if necessary
-                    image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB)
+                    self.image  = cv2.cvtColor(self.image , cv2.COLOR_BGR2RGB)
             elif self.color_mode == ColorMode.GRAY:
-                if len(image_data.shape) == 2:  # If grayscale with shape (h, w), expand to (h, w, 1)
-                    image_data = np.expand_dims(image_data, axis=-1)
-                elif len(image_data.shape) == 3 and image_data.shape[-1] == 1:  # If already (h, w, 1), do nothing
+                if len(self.image .shape) == 2:  # If grayscale with shape (h, w), expand to (h, w, 1)
+                    self.image = np.expand_dims(self.image , axis=-1)
+                elif len(self.image .shape) == 3 and self.image .shape[-1] == 1:  # If already (h, w, 1), do nothing
                     pass
                 else:
                     # If it's a 3-channel image but not grayscale, convert to grayscale
-                    image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2GRAY)
-                    image_data = np.expand_dims(image_data, axis=-1)
+                    self.image  = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+                    self.image  = np.expand_dims(self.image, axis=-1)
         except cv2.error as e:
             raise ValueError(f"Error converting image color mode: {e}")
-
-        # Convert the image to the desired format (HWC or CHW)
-        return self.convert_image_format(image_data, self.image_format)
+            
+        return self.image
+  
 
     def _load_image(self) -> np.ndarray:
         """
@@ -168,7 +168,6 @@ class Image:
 
         # Convert the image to the new color mode
         try:
-            if self.image_format == ImageFormat.HWC:
                 # Convert in HWC format
                 if new_color_mode == ColorMode.RGB:
                     if self.color_mode == ColorMode.BGR:
@@ -187,31 +186,6 @@ class Image:
                         self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
                     # Ensure grayscale image has shape (h, w, 1) in HWC format
                     self.image = np.expand_dims(self.image, axis=-1)
-
-            elif self.image_format == ImageFormat.CHW:
-                # Temporarily convert to HWC for OpenCV operations
-                self.image = np.transpose(self.image, (1, 2, 0))  # CHW -> HWC
-
-                if new_color_mode == ColorMode.RGB:
-                    if self.color_mode == ColorMode.BGR:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-                    elif self.color_mode == ColorMode.GRAY:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2RGB)
-                elif new_color_mode == ColorMode.BGR:
-                    if self.color_mode == ColorMode.RGB:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
-                    elif self.color_mode == ColorMode.GRAY:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
-                elif new_color_mode == ColorMode.GRAY:
-                    if self.color_mode == ColorMode.RGB:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
-                    elif self.color_mode == ColorMode.BGR:
-                        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-                    # Ensure grayscale image has shape (h, w, 1) in HWC format
-                    self.image = np.expand_dims(self.image, axis=-1)
-
-                # Convert back to CHW format
-                self.image = np.transpose(self.image, (2, 0, 1))  # HWC -> CHW
 
         except cv2.error as e:
             raise ValueError(f"Error converting image color mode: {e}")
@@ -237,50 +211,42 @@ class Image:
         # Create a new Image instance with the same image data, color mode, and format
         new_image = Image(
             image_input=copy.deepcopy(self.image),
-            color_mode= self.color_mode,
-            image_format=self.image_format
-        )
+            color_mode= self.color_mode
+            )
         return new_image
 
 
     # The remaining methods of the class remain unchanged
-    def get_shape(self) -> tuple:
+    def get_shape(self,format : ImageFormat = ImageFormat.HWC ) -> tuple:
         """Get the shape of the image as a tuple (height, width, channels)."""
-        return self.image.shape
+        if format == ImageFormat.HWC:
+            return self.image.shape
+        elif format == ImageFormat.CHW:
+            return self.image.shape[::-1]
                  
     def get_width(self) -> int:
         """Get the width of the image."""
-        if self.image_format == ImageFormat.HWC:
-            return self.image.shape[1]
-        else:
-            return self.image.shape[2]
+        return self.image.shape[1]
         
     def get_height(self) -> int:
         """Get the height of the image."""
-        if self.image_format == ImageFormat.HWC:
-            return self.image.shape[0]
-        else:
-            return self.image.shape[1]
+        return self.image.shape[0]
+    
 
     def get_number_channel(self) -> int:
         """Get the number of channels in the image."""
-        if self.image_format == ImageFormat.HWC:
-            return self.image.shape[2]
-        elif self.image_format == ImageFormat.CHW:
-            return self.image.shape[0]
-        
+        return self.image.shape[2]
+
     def get_color_mode(self) -> ColorMode:
         """Get the color mode of the image."""
         return self.color_mode
 
-    def get_image_format(self) -> ImageFormat:
-        """Get the format of the image (HWC or CHW)."""
-        return self.image_format
-
-    def get_data(self) -> np.ndarray:
+    def get_data(self,format : ImageFormat = ImageFormat.HWC) -> np.ndarray:
         """Get the image as a NumPy array."""
-        return self.image
-
+        if format == ImageFormat.HWC:
+            return self.image   
+        elif format == ImageFormat.CHW: 
+            return self.convert_image_format(self.image, ImageFormat.CHW)
 
     def resize(self, new_size: tuple) -> 'Image':
         """

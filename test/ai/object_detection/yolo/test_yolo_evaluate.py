@@ -3,7 +3,7 @@ import numpy as np
 from collections import defaultdict
 from typing import List, Tuple, Dict
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, BBox, YoloOutput,BBoxFormat
- 
+from saltup.utils.data.image import ColorMode,ImageFormat
 import onnx
 from onnx import helper, TensorProto
 import tempfile
@@ -31,6 +31,14 @@ class TestEvaluate(unittest.TestCase):
                    ) -> np.ndarray:
                 return image
 
+            def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
+                input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+                return (
+                    input_shape,  # Shape: (480, 640,1)
+                    ColorMode.RGB,
+                    ImageFormat.HWC
+                )
+            
             def postprocess(self, raw_output: np.ndarray,
                     image_height:int, image_width:int, confidence_thr:float=0.5, 
                             iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:

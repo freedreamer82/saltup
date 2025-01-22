@@ -37,13 +37,12 @@ class TestImageProcessing:
     def test_load_grayscale_image(self, sample_image_path):
         # Use the Image class to load the image
         image_instance = Image(sample_image_path, color_mode=ColorMode.GRAY)
-        image = image_instance.get_data()
+        image = image_instance.get_data(format=ImageFormat.HWC)
         assert isinstance(image, np.ndarray)
         print(image.shape)
         assert len(image.shape) == 3 and image.shape[-1] == 1  # Grayscale image has shape (H, W, 1)
         assert image.dtype == np.uint8
         assert image_instance.get_color_mode() == ColorMode.GRAY
-        assert image_instance.get_image_format() == ImageFormat.HWC
 
     def test_jpg_to_raw_array_grayscale(self, sample_image_path):
         # Use the class method to convert the image to a raw array

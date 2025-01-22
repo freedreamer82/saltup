@@ -1039,7 +1039,7 @@ def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int,
         cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)
 
     # Create a new instance of the Image class with the modified image data
-    new_image = Image(image_with_boxes, color_mode=output_color_mode, image_format=image.get_image_format())
+    new_image = Image(image_with_boxes, color_mode=output_color_mode)
 
     return new_image
 
@@ -1192,6 +1192,7 @@ def draw_boxes_on_image_with_labels_score(
         )
 
     # Create a new instance of the Image class with the modified image data
-    new_image = Image(image_with_boxes, color_mode=output_color_mode, image_format=image.get_image_format())
+    new_image = Image(image_with_boxes, color_mode=output_color_mode)
+                      
 
     return new_image

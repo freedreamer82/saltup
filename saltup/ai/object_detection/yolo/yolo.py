@@ -192,14 +192,34 @@ class BaseYolo(NeuralNetworkManager):
         self.model_path = model_path
         self.number_class = number_class
         self.model, self.model_input_shape, self.model_output_shape = self.load_model(model_path)  # Load model using inherited method
-        if yolot == YoloType.ANCHORS_BASED:
-            self.img_input_height  = self.model_input_shape[1]
-            self.img_input_width  = self.model_input_shape[2]
-        else:
-            self.img_input_height  = self.model_input_shape[2]
-            self.img_input_width  = self.model_input_shape[3]
+     
         self.yolotype = yolot
+        self.input_model_format = self.get_input_info()[2]
+        self.input_model_color = self.get_input_info()[1]
+        if self.input_model_format == ImageFormat.HWC:
+            self.input_model_height = self.get_input_info()[0][0]
+            self.input_model_width =self.get_input_info()[0][1]
+            self.input_model_channel = self.get_input_info()[0][2]
+        else:   
+            self.input_model_height = self.get_input_info()[0][1]
+            self.input_model_width = self.get_input_info()[0][2]  
+            self.input_model_channel =self.get_input_info()[0][0]
 
+    def get_input_model_height(self) -> int:
+        return self.input_model_height
+
+    def get_input_model_width(self) -> int:
+        return self.input_model_width
+
+    def get_input_model_channel(self) -> int:
+        return self.input_model_channel
+
+    def get_input_model_format(self) -> ImageFormat:
+        return self.input_model_format
+
+    def get_input_model_color(self) -> ColorMode:
+        return self.input_model_color
+    
     def getYoloType(self) -> YoloType:
         return self.yolotype
     
@@ -225,7 +245,7 @@ class BaseYolo(NeuralNetworkManager):
         return anchors_array
     
     @staticmethod
-    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR, format = ImageFormat.HWC) ->  Image:
+    def load_image(image_path: str, color_mode: ColorMode = ColorMode.BGR) ->  Image:
         """Load and convert image to specified color mode.
 
         Args:
@@ -239,7 +259,7 @@ class BaseYolo(NeuralNetworkManager):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        return Image(image_path, color_mode , image_format=format)
+        return Image(image_path, color_mode)
     
     def get_number_image_channel(self) -> int:
         info = self.get_input_info()
@@ -252,8 +272,6 @@ class BaseYolo(NeuralNetworkManager):
     def run(
         self,
         image: Image,
-        img_height: int, 
-        img_width: int,
         confidence_thr: float=0.5,
         iou_threshold:float = 0.5,
         preprocess: Optional[Union[Callable, bool]] = None,
@@ -271,6 +289,8 @@ class BaseYolo(NeuralNetworkManager):
                             If False, skips postprocessing entirely.
         :return: A YoloOutput object containing the results and timing information.
         """
+
+        
         # Measure preprocessing time
         start_preprocess = time.time()
         if preprocess is False:
@@ -279,9 +299,9 @@ class BaseYolo(NeuralNetworkManager):
         else:
             # Use custom preprocessing if provided, otherwise use the native method
             if callable(preprocess):
-                preprocessed_image = preprocess(image, self.img_input_height, self.img_input_width)
+                preprocessed_image = preprocess(image, self.input_model_height, self.input_model_width)
             else:
-                preprocessed_image = self.preprocess(image, self.img_input_height, self.img_input_width)
+                preprocessed_image = self.preprocess(image, self.input_model_height, self.input_model_width)
         end_preprocess = time.time()
         preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
 
@@ -299,11 +319,13 @@ class BaseYolo(NeuralNetworkManager):
         else:
             # Use custom postprocessing if provided, otherwise use the native method
             if callable(postprocess):
-                postprocessed_output = postprocess(raw_output, img_height, img_width, confidence_thr, 
-                            iou_threshold)
+                postprocessed_output = postprocess(raw_output, image.get_height(), 
+                                                   image.get_width(), confidence_thr,  
+                                                   iou_threshold)
             else:
-                postprocessed_output = self.postprocess(raw_output, img_height, img_width, confidence_thr, 
-                            iou_threshold)
+                postprocessed_output = self.postprocess(raw_output, image.get_height(),
+                                                        image.get_width(), confidence_thr, 
+                                                        iou_threshold)
         end_postprocess = time.time()
         postprocessing_time_ms = (end_postprocess - start_postprocess) * 1000
         

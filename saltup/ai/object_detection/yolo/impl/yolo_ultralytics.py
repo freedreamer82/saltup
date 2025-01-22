@@ -189,8 +189,8 @@ class YoloUltralytics(BaseYolo):
         boxes = []
         probs = []
         class_ids = []
-        x_factor = image_width / self.img_input_width
-        y_factor = image_height / self.img_input_height
+        x_factor = image_width / self.input_model_width
+        y_factor = image_height / self.input_model_height
         
         for row in raw_output:
             prob = row[4:].max()

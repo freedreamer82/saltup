@@ -103,8 +103,8 @@ class YoloDamo(BaseYolo):
         probs = []
         class_ids = []
         
-        x_factor = image_width / self.img_input_width
-        y_factor = image_height / self.img_input_height
+        x_factor = image_width / self.input_model_width
+        y_factor = image_height / self.input_model_height
 
         for i in range(rows):
             # Extract the class scores and find the maximum score

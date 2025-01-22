@@ -186,9 +186,8 @@ def main(args=None):
         try:
             # Process the image
             image = BaseYolo.load_image(image_path, ColorMode.GRAY if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
-            img_height, img_width, _ = image.get_shape()
             
-            yoloOut = yolo.run(image, img_height, img_width, args.conf_thres, args.iou_thres)
+            yoloOut = yolo.run(image, args.conf_thres, args.iou_thres)
                 
             preprocess_times.append(yoloOut.get_preprocessing_time())
             inference_times.append(yoloOut.get_inference_time())
@@ -217,7 +216,8 @@ def main(args=None):
                     os.path.basename(image_path).replace('.jpg', '.txt').replace('.png', '.txt').replace('.jpeg', '.txt')
                 )
                 if os.path.exists(label_path):
-                    yolo_bboxes, yolo_class_ids = BBox.from_yolo_file(label_path, img_width=img_width, img_height=img_height)
+                    yolo_bboxes, yolo_class_ids = BBox.from_yolo_file(label_path, img_width=image.get_width(), 
+                                                                      img_height=image.get_height())
                     all_labels.append((yolo_bboxes, yolo_class_ids))
                     
                     # Evaluate predictions for the current image

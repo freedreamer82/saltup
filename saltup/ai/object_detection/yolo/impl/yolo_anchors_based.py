@@ -144,7 +144,7 @@ class YoloAnchorsBased(BaseYolo):
             List[Tuple[BBox, int, float]]: List of predicted bounding boxes in the image with their respective score and class_id.
         """
         anchors = np.array(self.anchors).reshape(-1, 2)
-        input_shape = (self.img_input_height, self.img_input_width)
+        input_shape = (self.input_model_height, self.input_model_width)
         
         if isinstance(raw_output, list):
             raw_output = raw_output[0]
