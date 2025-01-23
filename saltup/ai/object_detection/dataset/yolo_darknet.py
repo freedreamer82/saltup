@@ -8,7 +8,8 @@ from pathlib import Path
 from collections import defaultdict, Counter
 from typing import Iterable, Union, List, Dict, Optional, Tuple
 
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
+from saltup.utils.data.image.image_utils import Image
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
 
@@ -53,7 +54,7 @@ class YoloDarknetLoader(BaseDatasetLoader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self):
+    def __next__(self) -> Tuple[Image, List]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_label_pairs):
             self._current_index = 0  # Reset for next iteration

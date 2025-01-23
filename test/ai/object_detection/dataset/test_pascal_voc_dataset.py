@@ -3,6 +3,7 @@ import os
 import numpy as np
 from PIL import Image
 
+from saltup.utils.data.image.image_utils import Image as SaltupImage
 from saltup.ai.object_detection.dataset.pascal_voc import (
     PascalVOCLoader, ColorMode,
     create_dataset_structure,
@@ -187,7 +188,8 @@ class TestPascalVOCDataloader:
         
         # Test iteration
         for image, annotations in loader:
-            assert isinstance(image, np.ndarray)
+            assert isinstance(image, SaltupImage)
+            assert isinstance(image.get_data(), np.ndarray)
             assert len(annotations) == 2  # Two objects per annotation
             for ann in annotations:
                 assert "class_name" in ann
@@ -247,7 +249,9 @@ class TestPascalVOCDataloader:
         
         # Compare iterations
         for img1, img2 in zip(first_images, second_images):
-            assert np.array_equal(img1, img2)
+            assert isinstance(img1, SaltupImage)
+            assert isinstance(img2, SaltupImage)
+            assert np.array_equal(img1.get_data(), img2.get_data())
 
     def test_pascal_voc_loader_color_modes(self, sample_dataset):
         """Test different color modes in PascalVOCLoader."""
@@ -277,11 +281,13 @@ class TestPascalVOCDataloader:
         # Check first image of each loader
         for loader in [loader_rgb, loader_bgr, loader_gray]:
             image, _ = next(iter(loader))
-            assert isinstance(image, np.ndarray)
+            assert isinstance(image, SaltupImage)
+            image_array = image.get_data()
+            assert isinstance(image_array, np.ndarray)
             if loader.color_mode == ColorMode.GRAY:
-                assert len(image.shape) == 2 or image.shape[-1] == 1
+                assert len(image_array.shape) == 2 or image_array.shape[-1] == 1
             else:
-                assert image.shape[-1] == 3
+                assert image_array.shape[-1] == 3
 
 
 if __name__ == '__main__':

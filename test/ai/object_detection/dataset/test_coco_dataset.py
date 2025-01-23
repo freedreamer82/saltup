@@ -1,11 +1,11 @@
 import pytest
 import os
 import json
-import shutil
 import numpy as np
 from PIL import Image
 from collections import defaultdict
 
+from saltup.utils.data.image.image_utils import Image as SaltupImage
 from saltup.ai.object_detection.dataset.coco import (
     create_dataset_structure, validate_dataset_structure,
     get_dataset_paths, read_annotations, write_annotations,
@@ -393,7 +393,8 @@ class TestCOCODatasetLoader:
 
         # Test iteration
         for image, annotations in loader:
-            assert isinstance(image, np.ndarray)
+            assert isinstance(image, SaltupImage)
+            assert isinstance(image.get_data(), np.ndarray)
             assert len(annotations) > 0
             for ann in annotations:
                 assert "bbox" in ann
@@ -462,8 +463,8 @@ class TestCOCODatasetLoader:
             annotations_file=str(ann_file),
             color_mode=ColorMode.RGB
         )
-        image, _ = next(iter(loader_rgb))
-        assert image.shape[-1] == 3
+        image, _ = next(loader_rgb)
+        assert image.get_data().shape[-1] == 3
 
         # Test BGR mode
         loader_bgr = COCODatasetLoader(
@@ -471,8 +472,8 @@ class TestCOCODatasetLoader:
             annotations_file=str(ann_file),
             color_mode=ColorMode.BGR
         )
-        image, _ = next(iter(loader_bgr))
-        assert image.shape[-1] == 3
+        image, _ = next(loader_bgr)
+        assert image.get_data().shape[-1] == 3
 
         # Test GRAY mode
         loader_gray = COCODatasetLoader(
@@ -480,8 +481,8 @@ class TestCOCODatasetLoader:
             annotations_file=str(ann_file),
             color_mode=ColorMode.GRAY
         )
-        image, _ = next(iter(loader_gray))
-        assert len(image.shape) == 2 or image.shape[-1] == 1
+        image, _ = next(loader_gray)
+        assert len(image.get_data().shape) == 2 or image.get_data().shape[-1] == 1
 
     def test_iterator_reset(self, dataset_dir, sample_coco_data, sample_images):
         """Test that iterator properly resets after completion."""
@@ -504,7 +505,9 @@ class TestCOCODatasetLoader:
 
         # Compare iterations
         for img1, img2 in zip(first_images, second_images):
-            assert np.array_equal(img1, img2)
+            assert isinstance(img1, SaltupImage)
+            assert isinstance(img2, SaltupImage)
+            assert np.array_equal(img1.get_data(), img2.get_data())
 
 if __name__ == '__main__':
     pytest.main(['-v', __file__])

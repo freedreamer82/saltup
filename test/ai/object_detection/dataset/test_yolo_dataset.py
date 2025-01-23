@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from collections import defaultdict
 
+from saltup.utils.data.image.image_utils import Image as SaltupImage
 from saltup.ai.object_detection.dataset.yolo_darknet import (
     read_label, write_label, create_dataset_structure,
     validate_dataset_structure, analyze_dataset,
@@ -311,7 +312,8 @@ class TestYOLODarknetDataloader:
         
         # Test iteration
         for image, labels in loader:
-            assert isinstance(image, np.ndarray)
+            assert isinstance(image, SaltupImage)
+            assert isinstance(image.get_data(), np.ndarray)
             assert len(labels) > 0  # Each image has at least one label
             
             # Check labels format
@@ -350,11 +352,13 @@ class TestYOLODarknetDataloader:
         # Check first image of each loader
         for loader in [loader_rgb, loader_bgr, loader_gray]:
             image, _ = next(iter(loader))
-            assert isinstance(image, np.ndarray)
+            assert isinstance(image, SaltupImage)
+            image_array = image.get_data()
+            assert isinstance(image_array, np.ndarray)
             if loader.color_mode == ColorMode.GRAY:
-                assert len(image.shape) == 2 or image.shape[-1] == 1
+                assert len(image_array.shape) == 2 or image_array.shape[-1] == 1
             else:
-                assert image.shape[-1] == 3
+                assert image_array.shape[-1] == 3
 
     def test_yolo_darknet_loader_missing_directories(self, sample_dataset):
         """Test YoloDarknetLoader with missing directories."""
@@ -409,7 +413,9 @@ class TestYOLODarknetDataloader:
         
         # Compare iterations
         for img1, img2 in zip(first_images, second_images):
-            assert np.array_equal(img1, img2)
+            assert isinstance(img1, SaltupImage)
+            assert isinstance(img2, SaltupImage)
+            assert np.array_equal(img1.get_data(), img2.get_data())
 
 
 if __name__ == '__main__':

@@ -8,7 +8,9 @@ from tensorflow import keras
 import albumentations as A
 from typing import Tuple, List
 
-from saltup.ai.object_detection.dataloader.anchors_based_dataloader import AnchorsBasedDataloader, BaseDatasetLoader, PyTorchAnchorBasedLoader, KerasAnchorBasedLoader
+from saltup.ai.object_detection.dataloader.anchors_based_dataloader import (
+    AnchorsBasedDataloader, BaseDatasetLoader, PyTorchAnchorBasedLoader, KerasAnchorBasedLoader
+)
 
 
 # Mock dataset loader for testing
@@ -141,7 +143,7 @@ class TestAnchorsBasedDataloader:
         assert dataloader.grid_size == (7, 7)
         assert dataloader.num_classes == 2
         assert dataloader.batch_size == 1
-        assert not dataloader.augment
+        assert not dataloader.do_augment
         
     def test_length(self, dataloader):
         """Test length calculation."""
@@ -182,7 +184,7 @@ class TestAnchorsBasedDataloader:
             A.RandomBrightnessContrast(p=1)
         ], bbox_params=A.BboxParams(format='yolo'))
         
-        assert dataloader.augment
+        assert dataloader.do_augment
         images, labels = next(iter(dataloader))
         
         assert images.shape == (1, 224, 224, 1)
