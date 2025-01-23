@@ -268,7 +268,18 @@ class BaseYolo(NeuralNetworkManager):
         else:
             return info[0][0]
     
-    
+    def _convert_image_color_for_input_model(self ,image : Image)-> Image:
+
+        #copy image and transorm according to input model
+        img = image.copy() 
+        # Get input information from the YOLO model
+        model_color = self.get_input_model_color()
+        channels = self.get_input_model_channel()
+
+        if channels != img.get_number_channel() and model_color != img.get_color_mode():
+             img.convert_color_mode(model_color if channels > 1 else ColorMode.GRAY)
+        return img     
+
     def run(
         self,
         image: Image,
@@ -290,18 +301,18 @@ class BaseYolo(NeuralNetworkManager):
         :return: A YoloOutput object containing the results and timing information.
         """
 
-        
+        img = self._convert_image_color_for_input_model(image)
         # Measure preprocessing time
         start_preprocess = time.time()
         if preprocess is False:
             # Skip preprocessing entirely
-            preprocessed_image = image
+            preprocessed_image = img
         else:
             # Use custom preprocessing if provided, otherwise use the native method
             if callable(preprocess):
-                preprocessed_image = preprocess(image, self.input_model_height, self.input_model_width)
+                preprocessed_image = preprocess(img, self.input_model_height, self.input_model_width)
             else:
-                preprocessed_image = self.preprocess(image, self.input_model_height, self.input_model_width)
+                preprocessed_image = self.preprocess(img, self.input_model_height, self.input_model_width)
         end_preprocess = time.time()
         preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
 
@@ -319,12 +330,12 @@ class BaseYolo(NeuralNetworkManager):
         else:
             # Use custom postprocessing if provided, otherwise use the native method
             if callable(postprocess):
-                postprocessed_output = postprocess(raw_output, image.get_height(), 
-                                                   image.get_width(), confidence_thr,  
+                postprocessed_output = postprocess(raw_output, img.get_height(), 
+                                                   img.get_width(), confidence_thr,  
                                                    iou_threshold)
             else:
-                postprocessed_output = self.postprocess(raw_output, image.get_height(),
-                                                        image.get_width(), confidence_thr, 
+                postprocessed_output = self.postprocess(raw_output, img.get_height(),
+                                                        img.get_width(), confidence_thr, 
                                                         iou_threshold)
         end_postprocess = time.time()
         postprocessing_time_ms = (end_postprocess - start_postprocess) * 1000

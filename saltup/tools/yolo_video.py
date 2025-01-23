@@ -25,21 +25,14 @@ def signal_handler(sig, frame):
     """Handle Ctrl+C signal to gracefully exit the program."""
     print("\nProgram interrupted with Ctrl + C!")
     sys.exit(0)  # Terminate the script
-
-def robust_mean(times):
-    """Calculate the robust mean by excluding the smallest and largest values."""
-    if len(times) <= 2:
-        return np.mean(times) if times else 0
-    times_sorted = sorted(times)
-    return np.mean(times_sorted[1:-1])
-
+ 
 def process_frame(yolo, frame, frame_number, args, class_colors_dict, class_labels_dict):
     """
     Process a video frame using the YOLO model.
     
     Args:
         yolo: The YOLO model instance.
-        frame: Input frame (as a NumPy array).
+        frame: Input frame (as a Image).
         frame_number: Current frame number.
         args: Command-line arguments.
         class_colors_dict: Dictionary mapping class IDs to colors.
@@ -48,32 +41,21 @@ def process_frame(yolo, frame, frame_number, args, class_colors_dict, class_labe
     Returns:
         frame_with_boxes: Frame with bounding boxes drawn.
     """
-    # Get input information from the YOLO model
-    model_color = yolo.get_input_model_color()
-    channels = yolo.get_input_model_channel()
-    
-    # Convert frame to Image object using the input information
-    image = Image(frame, color_mode=  model_color if channels > 1 else ColorMode.GRAY)
-   
     # Run YOLO inference
-    yoloOut = yolo.run(image, args.conf_thres, args.iou_thres)
+    yoloOut = yolo.run(frame, args.conf_thres, args.iou_thres)
     boxes_with_info = yoloOut.get_boxes()
     
     boxes_list = [box[0] for box in boxes_with_info]
 
-    # im2 = draw_boxes_on_image(bboxes=boxes_list, image=image, color=ColorsBGR.RED.value, thickness=2)
-    # im2.show()
-
     # Draw bounding boxes on the frame
     frame_with_boxes = draw_boxes_on_image_with_labels_score(
-        image, 
+        frame, 
         boxes_with_info,
         class_colors_bgr=class_colors_dict,
         class_labels=class_labels_dict
-    )  # Convert back to NumPy array
+    ) 
     
-    # frame_with_boxes.show()
-    return frame_with_boxes.get_data()
+    return frame_with_boxes
 
 def main(args=None):
     # Se args non è fornito, usa sys.argv[1:]

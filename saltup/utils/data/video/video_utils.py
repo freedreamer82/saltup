@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 import subprocess
 from typing import Callable, Union , List, Optional
+from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR, Image, ImageFormat
 
 def create_avi_from_jpg(folder: str, output_filename: str, fps: int = 4) -> None:
     """
@@ -274,7 +275,7 @@ def _infer_codec_from_filename(filename: Union[str, Path]) -> str:
 
 def process_video(
     video_input: Union[str, Path],
-    callback: Callable[[np.ndarray, int, int], np.ndarray],  # Updated callback signature
+    callback: Callable[[Image, int, int], Image],  # Updated callback signature
     video_output: Union[str, Path] = None,
     fps: int = None,
 ):
@@ -314,11 +315,11 @@ def process_video(
             break
 
         # Apply the callback to the frame
-        processed_frame = callback(frame, frame_number, total_frames)  # Pass total_frames to callback
+        processed_frame = callback(Image(frame), frame_number, total_frames)  # Pass total_frames to callback
 
         # If an output video is specified, write the processed frame
         if out is not None:
-            out.write(processed_frame)
+            out.write(processed_frame.get_data())
 
         frame_number += 1
 

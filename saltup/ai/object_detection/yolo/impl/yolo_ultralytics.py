@@ -126,7 +126,7 @@ class YoloUltralytics(BaseYolo):
             np.ndarray: Processed tensor ready for model input
         """
         
-        raw_img = image.get_data()
+        raw_img = image.get_data() # get in hwc
         
         num_channel = image.get_number_channel()
         
