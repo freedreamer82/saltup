@@ -166,13 +166,14 @@ class YoloAnchorsBased(BaseYolo):
         for i, c in reversed(list(enumerate(classes))):
             box = boxes[i]
             score = scores[i]
-            box_object = BBox(box, format=BBoxFormat.CORNERS,
-                              img_width=image_width, img_height=image_height)
+
             if all(coord >= 0 for coord in box):
-                box_object = BBox(box, format=BBoxFormat.CORNERS,
-                                img_width=image_width, img_height=image_height)
+                box_object = BBox(img_height=image_height, 
+                                img_width=image_width, 
+                                coordinates=box, 
+                                format=BBoxFormat.CORNERS)
                 result.append((box_object, int(c), score))
             else:
-                print(f"Warning: Box {box} contiene valori negativi e verrà ignorata.")
+                print(f"Warning: Box {box} contains negative values and will be ignored.")
 
         return result

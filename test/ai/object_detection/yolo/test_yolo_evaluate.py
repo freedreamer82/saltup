@@ -1,14 +1,14 @@
 import unittest
 import numpy as np
 from collections import defaultdict
-from typing import List, Tuple, Dict
-from saltup.ai.object_detection.yolo.yolo import BaseYolo, BBox, YoloOutput,BBoxFormat
-from saltup.utils.data.image import ColorMode,ImageFormat
+from typing import List, Tuple, Dict, Union
+from saltup.ai.object_detection.yolo.yolo import BaseYolo, BBox, YoloOutput, BBoxFormat
+from saltup.utils.data.image import ColorMode, ImageFormat, Image
 import onnx
 from onnx import helper, TensorProto
 import tempfile
 import os
-from typing import Any, Dict, List ,Tuple
+from typing import Any, Dict, List, Tuple
 import torch
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
@@ -22,9 +22,9 @@ class TestEvaluate(unittest.TestCase):
 
         class MockYolo(BaseYolo):
             def preprocess(self, 
-                   image: np.array,
-                   target_height:int, 
-                   target_width:int,        
+                   image: Image,
+                   target_height: int, 
+                   target_width: int,        
                    normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
                    apply_padding: bool = True,
                    **kwargs: Any
@@ -32,22 +32,22 @@ class TestEvaluate(unittest.TestCase):
                 return image
 
             def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
-                input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+                input_shape = self.model_input_shape[1:]  # Remove batch size
                 return (
-                    input_shape,  # Shape: (480, 640,1)
+                    input_shape,  # Shape: (480, 640, 1)
                     ColorMode.RGB,
                     ImageFormat.HWC
                 )
             
             def postprocess(self, raw_output: np.ndarray,
-                    image_height:int, image_width:int, confidence_thr:float=0.5, 
-                            iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
+                    image_height: int, image_width: int, confidence_thr: float = 0.5, 
+                            iou_threshold: float = 0.5) -> List[Tuple[BBox, int, float]]:
                 return []
 
         self.yolo = MockYolo(yolot=None, model_path=self.onnx_model_path, number_class=1)
 
     def create_simple_onnx_model(self, model_path: str):
-        # We create a simple ONNX model with a single Identity node
+        # Create a simple ONNX model with a single Identity node
         input = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 224, 224])
         output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
         node = helper.make_node('Identity', ['input'], ['output'])
@@ -61,9 +61,9 @@ class TestEvaluate(unittest.TestCase):
         os.rmdir(self.tmp_dir)
 
     def test_evaluate_perfect_match(self):
-        """Test the case where all predictions correspond exactly to fundamental truths."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        """Test the case where all predictions correspond exactly to ground truths."""
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
@@ -76,9 +76,9 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_false_positives(self):
         """Test the case where there are false positives."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
-        bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)   
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)   
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8), (bbox3, 1, 0.7)])   
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
@@ -90,10 +90,10 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["mAP@50-95"], 1.0)
 
     def test_evaluate_false_negatives(self):
-        """Testa il caso in cui ci sono falsi negativi."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
-        bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
+        """Test the case where there are false negatives."""
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
+        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])
         ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 1)]
 
@@ -105,9 +105,9 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["mAP@50-95"], 0.833, delta=0.0005)
 
     def test_evaluate_no_predictions(self):
-        """Testa il caso in cui non ci sono previsioni."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        """Test the case where there are no predictions."""
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
         predictions = YoloOutput([])  
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
@@ -119,9 +119,9 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["mAP@50-95"], 0.0)
 
     def test_evaluate_no_ground_truth(self):
-        """Testa il caso in cui non ci sono verità fondamentali."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)   
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        """Test the case where there are no ground truths."""
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)   
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
         ground_truth = []
 
@@ -133,9 +133,9 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["mAP@50-95"], 0.0)
 
     def test_evaluate_partial_overlap(self):
-        """Testa il caso in cui le previsioni hanno una sovrapposizione parziale con le verità fondamentali."""
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
-        bbox2 = BBox(coordinates=[1, 1, 11, 11], format=BBoxFormat.CORNERS)
+        """Test the case where predictions have partial overlap with ground truths."""
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[1, 1, 11, 11], format=BBoxFormat.CORNERS)
         predictions = YoloOutput([(bbox2, 0, 0.9)])
         ground_truth = [(bbox1, 0)]
 
@@ -146,17 +146,15 @@ class TestEvaluate(unittest.TestCase):
         self.assertAlmostEqual(metrics["mAP"], 1.0)         
         self.assertAlmostEqual(metrics["mAP@50-95"], 0.4, delta=0.1)
 
-   
-
     def test_evaluate_comparison_with_torchmetrics(self):
         """
-        Confronta i risultati della nostra implementazione con quella di torchmetrics.
-        Verifica che entrambe le implementazioni producano risultati simili.
+        Compare the results of our implementation with torchmetrics.
+        Verify that both implementations produce similar results.
         """
         # Create test data
-        bbox1 = BBox(coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
-        bbox2 = BBox(coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
-        bbox3 = BBox(coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
+        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
         
         predictions = YoloOutput([
             (bbox1, 0, 0.9),
@@ -177,23 +175,23 @@ class TestEvaluate(unittest.TestCase):
         # Access YoloOutput data using get_boxes()
         for box, cls, score in predictions.get_boxes():
             pred_boxes.append([
-                box.coordinates[0],
-                box.coordinates[1],
-                box.coordinates[2],
-                box.coordinates[3]
+                box.get_coordinates()[0],
+                box.get_coordinates()[1],
+                box.get_coordinates()[2],
+                box.get_coordinates()[3]
             ])
             pred_scores.append(score)
-            pred_labels.append(cls + 1)  # torchmetrics usa 1-based
+            pred_labels.append(cls + 1)  # torchmetrics uses 1-based labels
         
         gt_boxes = []
         gt_labels = []
         
         for box, cls in ground_truth:
             gt_boxes.append([
-                box.coordinates[0],
-                box.coordinates[1],
-                box.coordinates[2],
-                box.coordinates[3]
+                box.get_coordinates()[0],
+                box.get_coordinates()[1],
+                box.get_coordinates()[2],
+                box.get_coordinates()[3]
             ])
             gt_labels.append(cls + 1)
         
@@ -218,14 +216,14 @@ class TestEvaluate(unittest.TestCase):
             our_metrics["mAP"],
             torch_metrics['map'].item(),
             places=2,
-            msg="Le metriche mAP differiscono significativamente tra le implementazioni"
+            msg="mAP metrics differ significantly between implementations"
         )
         
         self.assertAlmostEqual(
             our_metrics["mAP@50-95"],
             torch_metrics['map_50'].item(),
             places=2,
-            msg="Le metriche mAP@50-95 differiscono significativamente tra le implementazioni"
+            msg="mAP@50-95 metrics differ significantly between implementations"
         )
         
         # Check also the other metrics of our implementation

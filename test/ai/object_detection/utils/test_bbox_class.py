@@ -1,127 +1,169 @@
-import unittest
-from typing import List, Tuple
+import pytest
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, IoUType
+import numpy as np
+from copy import deepcopy
 import json
 import xml.etree.ElementTree as ET
 
-class TestBBox(unittest.TestCase):
+# Test data
+IMG_WIDTH = 640
+IMG_HEIGHT = 480
 
-    def setUp(self):
-        # Setup common test data
-        self.corners_coords = [10, 20, 50, 60]  # x1, y1, x2, y2
-        self.center_coords = [30, 40, 40, 40]   # x_center, y_center, width, height
-        self.topleft_coords = [10, 20, 40, 40]  # x_min, y_min, width, height
-        self.img_width = 100
-        self.img_height = 100
+# Test cases for BBox initialization
+def test_bbox_initialization():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    assert bbox.get_coordinates() == [0.1, 0.2, 0.3, 0.4]
+    assert bbox.get_format() == BBoxFormat.CORNERS
 
-    def test_initialization(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.coordinates, self.corners_coords)
-        self.assertEqual(bbox.format, BBoxFormat.CORNERS)
-        self.assertEqual(bbox.img_width, self.img_width)
-        self.assertEqual(bbox.img_height, self.img_height)
+# Test cases for copy method
+def test_bbox_copy():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox_copy = bbox.copy()
+    assert bbox.get_coordinates() == bbox_copy.get_coordinates()
+    assert bbox.get_format() == bbox_copy.get_format()
 
-    def test_from_yolo_file(self):
-        # Create a mock YOLO file
-        yolo_file = "mock_yolo.txt"
-        with open(yolo_file, 'w') as f:
-            f.write("0 0.3 0.4 0.2 0.2\n")
+# Test cases for is_normalized method
+def test_is_normalized():
+    assert BBox.is_normalized([0.1, 0.2, 0.3, 0.4], BBoxFormat.CORNERS) == True
+    assert BBox.is_normalized([1.1, 0.2, 0.3, 0.4], BBoxFormat.CORNERS) == False
 
-        bboxes = BBox.from_yolo_file(yolo_file, self.img_width, self.img_height)
-        # Verifica che il risultato sia una tupla
-        self.assertIsInstance(bboxes, tuple)
-        
-        # Verifica che la tupla contenga due elementi
-        self.assertEqual(len(bboxes), 2)
-        
-        # Verifica che il primo elemento sia una lista di BBox
-        self.assertIsInstance(bboxes[0], list)
-        if bboxes[0]:  # Se la lista non è vuota
-            self.assertIsInstance(bboxes[0][0], BBox)
-            
-        self.assertEqual(bboxes[0][0].get_coordinates(), [0.3, 0.4, 0.2, 0.2])
-        self.assertEqual(bboxes[0][0].get_format(), BBoxFormat.CENTER)
+# Test cases for pascalvoc_to_yolo_bbox method
+def test_pascalvoc_to_yolo_bbox():
+    yolo_bbox = BBox.pascalvoc_to_yolo_bbox([100, 150, 300, 400], IMG_WIDTH, IMG_HEIGHT)
+    expected_yolo_bbox = ((100 + 300) / (2.0 * IMG_WIDTH), (150 + 400) / (2.0 * IMG_HEIGHT), (300 - 100) / IMG_WIDTH, (400 - 150) / IMG_HEIGHT)
+    assert yolo_bbox == expected_yolo_bbox
 
-    def test_from_coco_file(self):
-        # Create a mock COCO file
-        coco_file = "mock_coco.json"
-        coco_data = {
-            "annotations": [
-                {"image_id": 1, "bbox": [10, 20, 40, 40]},
-                {"image_id": 2, "bbox": [30, 40, 20, 20]}
-            ]
-        }
-        with open(coco_file, 'w') as f:
-            json.dump(coco_data, f)
+# Test cases for corners_to_center_format method
+def test_corners_to_center_format():
+    center_bbox = BBox.corners_to_center_format([100, 150, 300, 400])
+    expected_center_bbox = ((100 + 300) / 2, (150 + 400) / 2, 300 - 100, 400 - 150)
+    assert center_bbox == expected_center_bbox
 
-        bboxes = BBox.from_coco_file(coco_file, 1)
-        self.assertEqual(len(bboxes), 1)
-        self.assertEqual(bboxes[0].coordinates, [10, 20, 40, 40])
-        self.assertEqual(bboxes[0].format, BBoxFormat.TOPLEFT)
+# Test cases for corners_to_topleft_format method
+def test_corners_to_topleft_format():
+    topleft_bbox = BBox.corners_to_topleft_format([100, 150, 300, 400])
+    expected_topleft_bbox = (100, 150, 300 - 100, 400 - 150)
+    assert topleft_bbox == expected_topleft_bbox
 
-    def test_from_pascal_voc_file(self):
-        # Create a mock Pascal VOC file
-        pascal_voc_file = "mock_pascal_voc.xml"
-        root = ET.Element("annotation")
-        obj = ET.SubElement(root, "object")
-        bndbox = ET.SubElement(obj, "bndbox")
-        ET.SubElement(bndbox, "xmin").text = "10"
-        ET.SubElement(bndbox, "ymin").text = "20"
-        ET.SubElement(bndbox, "xmax").text = "50"
-        ET.SubElement(bndbox, "ymax").text = "60"
-        tree = ET.ElementTree(root)
-        tree.write(pascal_voc_file)
+# Test cases for center_to_corners_format method
+def test_center_to_corners_format():
+    corners_bbox = BBox.center_to_corners_format([200, 275, 200, 250])
+    expected_corners_bbox = (200 - 100, 275 - 125, 200 + 100, 275 + 125)
+    assert corners_bbox == expected_corners_bbox
 
-        bboxes = BBox.from_pascal_voc_file(pascal_voc_file)
-        self.assertEqual(len(bboxes), 1)
-        self.assertEqual(bboxes[0].coordinates, [10, 20, 50, 60])
-        self.assertEqual(bboxes[0].format, BBoxFormat.CORNERS)
+# Test cases for center_to_topleft_format method
+def test_center_to_topleft_format():
+    topleft_bbox = BBox.center_to_topleft_format([200, 275, 200, 250])
+    expected_topleft_bbox = (200 - 100, 275 - 125, 200, 250)
+    assert topleft_bbox == expected_topleft_bbox
 
-    def test_get_coordinates(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.get_coordinates(BBoxFormat.CENTER), (30.0, 40.0, 40, 40))
+# Test cases for topleft_to_center_format method
+def test_topleft_to_center_format():
+    center_bbox = BBox.topleft_to_center_format([100, 150, 200, 250])
+    expected_center_bbox = (100 + 100, 150 + 125, 200, 250)
+    assert center_bbox == expected_center_bbox
 
-    def test_set_coordinates(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        bbox.set_coordinates([30, 40, 40, 40], BBoxFormat.CENTER)
-        self.assertEqual(bbox.coordinates, [30, 40, 40, 40])
-        self.assertEqual(bbox.format, BBoxFormat.CENTER)
+# Test cases for topleft_to_corners_format method
+def test_topleft_to_corners_format():
+    corners_bbox = BBox.topleft_to_corners_format([100, 150, 200, 250])
+    expected_corners_bbox = (100, 150, 100 + 200, 150 + 250)
+    assert corners_bbox == expected_corners_bbox
 
-    def test_normalize(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.to_yolo(), (0.3, 0.4, 0.4, 0.4)) 
+# Test cases for normalize method
+def test_normalize():
+    normalized_bbox = BBox.normalize([100, 150, 300, 400], IMG_WIDTH, IMG_HEIGHT, BBoxFormat.CORNERS)
+    expected_normalized_bbox = (100 / IMG_WIDTH, 150 / IMG_HEIGHT, 300 / IMG_WIDTH, 400 / IMG_HEIGHT)
+    assert normalized_bbox == expected_normalized_bbox
 
-    def test_absolute(self):
-        bbox = BBox([0.1, 0.2, 0.5, 0.6], BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.absolute(), (10, 20, 50, 60))  
+# Test cases for absolute method
+def test_absolute():
+    absolute_bbox = BBox.absolute([0.1, 0.2, 0.3, 0.4], IMG_WIDTH, IMG_HEIGHT, BBoxFormat.CORNERS)
+    expected_absolute_bbox = (int(0.1 * IMG_WIDTH), int(0.2 * IMG_HEIGHT), int(0.3 * IMG_WIDTH), int(0.4 * IMG_HEIGHT))
+    assert absolute_bbox == expected_absolute_bbox
 
-    def test_to_yolo(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.to_yolo(), (0.3, 0.4, 0.4, 0.4))  
+# Test cases for compute_iou method
+def test_compute_iou():
+    bbox1 = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.1, 0.3, 0.3], format=BBoxFormat.CORNERS)
+    bbox2 = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.2, 0.2, 0.4, 0.4], format=BBoxFormat.CORNERS)
+    iou = bbox1.compute_iou(bbox2)
+    assert 0 <= iou <= 1
 
-    def test_to_coco(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.to_coco(), (10, 20, 40, 40))  
+# Test cases for from_yolo_file method
+def test_from_yolo_file(tmp_path):
+    yolo_file = tmp_path / "test_yolo.txt"
+    yolo_file.write_text("0 0.5 0.5 0.2 0.2\n")
+    bboxes, class_ids = BBox.from_yolo_file(str(yolo_file), IMG_HEIGHT, IMG_WIDTH)
+    assert len(bboxes) == 1
+    assert class_ids[0] == 0
 
-    def test_to_pascal_voc(self):
-        bbox = BBox(self.corners_coords, BBoxFormat.CORNERS, self.img_width, self.img_height)
-        self.assertEqual(bbox.to_pascal_voc(), (10, 20, 50, 60)) 
+# Test cases for from_coco_file method
+def test_from_coco_file(tmp_path):
+    coco_file = tmp_path / "test_coco.json"
+    coco_data = {
+        "annotations": [
+            {"image_id": 1, "bbox": [100, 150, 200, 250]},
+            {"image_id": 2, "bbox": [200, 250, 300, 350]}
+        ]
+    }
+    coco_file.write_text(json.dumps(coco_data))
+    bboxes = BBox.from_coco_file(str(coco_file), 1, IMG_HEIGHT, IMG_WIDTH)
+    assert len(bboxes) == 1
 
-    def test_compute_iou(self):
-        bbox1 = BBox([10, 20, 50, 60], BBoxFormat.CORNERS, self.img_width, self.img_height)
-        bbox2 = BBox([30, 40, 70, 80], BBoxFormat.CORNERS, self.img_width, self.img_height)
-        iou = bbox1.compute_iou(bbox2)
-        self.assertAlmostEqual(iou, 0.142857, places=5)
+# Test cases for from_pascal_voc_file method
+def test_from_pascal_voc_file(tmp_path):
+    pascal_voc_file = tmp_path / "test_pascal_voc.xml"
+    pascal_voc_file.write_text('''
+    <annotation>
+        <object>
+            <bndbox>
+                <xmin>100</xmin>
+                <ymin>150</ymin>
+                <xmax>300</xmax>
+                <ymax>400</ymax>
+            </bndbox>
+        </object>
+    </annotation>
+    ''')
+    bboxes = BBox.from_pascal_voc_file(str(pascal_voc_file), IMG_HEIGHT, IMG_WIDTH)
+    assert len(bboxes) == 1
 
-    def tearDown(self):
-        # Clean up any mock files created
-        import os
-        if os.path.exists("mock_yolo.txt"):
-            os.remove("mock_yolo.txt")
-        if os.path.exists("mock_coco.json"):
-            os.remove("mock_coco.json")
-        if os.path.exists("mock_pascal_voc.xml"):
-            os.remove("mock_pascal_voc.xml")
+# Test cases for to_yolo method
+def test_to_yolo():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    yolo_bbox = bbox.to_yolo()
+    expected_yolo_bbox = BBox.pascalvoc_to_yolo_bbox([0.1 * IMG_WIDTH, 0.2 * IMG_HEIGHT, 0.3 * IMG_WIDTH, 0.4 * IMG_HEIGHT], IMG_WIDTH, IMG_HEIGHT)
+    assert yolo_bbox == expected_yolo_bbox
 
-if __name__ == '__main__':
-    unittest.main()
+# Test cases for to_coco method
+def test_to_coco():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    coco_bbox = bbox.to_coco()
+    expected_coco_bbox = (0.1 * IMG_WIDTH, 0.2 * IMG_HEIGHT, (0.3 - 0.1) * IMG_WIDTH, (0.4 - 0.2) * IMG_HEIGHT)
+    assert coco_bbox == pytest.approx(expected_coco_bbox)
+
+# Test cases for to_pascal_voc method
+def test_to_pascal_voc():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    pascal_voc_bbox = bbox.to_pascal_voc()
+    expected_pascal_voc_bbox = (0.1 * IMG_WIDTH, 0.2 * IMG_HEIGHT, 0.3 * IMG_WIDTH, 0.4 * IMG_HEIGHT)
+    assert pascal_voc_bbox == expected_pascal_voc_bbox
+
+# Test cases for set_coordinates method
+def test_set_coordinates():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox.set_coordinates(IMG_HEIGHT, IMG_WIDTH, [0.2, 0.3, 0.4, 0.5], BBoxFormat.CORNERS)
+    assert bbox.get_coordinates() == [0.2, 0.3, 0.4, 0.5]
+
+# Test cases for __repr__ method
+def test_repr():
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    repr_str = repr(bbox)
+    assert "BBox" in repr_str
+    assert "coordinates=[0.1, 0.2, 0.3, 0.4]" in repr_str
+    assert "format=1" in repr_str
+    assert f"img_width={IMG_WIDTH}" in repr_str
+    assert f"img_height={IMG_HEIGHT}" in repr_str
+
+# Run the tests
+if __name__ == "__main__":
+    pytest.main()

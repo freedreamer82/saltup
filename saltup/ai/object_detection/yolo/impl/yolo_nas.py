@@ -140,8 +140,10 @@ class YoloNas(BaseYolo):
                 x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
                 y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
                 
-                box_object = BBox((x1, y1, x2, y2), format=BBoxFormat.CORNERS,
-                              img_width=image_width, img_height=image_height)
+                box_object = BBox(img_height=image_height, 
+                                  img_width=image_width, 
+                                  coordinates=(x1, y1, x2, y2), 
+                                  format=BBoxFormat.CORNERS)
                 boxes.append(box_object)
                 probs.append(prob)
                 class_ids.append(class_id) 
