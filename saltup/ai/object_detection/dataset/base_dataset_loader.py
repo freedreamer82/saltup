@@ -28,8 +28,7 @@ class BaseDatasetLoader(ABC):
     @staticmethod
     def load_image(
         image_path: str, 
-        color_mode: ColorMode = ColorMode.BGR, 
-        image_format: ImageFormat = ImageFormat.HWC
+        color_mode: ColorMode = ColorMode.BGR
     ) -> Image:
         """Load and convert image to specified color mode.
 
@@ -44,7 +43,7 @@ class BaseDatasetLoader(ABC):
             FileNotFoundError: If image file does not exist or cannot be loaded
             ValueError: If color conversion fails
         """
-        return Image(image_path, color_mode, image_format)
+        return Image(image_path, color_mode)
 
     def save_dataset(
         self,
