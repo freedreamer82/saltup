@@ -30,7 +30,7 @@ from typing import Dict, List, Tuple, Optional, Union
 import random
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
 from saltup.utils.configure_logging import logging
 
 

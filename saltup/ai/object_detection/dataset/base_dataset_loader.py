@@ -1,11 +1,22 @@
 from pathlib import Path
 import pickle
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Iterator, Tuple, Any
+import base64
+import io
 
-from saltup.utils.data.image.image_utils import Image, ColorMode, ImageFormat
+from saltup.utils.data.image.image_utils import Image, ColorMode
+
+
+class StorageFormat(Enum):
+    """Enum class for supported storage formats."""
+    PICKLE = 'pkl'
+    PARQUET = 'parquet'
 
 
 class BaseDatasetLoader(ABC):
@@ -44,19 +55,44 @@ class BaseDatasetLoader(ABC):
             ValueError: If color conversion fails
         """
         return Image(image_path, color_mode)
+    
+    @staticmethod
+    def _serialize_array(arr: np.ndarray) -> str:
+        """Convert numpy array to base64 string for Parquet storage."""
+        buffer = io.BytesIO()
+        np.save(buffer, arr, allow_pickle=False)
+        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    @staticmethod
+    def _deserialize_array(b64_str: str) -> np.ndarray:
+        """Convert base64 string back to numpy array."""
+        buffer = io.BytesIO(base64.b64decode(b64_str))
+        return np.load(buffer, allow_pickle=False)
+
+    @staticmethod
+    def _serialize_label(label) -> str:
+        """Serialize label to JSON-compatible string."""
+        return pickle.dumps(label).hex()
+
+    @staticmethod
+    def _deserialize_label(hex_str: str):
+        """Deserialize label from hex string."""
+        return pickle.loads(bytes.fromhex(hex_str))
 
     def save_dataset(
         self,
         filepath: str = '',
         process_fn: callable = lambda x: x,
-        use_tqdm: bool = True
+        use_tqdm: bool = True,
+        format: StorageFormat = StorageFormat.PICKLE
     ) -> Path:
-        """Save dataset as a pickle file containing processed images and labels.
+        """Save dataset as a file containing processed images and labels.
 
         Args:
-            filepath: Path to save the pickle file. If empty, creates a timestamped file.
+            filepath: Path to save the file. If empty, creates a timestamped file.
             process_fn: Function to process each image before saving.
             use_tqdm: Whether to display a progress bar.
+            format: Format to save the dataset ('pickle' or 'parquet').
 
         Returns:
             Path object pointing to the saved file.
@@ -68,20 +104,34 @@ class BaseDatasetLoader(ABC):
             # Create filepath if not provided
             if not filepath:
                 current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filepath = f"./dataset_{current_time}.pkl"
+                filepath = f"./dataset_{current_time}.{format.value}"
 
-            # Ensure directory exists and add .pkl extension
-            filepath = Path(filepath).with_suffix('.pkl')
+            # Ensure directory exists and add appropriate extension
+            filepath = Path(filepath).with_suffix(f'.{format.value}')
             filepath.parent.mkdir(parents=True, exist_ok=True)
 
             # Process data with optional progress bar
             iterator = tqdm(self, disable=not use_tqdm, desc="Processing data")
             processed_data = [(process_fn(image.get_data()), label)
-                              for image, label in iterator]
+                            for image, label in iterator]
 
-            # Save processed data
-            with open(filepath, 'wb') as f:
-                pickle.dump(processed_data, f)
+            # Save processed data based on format
+            if format == StorageFormat.PICKLE:
+                with open(filepath, 'wb') as f:
+                    pickle.dump(processed_data, f)
+            elif format == StorageFormat.PARQUET:
+                # Convert data for Parquet storage
+                parquet_data = [
+                    {
+                        'image': self._serialize_array(img),
+                        'label': self._serialize_label(lbl)
+                    }
+                    for img, lbl in processed_data
+                ]
+                df = pd.DataFrame(parquet_data)
+                df.to_parquet(filepath)
+            else:
+                raise ValueError(f"Unsupported format: {format}")
 
             return filepath
 
@@ -90,14 +140,18 @@ class BaseDatasetLoader(ABC):
             raise
     
     @staticmethod
-    def load_dataset(filepath: str) -> Iterator[Tuple[Any, Any]]:
-        """Load a dataset from a pickle file and return an iterator.
+    def load_dataset(
+        filepath: str,
+        format: StorageFormat = StorageFormat.PICKLE
+    ) -> Iterator[Tuple[Any, Any]]:
+        """Load a dataset from a file and return an iterator.
 
         This method loads a dataset that was previously saved using the save() method.
         It returns an iterator that yields tuples of (image, label) pairs.
 
         Args:
-            filepath: Path to the pickle file containing the saved dataset
+            filepath: Path to the file containing the saved dataset
+            format: Format of the dataset file ('pickle' or 'parquet')
 
         Returns:
             Iterator yielding (image, label) pairs
@@ -115,17 +169,33 @@ class BaseDatasetLoader(ABC):
         """
         filepath = Path(filepath)
 
-        # Verify file exists and has .pkl extension
+        # Verify file exists and has appropriate extension
         if not filepath.exists():
             raise FileNotFoundError(f"Dataset file not found: {filepath}")
-        if filepath.suffix != '.pkl':
+        if format == StorageFormat.PICKLE and filepath.suffix != '.pkl':
             raise ValueError(
                 f"Invalid file format. Expected .pkl file, got: {filepath.suffix}")
+        if format == StorageFormat.PARQUET and filepath.suffix != '.parquet':
+            raise ValueError(
+                f"Invalid file format. Expected .parquet file, got: {filepath.suffix}")
 
         try:
-            # Load the pickle file
-            with open(filepath, 'rb') as f:
-                dataset = pickle.load(f)
+            # Load based on format
+            if format == StorageFormat.PICKLE:
+                with open(filepath, 'rb') as f:
+                    dataset = pickle.load(f)
+            elif format == StorageFormat.PARQUET:
+                df = pd.read_parquet(filepath)
+                # Convert back from Parquet storage format
+                dataset = [
+                    (
+                        BaseDatasetLoader._deserialize_array(row['image']),
+                        BaseDatasetLoader._deserialize_label(row['label'])
+                    )
+                    for row in df.to_dict('records')
+                ]
+            else:
+                raise ValueError(f"Unsupported format: {format}")
 
             # Verify dataset format
             if not isinstance(dataset, list):

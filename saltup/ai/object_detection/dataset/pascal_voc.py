@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
 

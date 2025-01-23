@@ -9,7 +9,7 @@ from collections import defaultdict, Counter
 from typing import Iterable, Union, List, Dict, Optional, Tuple
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
 
