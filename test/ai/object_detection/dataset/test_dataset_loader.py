@@ -97,6 +97,8 @@ class TestBaseDatasetLoader:
         assert output_path.exists()
         assert output_path.stem.startswith('dataset_')
         assert output_path.suffix == '.pkl'
+        
+        os.remove(output_path)
 
     def test_save_dataset_existing_dir(self, mock_loader, tmp_dataset_dir):
         """Test save to existing directory structure."""
@@ -229,6 +231,8 @@ class TestBaseDatasetLoader:
         assert output_path.exists()
         assert output_path.stem.startswith('dataset_')
         assert output_path.suffix == '.parquet'
+        
+        os.remove(output_path)
 
     def test_load_dataset_parquet_wrong_extension(self, tmp_dataset_dir):
         """Test load Parquet with wrong file extension."""
