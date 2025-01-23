@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 
 from saltup.utils.data.image.image_utils import Image, ColorMode
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, StorageFormat
 
 
 class MockDatasetLoader(BaseDatasetLoader):
@@ -180,3 +180,131 @@ class TestBaseDatasetLoader:
             for loaded_label, orig_label in zip(loaded_labels, orig_labels):
                 assert len(loaded_label) == len(orig_label)
                 assert all(x == y for x, y in zip(loaded_label, orig_label))
+
+    def test_save_dataset_parquet_basic(self, mock_loader, tmp_dataset_dir):
+        """Test basic save functionality with Parquet format."""
+        output_path = mock_loader.save_dataset(
+            str(tmp_dataset_dir / "test.parquet"),
+            format=StorageFormat.PARQUET
+        )
+        
+        assert output_path.exists()
+        assert output_path.suffix == '.parquet'
+        
+        # Load and verify data structure
+        loaded_data = list(BaseDatasetLoader.load_dataset(
+            str(output_path),
+            format=StorageFormat.PARQUET
+        ))
+        
+        assert isinstance(loaded_data, list)
+        assert len(loaded_data) == len(mock_loader)
+        assert all(isinstance(item, tuple) and len(item) == 2 for item in loaded_data)
+
+    def test_save_dataset_parquet_custom_process(self, mock_loader, tmp_dataset_dir):
+        """Test save with custom processing function in Parquet format."""
+        def custom_process(image):
+            return np.full_like(image, 100, dtype=np.uint8)
+
+        output_path = mock_loader.save_dataset(
+            str(tmp_dataset_dir / "processed.parquet"),
+            process_fn=custom_process,
+            format=StorageFormat.PARQUET
+        )
+        
+        # Load and verify processed data
+        loaded_data = list(BaseDatasetLoader.load_dataset(
+            str(output_path),
+            format=StorageFormat.PARQUET
+        ))
+        
+        # Check if processing was applied
+        first_image = loaded_data[0][0]
+        assert np.all(first_image == 100)  # All values should be 100
+
+    def test_save_dataset_auto_filename_parquet(self, mock_loader):
+        """Test save functionality with auto-generated filename in Parquet format."""
+        output_path = mock_loader.save_dataset(format=StorageFormat.PARQUET)
+        
+        assert output_path.exists()
+        assert output_path.stem.startswith('dataset_')
+        assert output_path.suffix == '.parquet'
+
+    def test_load_dataset_parquet_wrong_extension(self, tmp_dataset_dir):
+        """Test load Parquet with wrong file extension."""
+        wrong_file = tmp_dataset_dir / "wrong.txt"
+        wrong_file.touch()
+        
+        with pytest.raises(ValueError, match="Invalid file format"):
+            list(BaseDatasetLoader.load_dataset(
+                str(wrong_file),
+                format=StorageFormat.PARQUET
+            ))
+
+    def test_load_dataset_corrupted_parquet(self, tmp_dataset_dir):
+        """Test load with corrupted Parquet file."""
+        corrupted_file = tmp_dataset_dir / "corrupted.parquet"
+        with open(corrupted_file, 'wb') as f:
+            f.write(b'corrupted data')
+        
+        with pytest.raises(ValueError):
+            list(BaseDatasetLoader.load_dataset(
+                str(corrupted_file),
+                format=StorageFormat.PARQUET
+            ))
+
+    def test_save_load_cycle_parquet(self, mock_loader, tmp_dataset_dir):
+        """Test full save-load cycle preserves data integrity with Parquet format."""
+        # Save the dataset
+        save_path = mock_loader.save_dataset(
+            str(tmp_dataset_dir / "cycle_test.parquet"),
+            format=StorageFormat.PARQUET
+        )
+        
+        # Load the dataset
+        loaded_data = list(BaseDatasetLoader.load_dataset(
+            str(save_path),
+            format=StorageFormat.PARQUET
+        ))
+        
+        # Compare original and loaded data
+        original_data = [(img.get_data(), label) for img, label in mock_loader]
+        
+        assert len(loaded_data) == len(original_data)
+        
+        for (loaded_img, loaded_labels), (orig_img, orig_labels) in zip(loaded_data, original_data):
+            # Compare images
+            np.testing.assert_array_equal(loaded_img, orig_img)
+            
+            # Compare labels
+            assert len(loaded_labels) == len(orig_labels)
+            for loaded_label, orig_label in zip(loaded_labels, orig_labels):
+                assert len(loaded_label) == len(orig_label)
+                assert all(x == y for x, y in zip(loaded_label, orig_label))
+
+    def test_format_conversion(self, mock_loader, tmp_dataset_dir):
+        """Test saving in one format and converting to another."""
+        # Save in Pickle format
+        pickle_path = mock_loader.save_dataset(
+            str(tmp_dataset_dir / "data.pkl"),
+            format=StorageFormat.PICKLE
+        )
+        
+        # Load and save in Parquet format
+        loaded_data = list(BaseDatasetLoader.load_dataset(str(pickle_path)))
+        mock_loader.data = [(Image(img, ColorMode.RGB), label) for img, label in loaded_data]
+        parquet_path = mock_loader.save_dataset(
+            str(tmp_dataset_dir / "data.parquet"),
+            format=StorageFormat.PARQUET
+        )
+        
+        # Load from Parquet and compare
+        final_data = list(BaseDatasetLoader.load_dataset(
+            str(parquet_path),
+            format=StorageFormat.PARQUET
+        ))
+        
+        assert len(loaded_data) == len(final_data)
+        for (pkl_img, pkl_labels), (parq_img, parq_labels) in zip(loaded_data, final_data):
+            np.testing.assert_array_equal(pkl_img, parq_img)
+            assert pkl_labels == parq_labels
