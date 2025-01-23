@@ -299,7 +299,7 @@ def tiny_anchors_based_nms(
     boxes[:, 3] = np.maximum(0, np.minimum(height, boxes[:, 3]))  # y2
 
     # Wrap boxes into BBox objects
-    bboxes = [BBox(box.tolist(), format=BBoxFormat.CORNERS, img_width=width, img_height=height) for box in boxes]
+    bboxes = [BBox(img_height=height, img_width=width, coordinates=box.tolist(), format=BBoxFormat.CORNERS) for box in boxes]
 
     total_boxes, total_scores, total_classes = [], [], []
 

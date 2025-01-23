@@ -81,7 +81,7 @@ def test_postprocess(yolo_ultralytics_with_temp_model):
     # Generate random values for the format (8, 100)
     # xcenter, ycenter, width, height (all between 0 and 640 pixels)
     bbox_values = np.random.uniform(0, 321, (4, 100))  # 4 rows for bbox values
-
+    
     # Scores for 4 classes (values between 0 and 1)
     class_scores = np.random.rand(4, 100)  # 4 rows for class scores
 

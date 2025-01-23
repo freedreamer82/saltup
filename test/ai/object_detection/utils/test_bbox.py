@@ -71,38 +71,39 @@ def test_convert_matrix_boxes():
 # Test cases for BBox class
 def test_bbox_initialization():
     # Test initialization with CORNERS format
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    assert bbox.coordinates == [100, 150, 200, 250]
-    assert bbox.format == BBoxFormat.CORNERS
-    assert bbox.img_width == TEST_IMAGE_WIDTH
-    assert bbox.img_height == TEST_IMAGE_HEIGHT
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
+    assert bbox.get_coordinates() == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    assert bbox.get_format() == BBoxFormat.CORNERS
+    assert bbox.get_img_width() == TEST_IMAGE_WIDTH
+    assert bbox.get_img_height() == TEST_IMAGE_HEIGHT
 
     # Test initialization with CENTER format
-    bbox = BBox([150, 200, 100, 100], BBoxFormat.CENTER, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    assert bbox.coordinates == [150, 200, 100, 100]
-    assert bbox.format == BBoxFormat.CENTER
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 100, 100], BBoxFormat.CENTER)
+    assert bbox.get_coordinates() == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    assert bbox.get_format() == BBoxFormat.CORNERS
 
     # Test initialization with TOPLEFT format
-    bbox = BBox([100, 150, 100, 100], BBoxFormat.TOPLEFT, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    assert bbox.coordinates == [100, 150, 100, 100]
-    assert bbox.format == BBoxFormat.TOPLEFT
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 100, 100], BBoxFormat.TOPLEFT)
+    assert bbox.get_coordinates() == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    assert bbox.get_format() == BBoxFormat.CORNERS
 
 def test_bbox_copy():
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
     bbox_copy = bbox.copy()
-    assert bbox_copy.coordinates == bbox.coordinates
-    assert bbox_copy.format == bbox.format
-    assert bbox_copy.img_width == bbox.img_width
-    assert bbox_copy.img_height == bbox.img_height
+    assert bbox_copy.get_coordinates() == bbox.get_coordinates()
+    assert bbox_copy.get_format() == bbox.get_format()
+    assert bbox_copy.get_img_width() == bbox.get_img_width()
+    assert bbox_copy.get_img_height() == bbox.get_img_height()
 
 def test_bbox_is_normalized():
     # Test normalized coordinates
-    bbox = BBox([0.1, 0.2, 0.3, 0.4], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    assert bbox.is_normalized() == True
+    input_coordinates = [0.1, 0.2, 0.3, 0.4]
+    assert BBox.is_normalized(input_coordinates, BBoxFormat.CORNERS) == True
 
     # Test non-normalized coordinates
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    assert bbox.is_normalized() == False
+    pixel_input_coordinates = [100, 150, 200, 250]
+    
+    assert BBox.is_normalized(pixel_input_coordinates, BBoxFormat.CORNERS) == False
 
 def test_bbox_pascalvoc_to_yolo_bbox():
     voc_bbox = [100, 150, 200, 250]
@@ -123,37 +124,41 @@ def test_bbox_center_to_corners_format():
     assert corners == expected_corners
 
 def test_bbox_normalize():
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    bbox.normalize(TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    assert bbox.coordinates == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    input_coordinates = [100, 150, 200, 250]
+    img_width = TEST_IMAGE_WIDTH
+    img_height = TEST_IMAGE_HEIGHT
+    coordinates = BBox.normalize(input_coordinates, img_width, img_height, BBoxFormat.CORNERS)
+    assert coordinates == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
 
 def test_bbox_absolute():
-    bbox = BBox([0.1, 0.2, 0.3, 0.4], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    absolute_coords = bbox.absolute()
+    input_coordinates = [0.1, 0.2, 0.3, 0.4]
+    img_width = TEST_IMAGE_WIDTH
+    img_height = TEST_IMAGE_HEIGHT
+    absolute_coords = BBox.absolute(input_coordinates, img_width, img_height, BBoxFormat.CORNERS)
     expected_coords = (64, 96, 192, 192)
     assert absolute_coords == expected_coords
 
 def test_bbox_to_yolo():
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
     yolo_coords = bbox.to_yolo()
     expected_yolo_coords = (0.234375, 0.4166666666666667, 0.15625, 0.20833333333333334)
     assert yolo_coords == pytest.approx(expected_yolo_coords)
 
 def test_bbox_to_coco():
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
     coco_coords = bbox.to_coco()
     expected_coco_coords = (100, 150, 100, 100)
     assert coco_coords == expected_coco_coords
 
 def test_bbox_to_pascal_voc():
-    bbox = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
     pascal_coords = bbox.to_pascal_voc()
     expected_pascal_coords = (100, 150, 200, 250)
     assert pascal_coords == expected_pascal_coords
 
 def test_bbox_compute_iou():
-    bbox1 = BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
-    bbox2 = BBox([150, 200, 250, 300], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+    bbox1 = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
+    bbox2 = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 250, 300], BBoxFormat.CORNERS)
     iou = bbox1.compute_iou(bbox2)
     expected_iou = 0.14285714285714285
     assert iou == pytest.approx(expected_iou)
@@ -161,9 +166,9 @@ def test_bbox_compute_iou():
 # Test cases for utility functions
 def test_nms():
     bboxes = [
-        BBox([100, 150, 200, 250], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT),
-        BBox([150, 200, 250, 300], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT),
-        BBox([50, 100, 150, 200], BBoxFormat.CORNERS, TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT)
+        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS),
+        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 250, 300], BBoxFormat.CORNERS),
+        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [50, 100, 150, 200], BBoxFormat.CORNERS)
     ]
     scores = [0.9, 0.8, 0.7]
     iou_threshold = 0.5

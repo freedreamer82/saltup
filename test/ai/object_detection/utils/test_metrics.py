@@ -1,29 +1,28 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.metrics import AUC # type: ignore
+from tensorflow.keras.metrics import AUC  # type: ignore
 import unittest
-from saltup.ai.object_detection.utils.bbox import BBox,BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from saltup.ai.object_detection.utils.metrics import compute_ap, compute_ap_for_threshold, compute_map_50_95
-import numpy as np
-import tensorflow as tf
+
 
 class TestAveragePrecision(unittest.TestCase):
     def setUp(self):
         # Create more challenging test cases
-        self.gt_bbox1 = BBox([10, 10, 20, 20], format=BBoxFormat.CORNERS)
-        self.gt_bbox2 = BBox([30, 30, 40, 40], format=BBoxFormat.CORNERS)
+        self.gt_bbox1 = BBox(img_height=100, img_width=100, coordinates=[10, 10, 20, 20], format=BBoxFormat.CORNERS)
+        self.gt_bbox2 = BBox(img_height=100, img_width=100, coordinates=[30, 30, 40, 40], format=BBoxFormat.CORNERS)
         
         # Good match but not perfect
-        self.pred_bbox1 = BBox([12, 12, 21, 21], format=BBoxFormat.CORNERS)
+        self.pred_bbox1 = BBox(img_height=100, img_width=100, coordinates=[12, 12, 21, 21], format=BBoxFormat.CORNERS)
         
         # Clear false positive - completely different location
-        self.pred_bbox2 = BBox([50, 50, 60, 60], format=BBoxFormat.CORNERS)
+        self.pred_bbox2 = BBox(img_height=100, img_width=100, coordinates=[50, 50, 60, 60], format=BBoxFormat.CORNERS)
         
         # Partial overlap but below threshold false positive
-        self.pred_bbox3 = BBox([15, 15, 25, 25], format=BBoxFormat.CORNERS)
+        self.pred_bbox3 = BBox(img_height=100, img_width=100, coordinates=[15, 15, 25, 25], format=BBoxFormat.CORNERS)
         
         # Perfect match for gt_bbox2
-        self.pred_bbox4 = BBox([30, 30, 40, 40], format=BBoxFormat.CORNERS)
+        self.pred_bbox4 = BBox(img_height=100, img_width=100, coordinates=[30, 30, 40, 40], format=BBoxFormat.CORNERS)
 
     def test_false_positive(self):
         """Test case with false positives"""
@@ -101,8 +100,7 @@ class TestAveragePrecision(unittest.TestCase):
         
         ap = compute_map_50_95(gt_bboxes, pred_bboxes_scores)
         print(f"AP for multiple ground truths and predictions: {ap}")
-        self.assertGreater(ap, 0.3)  # Aggiorniamo il valore atteso
-
+        self.assertGreater(ap, 0.3)  # Updated expected value
 
     def test_compute_ap(self):
         """Test the compute_ap function directly"""
@@ -110,7 +108,8 @@ class TestAveragePrecision(unittest.TestCase):
         precision = np.array([1.0, 0.5, 0.0])
         
         ap = compute_ap(recall, precision)
-        self.assertEqual(ap, 0.5)  # Valore atteso corretto
+        self.assertEqual(ap, 0.5)  # Correct expected value
+
 
 if __name__ == '__main__':
     unittest.main()

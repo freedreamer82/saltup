@@ -83,7 +83,11 @@ def test_postprocess(yolo_damo_with_temp_model):
 
     # Generate the second tensor with bounding box values between 0 and max pixel coordonate value
     bboxes = np.random.randint(0, 20, (1, 100, 4))  # Random integers between 0 and max pixel coordonate value
-
+    
+    # Ensure the last two values are greater than the first two
+    bboxes[..., 2] = bboxes[..., 0] + np.random.randint(1, 10, bboxes[..., 0].shape)  # width
+    bboxes[..., 3] = bboxes[..., 1] + np.random.randint(1, 10, bboxes[..., 1].shape)  # height
+    
     # Combine into a list
     raw_output = [scores, bboxes]
     
