@@ -29,6 +29,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Union
 import random
 
+from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
 from saltup.utils.configure_logging import logging
 
@@ -38,8 +39,7 @@ class COCODatasetLoader(BaseDatasetLoader):
         self,
         image_dir: str,
         annotations_file: str,
-        color_mode: ColorMode = ColorMode.RGB,
-        image_format: ImageFormat = ImageFormat.HWC
+        color_mode: ColorMode = ColorMode.RGB
     ):
         """
         Initialize COCO dataset loader.
@@ -65,7 +65,6 @@ class COCODatasetLoader(BaseDatasetLoader):
         self.image_dir = Path(image_dir)
         self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
-        self.image_format = image_format
         self._current_index = 0
         
         # Load annotations and create pairs
@@ -79,7 +78,7 @@ class COCODatasetLoader(BaseDatasetLoader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self):
+    def __next__(self) -> Tuple[Image, List]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration
@@ -88,7 +87,7 @@ class COCODatasetLoader(BaseDatasetLoader):
         image_path, annotation = self.image_annotation_pairs[self._current_index]
         self._current_index += 1
         
-        return self.load_image(image_path, self.color_mode, self.image_format), annotation
+        return self.load_image(image_path, self.color_mode), annotation
 
     def __len__(self):
         """Return total number of samples in dataset."""

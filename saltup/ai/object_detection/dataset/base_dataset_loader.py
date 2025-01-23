@@ -76,7 +76,7 @@ class BaseDatasetLoader(ABC):
 
             # Process data with optional progress bar
             iterator = tqdm(self, disable=not use_tqdm, desc="Processing data")
-            processed_data = [(process_fn(image.image), label)
+            processed_data = [(process_fn(image.get_data()), label)
                               for image, label in iterator]
 
             # Save processed data

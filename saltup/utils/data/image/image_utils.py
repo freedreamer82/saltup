@@ -93,12 +93,12 @@ class Image:
 
         # Check if the input is a NumPy array
         if isinstance(image_input, np.ndarray):
-            self.image = self._process_image_data(image_input)
+            self.__image = self._process_image_data(image_input)
         else:
             # Otherwise, treat it as a file path
             self.image_path = Path(image_input) if isinstance(
                 image_input, str) else image_input
-            self.image = self._load_image()
+            self.__image = self._load_image()
 
     def _process_image_data(self, image_data: np.ndarray) -> np.ndarray:
         """
@@ -114,31 +114,31 @@ class Image:
             raise ValueError("image_data must be a NumPy array.")
 
         # Ensure the image is in HWC format because opencv works with HWC on that
-        self.image = self.convert_image_format(image_data, ImageFormat.HWC)
+        self.__image = self.convert_image_format(image_data, ImageFormat.HWC)
 
         # Convert the image to the desired color mode
         try:
             if self.color_mode == ColorMode.RGB:
                 # If already RGB, do nothing
-                if len(self.image .shape) == 3 and self.image .shape[-1] == 3:
+                if len(self.__image .shape) == 3 and self.__image .shape[-1] == 3:
                     pass
                 else:
                     # Convert BGR to RGB if necessary
-                    self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+                    self.__image = cv2.cvtColor(self.__image, cv2.COLOR_BGR2RGB)
             elif self.color_mode == ColorMode.GRAY:
-                if len(self.image .shape) == 2:  # If grayscale with shape (h, w), expand to (h, w, 1)
-                    self.image = np.expand_dims(self.image, axis=-1)
+                if len(self.__image .shape) == 2:  # If grayscale with shape (h, w), expand to (h, w, 1)
+                    self.__image = np.expand_dims(self.__image, axis=-1)
                 # If already (h, w, 1), do nothing
-                elif len(self.image .shape) == 3 and self.image .shape[-1] == 1:
+                elif len(self.__image .shape) == 3 and self.__image .shape[-1] == 1:
                     pass
                 else:
                     # If it's a 3-channel image but not grayscale, convert to grayscale
-                    self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-                    self.image = np.expand_dims(self.image, axis=-1)
+                    self.__image = cv2.cvtColor(self.__image, cv2.COLOR_BGR2GRAY)
+                    self.__image = np.expand_dims(self.__image, axis=-1)
         except cv2.error as e:
             raise ValueError(f"Error converting image color mode: {e}")
 
-        return self.image
+        return self.__image
 
     def _load_image(self) -> np.ndarray:
         """
@@ -175,36 +175,36 @@ class Image:
             # Convert in HWC format
             if new_color_mode == ColorMode.RGB:
                 if self.color_mode == ColorMode.BGR:
-                    self.image = cv2.cvtColor(
-                        self.image, cv2.COLOR_BGR2RGB)
+                    self.__image = cv2.cvtColor(
+                        self.__image, cv2.COLOR_BGR2RGB)
                 elif self.color_mode == ColorMode.GRAY:
-                    self.image = cv2.cvtColor(
-                        self.image, cv2.COLOR_GRAY2RGB)
+                    self.__image = cv2.cvtColor(
+                        self.__image, cv2.COLOR_GRAY2RGB)
             elif new_color_mode == ColorMode.BGR:
                 if self.color_mode == ColorMode.RGB:
-                    self.image = cv2.cvtColor(
-                        self.image, cv2.COLOR_RGB2BGR)
+                    self.__image = cv2.cvtColor(
+                        self.__image, cv2.COLOR_RGB2BGR)
                 elif self.color_mode == ColorMode.GRAY:
-                    self.image = cv2.cvtColor(
-                        self.image, cv2.COLOR_GRAY2BGR)
+                    self.__image = cv2.cvtColor(
+                        self.__image, cv2.COLOR_GRAY2BGR)
             elif new_color_mode == ColorMode.GRAY:
                 if self.color_mode == ColorMode.RGB:
-                    self.image = cv2.cvtColor(
-                        self.image, cv2.COLOR_RGB2GRAY)
+                    self.__image = cv2.cvtColor(
+                        self.__image, cv2.COLOR_RGB2GRAY)
                 elif self.color_mode == ColorMode.BGR:
-                    self.image = cv2.cvtColor(
-                        self.image, cv2.COLOR_BGR2GRAY)
+                    self.__image = cv2.cvtColor(
+                        self.__image, cv2.COLOR_BGR2GRAY)
                 # Ensure grayscale image has shape (h, w, 1) in HWC format
-                self.image = np.expand_dims(self.image, axis=-1)
+                self.__image = np.expand_dims(self.__image, axis=-1)
         except cv2.error as e:
             raise ValueError(f"Error converting image color mode: {e}")
 
         # Ensure the image has the correct number of dimensions
-        if len(self.image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1) or (1, h, w)
+        if len(self.__image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1) or (1, h, w)
             if self.image_format == ImageFormat.HWC:
-                self.image = np.expand_dims(self.image, axis=-1)
+                self.__image = np.expand_dims(self.__image, axis=-1)
             elif self.image_format == ImageFormat.CHW:
-                self.image = np.expand_dims(self.image, axis=0)
+                self.__image = np.expand_dims(self.__image, axis=0)
 
         # Update the color mode
         self.color_mode = new_color_mode
@@ -218,7 +218,7 @@ class Image:
         """
         # Create a new Image instance with the same image data, color mode, and format
         new_image = Image(
-            image_input=copy.deepcopy(self.image),
+            image_input=copy.deepcopy(self.__image),
             color_mode=self.color_mode
         )
         return new_image
@@ -227,21 +227,21 @@ class Image:
     def get_shape(self, format: ImageFormat = ImageFormat.HWC) -> tuple:
         """Get the shape of the image as a tuple (height, width, channels)."""
         if format == ImageFormat.HWC:
-            return self.image.shape
+            return self.__image.shape
         elif format == ImageFormat.CHW:
-            return self.image.shape[::-1]
+            return self.__image.shape[::-1]
 
     def get_width(self) -> int:
         """Get the width of the image."""
-        return self.image.shape[1]
+        return self.__image.shape[1]
 
     def get_height(self) -> int:
         """Get the height of the image."""
-        return self.image.shape[0]
+        return self.__image.shape[0]
 
     def get_number_channel(self) -> int:
         """Get the number of channels in the image."""
-        return self.image.shape[2]
+        return self.__image.shape[2]
 
     def get_color_mode(self) -> ColorMode:
         """Get the color mode of the image."""
@@ -250,9 +250,9 @@ class Image:
     def get_data(self, format: ImageFormat = ImageFormat.HWC) -> np.ndarray:
         """Get the image as a NumPy array."""
         if format == ImageFormat.HWC:
-            return self.image
+            return self.__image
         elif format == ImageFormat.CHW:
-            return self.convert_image_format(self.image, ImageFormat.CHW)
+            return self.convert_image_format(self.__image, ImageFormat.CHW)
 
     def resize(self, new_size: tuple) -> 'Image':
         """
@@ -265,53 +265,53 @@ class Image:
             self: The Image instance with the resized image.
         """
         # Resize the image using OpenCV
-        self.image = cv2.resize(self.image, new_size)
+        self.__image = cv2.resize(self.__image, new_size)
 
         # Ensure the image has 3 dimensions
-        if len(self.image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1)
-            self.image = np.expand_dims(self.image, axis=-1)
+        if len(self.__image.shape) == 2:  # If the image is 2D (h, w), expand to (h, w, 1)
+            self.__image = np.expand_dims(self.__image, axis=-1)
         # If already (h, w, 1), do nothing
-        elif len(self.image.shape) == 3 and self.image.shape[2] == 1:
+        elif len(self.__image.shape) == 3 and self.__image.shape[2] == 1:
             pass
         # If already (h, w, 3), do nothing
-        elif len(self.image.shape) == 3 and self.image.shape[2] == 3:
+        elif len(self.__image.shape) == 3 and self.__image.shape[2] == 3:
             pass
         else:
             # Handle unexpected shapes (e.g., 4D or invalid)
             raise ValueError(
-                f"Unexpected image shape after resizing: {self.image.shape}")
+                f"Unexpected image shape after resizing: {self.__image.shape}")
 
         return self
 
     def crop(self, crop_window: dict) -> 'Image':
         """Crop the image using the specified window."""
-        self.image = self.image[crop_window['y_min']:crop_window['y_max'],
+        self.__image = self.__image[crop_window['y_min']:crop_window['y_max'],
                                 crop_window['x_min']:crop_window['x_max']]
         return self
 
     def invert_pixels(self) -> 'Image':
         """Invert the pixel values of the image."""
-        self.image = cv2.bitwise_not(self.image)
-        if len(self.image.shape) == 3 and self.image.shape[2] == 1:
-            self.image = np.expand_dims(self.image, axis=-1)
+        self.__image = cv2.bitwise_not(self.__image)
+        if len(self.__image.shape) == 3 and self.__image.shape[2] == 1:
+            self.__image = np.expand_dims(self.__image, axis=-1)
         return self
 
     def save_raw(self, dest_path: str):
         """Save the image data as a raw binary file."""
         with open(dest_path, 'wb') as f:
-            f.write(self.image.tobytes())
+            f.write(self.__image.tobytes())
 
     def save_jpg(self, dest_path: str):
         """Save the image as a JPG file."""
-        if len(self.image.shape) == 3 and self.image.shape[2] == 3:
-            image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+        if len(self.__image.shape) == 3 and self.__image.shape[2] == 3:
+            image = cv2.cvtColor(self.__image, cv2.COLOR_RGB2BGR)
         else:
-            image = self.image
+            image = self.__image
         cv2.imwrite(dest_path, image)
 
     def show(self, window_name: str = "Image", key: int = ord('q')):
         """Display the image in a window. Close the window when the specified key is pressed."""
-        cv2.imshow(window_name, self.image)
+        cv2.imshow(window_name, self.__image)
         while True:
             # Wait for 1 ms and check the key pressed
             key_pressed = cv2.waitKey(1) & 0xFF

@@ -38,11 +38,8 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
-import shutil
-import random
-from tqdm import tqdm
-from collections import defaultdict, Counter
 
+from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, ImageFormat
 from saltup.utils import configure_logging
 
@@ -52,8 +49,7 @@ class PascalVOCLoader(BaseDatasetLoader):
         self,
         image_dir: str,
         annotations_dir: str,
-        color_mode: ColorMode = ColorMode.RGB,
-        image_format: ImageFormat = ImageFormat.HWC
+        color_mode: ColorMode = ColorMode.RGB
     ):
         """
         Initialize Pascal VOC dataset loader.
@@ -78,7 +74,6 @@ class PascalVOCLoader(BaseDatasetLoader):
         self.image_dir = Path(image_dir)
         self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
-        self.image_format = image_format
         self._current_index = 0
         
         # Load image-annotation pairs
@@ -90,7 +85,7 @@ class PascalVOCLoader(BaseDatasetLoader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self):
+    def __next__(self) -> Tuple[Image, List]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration
