@@ -1,20 +1,41 @@
+# Core scientific computing and data processing
 numpy
 pandas
+scipy
+pyarrow
+fastparquet
+
+# Visualization
 matplotlib
 seaborn
 Pillow
+
+# Machine Learning and Deep Learning
 tensorflow
-tf-keras
 tf2onnx
-boto3
-librosa
-wave
-scipy
-IPython
-cmsisdsp
-soundfile
 scikit-learn
+torchmetrics
+onnxruntime-gpu
+
+# Audio processing
+librosa
+soundfile
+wave
+cmsisdsp
+
+# Image processing and augmentation
 opencv-python
 albumentations
+
+# Utilities and progress tracking
+tqdm
+IPython
+
+# Jupyter Notebook support
+ipykernel
+
+# Cloud and storage
+boto3
+
+# Testing
 pytest
-torchmetrics
