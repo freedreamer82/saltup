@@ -72,6 +72,7 @@ class TestAnchorIoU:
         iou = compute_anchor_iou(np.array(anchor1), np.array(anchor2))
         assert np.isclose(iou, expected, rtol=1e-2)
 
+    
 class TestAnchorBasedModel:
     @pytest.fixture
     def sample_boxes(self):
