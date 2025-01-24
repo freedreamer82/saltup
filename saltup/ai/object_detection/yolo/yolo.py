@@ -17,12 +17,14 @@ from saltup.ai.nn_manager import NeuralNetworkManager
 from saltup.utils.data.image.image_utils import Image
 
 
+
+
 class YoloOutput:
     """Class to represent the results of the YOLO model."""
     def __init__(
         self,
         boxes: List[Tuple[BBox, int, float]],
-        image: Optional[np.ndarray] = None,
+        image: Optional[Image] = None,
     ):
         """
         Initialize YoloOutput with bounding boxes, scores, and an optional image.
@@ -31,7 +33,7 @@ class YoloOutput:
             boxes: List of BBox objects representing the bounding boxes.
             scores: List of confidence scores.
             image: Optional image associated with the results.
-        """
+image        """
         self._boxes = boxes  # List of BBox objects
         self._image = image  # Optional image associated with the results
 
@@ -83,7 +85,7 @@ class YoloOutput:
         """Get the associated image."""
         return self._image
 
-    def set_image(self, image: Optional[np.ndarray]):
+    def set_image(self, image: Optional[Image]):
         """Set the associated image."""
         self._image = image
 
@@ -344,6 +346,7 @@ class BaseYolo(NeuralNetworkManager):
         yoloOut.set_preprocessing_time(preprocessing_time_ms)
         yoloOut.set_inference_time(inference_time_ms)
         yoloOut.set_postprocessing_time(postprocessing_time_ms)
+        yoloOut.set_image(image=image) # input image
             
         
         return yoloOut
