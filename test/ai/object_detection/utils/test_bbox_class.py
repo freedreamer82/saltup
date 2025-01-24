@@ -11,16 +11,14 @@ IMG_HEIGHT = 480
 
 # Test cases for BBox initialization
 def test_bbox_initialization():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     assert bbox.get_coordinates() == [0.1, 0.2, 0.3, 0.4]
-    assert bbox.get_format() == BBoxFormat.CORNERS
 
 # Test cases for copy method
 def test_bbox_copy():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     bbox_copy = bbox.copy()
     assert bbox.get_coordinates() == bbox_copy.get_coordinates()
-    assert bbox.get_format() == bbox_copy.get_format()
 
 # Test cases for is_normalized method
 def test_is_normalized():
@@ -83,8 +81,8 @@ def test_absolute():
 
 # Test cases for compute_iou method
 def test_compute_iou():
-    bbox1 = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.1, 0.3, 0.3], format=BBoxFormat.CORNERS)
-    bbox2 = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.2, 0.2, 0.4, 0.4], format=BBoxFormat.CORNERS)
+    bbox1 = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.1, 0.3, 0.3])
+    bbox2 = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.2, 0.2, 0.4, 0.4])
     iou = bbox1.compute_iou(bbox2)
     assert 0 <= iou <= 1
 
@@ -129,38 +127,37 @@ def test_from_pascal_voc_file(tmp_path):
 
 # Test cases for to_yolo method
 def test_to_yolo():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     yolo_bbox = bbox.to_yolo()
     expected_yolo_bbox = BBox.pascalvoc_to_yolo_bbox([0.1 * IMG_WIDTH, 0.2 * IMG_HEIGHT, 0.3 * IMG_WIDTH, 0.4 * IMG_HEIGHT], IMG_WIDTH, IMG_HEIGHT)
     assert yolo_bbox == expected_yolo_bbox
 
 # Test cases for to_coco method
 def test_to_coco():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     coco_bbox = bbox.to_coco()
     expected_coco_bbox = (0.1 * IMG_WIDTH, 0.2 * IMG_HEIGHT, (0.3 - 0.1) * IMG_WIDTH, (0.4 - 0.2) * IMG_HEIGHT)
     assert coco_bbox == pytest.approx(expected_coco_bbox)
 
 # Test cases for to_pascal_voc method
 def test_to_pascal_voc():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     pascal_voc_bbox = bbox.to_pascal_voc()
     expected_pascal_voc_bbox = (0.1 * IMG_WIDTH, 0.2 * IMG_HEIGHT, 0.3 * IMG_WIDTH, 0.4 * IMG_HEIGHT)
     assert pascal_voc_bbox == expected_pascal_voc_bbox
 
 # Test cases for set_coordinates method
 def test_set_coordinates():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     bbox.set_coordinates(IMG_HEIGHT, IMG_WIDTH, [0.2, 0.3, 0.4, 0.5], BBoxFormat.CORNERS)
     assert bbox.get_coordinates() == [0.2, 0.3, 0.4, 0.5]
 
 # Test cases for __repr__ method
 def test_repr():
-    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4], format=BBoxFormat.CORNERS)
+    bbox = BBox(img_height=IMG_HEIGHT, img_width=IMG_WIDTH, coordinates=[0.1, 0.2, 0.3, 0.4])
     repr_str = repr(bbox)
     assert "BBox" in repr_str
     assert "coordinates=[0.1, 0.2, 0.3, 0.4]" in repr_str
-    assert "format=1" in repr_str
     assert f"img_width={IMG_WIDTH}" in repr_str
     assert f"img_height={IMG_HEIGHT}" in repr_str
 

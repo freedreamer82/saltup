@@ -73,25 +73,21 @@ def test_bbox_initialization():
     # Test initialization with CORNERS format
     bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
     assert bbox.get_coordinates() == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
-    assert bbox.get_format() == BBoxFormat.CORNERS
     assert bbox.get_img_width() == TEST_IMAGE_WIDTH
     assert bbox.get_img_height() == TEST_IMAGE_HEIGHT
 
     # Test initialization with CENTER format
     bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 100, 100], BBoxFormat.CENTER)
     assert bbox.get_coordinates() == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
-    assert bbox.get_format() == BBoxFormat.CORNERS
 
     # Test initialization with TOPLEFT format
     bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 100, 100], BBoxFormat.TOPLEFT)
     assert bbox.get_coordinates() == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
-    assert bbox.get_format() == BBoxFormat.CORNERS
 
 def test_bbox_copy():
-    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250])
     bbox_copy = bbox.copy()
     assert bbox_copy.get_coordinates() == bbox.get_coordinates()
-    assert bbox_copy.get_format() == bbox.get_format()
     assert bbox_copy.get_img_width() == bbox.get_img_width()
     assert bbox_copy.get_img_height() == bbox.get_img_height()
 
@@ -139,26 +135,26 @@ def test_bbox_absolute():
     assert absolute_coords == expected_coords
 
 def test_bbox_to_yolo():
-    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250])
     yolo_coords = bbox.to_yolo()
     expected_yolo_coords = (0.234375, 0.4166666666666667, 0.15625, 0.20833333333333334)
     assert yolo_coords == pytest.approx(expected_yolo_coords)
 
 def test_bbox_to_coco():
-    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250])
     coco_coords = bbox.to_coco()
     expected_coco_coords = (100, 150, 100, 100)
     assert coco_coords == expected_coco_coords
 
 def test_bbox_to_pascal_voc():
-    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
+    bbox = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250])
     pascal_coords = bbox.to_pascal_voc()
     expected_pascal_coords = (100, 150, 200, 250)
     assert pascal_coords == expected_pascal_coords
 
 def test_bbox_compute_iou():
-    bbox1 = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS)
-    bbox2 = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 250, 300], BBoxFormat.CORNERS)
+    bbox1 = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250])
+    bbox2 = BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 250, 300])
     iou = bbox1.compute_iou(bbox2)
     expected_iou = 0.14285714285714285
     assert iou == pytest.approx(expected_iou)
@@ -166,9 +162,9 @@ def test_bbox_compute_iou():
 # Test cases for utility functions
 def test_nms():
     bboxes = [
-        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250], BBoxFormat.CORNERS),
-        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 250, 300], BBoxFormat.CORNERS),
-        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [50, 100, 150, 200], BBoxFormat.CORNERS)
+        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [100, 150, 200, 250]),
+        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [150, 200, 250, 300]),
+        BBox(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH, [50, 100, 150, 200])
     ]
     scores = [0.9, 0.8, 0.7]
     iou_threshold = 0.5
