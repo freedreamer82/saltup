@@ -222,22 +222,6 @@ class BBox:
             raise ValueError(f"Unsupported format: {format}")
 
     @classmethod
-    def pascalvoc_to_yolo_bbox(cls, voc_bbox: Union[List, Tuple], img_width: int, img_height: int) -> list[float]:
-        """Convert Pascal VOC bbox format to YOLO format.
-
-        Pascal VOC: (xmin, ymin, xmax, ymax) in pixels
-        YOLO: (x_center, y_center, width, height) normalized [0-1]
-        """
-        xmin, ymin, xmax, ymax = voc_bbox
-
-        x_center = (xmin + xmax)/(2.0 * img_width)
-        y_center = (ymin + ymax)/(2.0 * img_height)
-        width = (xmax - xmin)/img_width
-        height = (ymax - ymin)/img_height
-
-        return (x_center, y_center, width, height)
-
-    @classmethod
     def corners_to_center_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
         """
         Convert box from (x1, y1, x2, y2) format to (xc, yc, w, h) format.
@@ -460,7 +444,7 @@ class BBox:
             if x1 < 0 or y1 < 0:
                 raise ValueError("Coordinates must be non-negative")
 
-            # Clippare le coordinate ai limiti dell'immagine
+            # Clip coordinates to image boundaries
             x1 = max(0, min(x1, img_width))
             y1 = max(0, min(y1, img_height))
             w = min(w, img_width - x1)
@@ -508,7 +492,13 @@ class BBox:
             )
         
     @classmethod
-    def absolute(cls, bbox: Union[List, Tuple], img_width: int, img_height: int, format: BBoxFormat = BBoxFormat.CORNERS) -> Tuple[float, float, float, float]:
+    def absolute(
+        cls, 
+        bbox: Union[List, Tuple], 
+        img_width: int, 
+        img_height: int, 
+        format: BBoxFormat = BBoxFormat.CORNERS
+    ) -> Tuple[float, float, float, float]:
         """
         Convert normalized bounding box coordinates to absolute pixel coordinates.
 
@@ -571,43 +561,49 @@ class BBox:
 
         raise ValueError(f"Unsupported format: {format}. Must be 'corners', 'topleft', or 'center'")
 
-    @classmethod
-    def _compute_iou(
-        cls,
-        box1: Union[List, Tuple],
-        box2: Union[List, Tuple],
+    @staticmethod
+    def __compute_iou(
+        box1: Union[List, Tuple, 'BBox'],
+        box2: Union[List, Tuple, 'BBox'],
         format: BBoxFormat = BBoxFormat.CORNERS,
         iou_type: IoUType = IoUType.IOU
     ) -> float:
         """
-        Calculate Intersection over Union (IoU) between two bounding boxes.
-
+        Compute the Intersection over Union (IoU) between two bounding boxes.
+        
         Args:
-            box1: First bounding box coordinates
-            box2: Second bounding box coordinates
-            format: Format of the input boxes, either "corners" (x1,y1,x2,y2), "center" (xc,yc,w,h) or "topleft" (x1,y1,w,h)
-            iou_type: Type of IoU to compute, either "iou", "diou", "ciou", or "giou"
-
+            box1 (Union[List, Tuple, BBox]): The first bounding box, either as a BBox object or a list/tuple of coordinates.
+            box2 (Union[List, Tuple, BBox]): The second bounding box, either as a BBox object or a list/tuple of coordinates.
+            format (BBoxFormat, optional): The format of the bounding boxes. Defaults to BBoxFormat.CORNERS.
+            iou_type (IoUType, optional): The type of IoU to compute. Defaults to IoUType.IOU.
+        
         Returns:
-            float: IoU value between 0 and 1
-
+            float: The computed IoU value.
+        
         Raises:
-            ValueError: If format is not "corners", "center" or "topleft"
-            ValueError: If iou_type is not "iou", "diou", "ciou", or "giou"
+            TypeError: If the format is not a BBoxFormat or the IoU type is not an IoUType.
+            TypeError: If the boxes are not BBox objects or lists/tuples of coordinates.
+            ValueError: If an invalid IoU type is provided.
         """
         if not isinstance(format, BBoxFormat):
             raise TypeError("Format must be a BBoxFormat")
         if not isinstance(iou_type, IoUType):
             raise TypeError("IoU type must be an IoUType")
 
-        # Convert to corners format if necessary
-        if format == BBoxFormat.CENTER:
-            box1 = cls.center_to_corners_format(box1)
-            box2 = cls.center_to_corners_format(box2)
-        elif format == BBoxFormat.TOPLEFT:
-            box1 = cls.topleft_to_corners_format(box1)
-            box2 = cls.topleft_to_corners_format(box2)
-
+        if all(isinstance(b, BBox) for b in [box1, box2]):
+            box1 = box1.get_coordinates()
+            box2 = box2.get_coordinates()
+        elif all(isinstance(b, (list, tuple)) for b in [box1, box2]):
+            # Convert to corners format if necessary
+            if format == BBoxFormat.CENTER:
+                box1 = BBox.center_to_corners_format(box1)
+                box2 = BBox.center_to_corners_format(box2)
+            elif format == BBoxFormat.TOPLEFT:
+                box1 = BBox.topleft_to_corners_format(box1)
+                box2 = BBox.topleft_to_corners_format(box2)
+        else:
+            raise TypeError("Boxes must be BBox objects or lists/tuples of coordinates")
+                
         # Extract coordinates
         x1_1, y1_1, x2_1, y2_1 = box1
         x1_2, y1_2, x2_2, y2_2 = box2
@@ -673,7 +669,7 @@ class BBox:
 
         else:
             raise ValueError("Invalid IoU type")
-        
+
     @classmethod
     def from_yolo_file(cls, file_path: str, img_height: int, img_width: int) -> Tuple[List['BBox'], List[int]]:
         """
@@ -707,9 +703,10 @@ class BBox:
 
                 # Create a BBox object in CENTER format
                 bbox = cls(
-                    img_height,
-                    img_width,
-                    [x_center, y_center, width, height]
+                    img_height=img_height,
+                    img_width=img_width,
+                    coordinates=[x_center, y_center, width, height],
+                    format=BBoxFormat.CENTER
                 )
                 bboxes.append(bbox)
                 class_ids.append(class_id)
@@ -737,7 +734,8 @@ class BBox:
                 bbox = cls(
                     img_height=img_height,
                     img_width=img_width,
-                    coordinates=[x_min, y_min, width, height]
+                    coordinates=[x_min, y_min, width, height],
+                    format=BBoxFormat.TOPLEFT
                 )
                 bboxes.append(bbox)
         return bboxes
@@ -766,7 +764,8 @@ class BBox:
             bbox = cls(
                 img_height=img_height,
                 img_width=img_width,
-                coordinates=[xmin, ymin, xmax, ymax]
+                coordinates=[xmin, ymin, xmax, ymax],
+                format=BBoxFormat.CORNERS
             )
             bboxes.append(bbox)
         return bboxes
@@ -782,7 +781,7 @@ class BBox:
         Get the bounding box coordinates in the specified format.
 
         Args:
-            format: The desired format (CORNERS, CENTER, TOPLEFT). If None, returns in the current format.
+            format: The desired format (CORNERS, CENTER, TOPLEFT). If None, returns CORNERS_NORMALIZED format (internal class work format).
 
         Returns:
             Tuple of coordinates in the specified format.
@@ -867,9 +866,7 @@ class BBox:
         Returns:
             Tuple of YOLO format coordinates.
         """
-        x1, y1, x2, y2 = self.absolute(self.__normalized_coordinates, self.img_width, self.img_height)
-
-        return self.pascalvoc_to_yolo_bbox([x1, y1, x2, y2], self.img_width, self.img_height)
+        return self.corners_to_center_format(self.__normalized_coordinates)
 
     def to_coco(self) -> Tuple[float, float, float, float]:
         """
@@ -878,9 +875,8 @@ class BBox:
         Returns:
             Tuple of COCO format coordinates.
         """
-        x1, y1, x2, y2 = self.absolute(self.__normalized_coordinates, self.img_width, self.img_height)
-
-        return (x1, y1, x2 - x1, y2 - y1)
+        x1, y1, x2, y2 = self.absolute(self.__normalized_coordinates, self.img_width, self.img_height, format=BBoxFormat.CORNERS)        
+        return self.corners_to_topleft_format([x1, y1, x2, y2])
 
     def to_pascal_voc(self) -> Tuple[float, float, float, float]:
         """
@@ -891,25 +887,35 @@ class BBox:
         """
         x1, y1, x2, y2 = self.absolute(self.__normalized_coordinates, self.img_width, self.img_height)
         return x1, y1, x2, y2
-
-    def compute_iou(self, other: 'BBox', iou_type: IoUType = IoUType.IOU) -> float:
+       
+    def compute_iou(
+        self,
+        other: Union[List, Tuple, 'BBox'],
+        format: BBoxFormat = BBoxFormat.CORNERS,
+        iou_type: IoUType = IoUType.IOU
+    ) -> float:
         """
-        Calculate Intersection over Union (IoU) with another bounding box.
+        Compute the Intersection over Union (IoU) between two bounding boxes.
 
         Args:
-            other: Another BBox object to calculate IoU with.
-            iou_type: Type of IoU to compute (default is standard IoU).
+            box: The second bounding box. It can be a list, tuple, or BBox object.
+            format: The format of the bounding boxes. It can be BBoxFormat.CORNERS, BBoxFormat.CENTER, or BBoxFormat.TOPLEFT. Default is BBoxFormat.CORNERS.
+            iou_type: The type of IoU to compute. It can be IoUType.IOU, IoUType.DIOU, IoUType.CIOU, or IoUType.GIOU. Default is IoUType.IOU.
 
         Returns:
-            float: IoU value between 0 and 1.
+            float: The computed IoU value.
+
+        Raises:
+            TypeError: If the format is not a BBoxFormat or if the iou_type is not an IoUType.
+            ValueError: If the iou_type is invalid.
         """
+        print("Computing IoU")
+        return BBox.__compute_iou(self, other, format, iou_type)
+        
+    def __repr__(self):
+        return f"BBox(img_height={self.img_height}, img_width={self.img_width}, coordinates={self.__normalized_coordinates})"
 
-        # Converti entrambe le bounding boxes in formato CORNERS
-        self_corners = self.get_coordinates()
-        other_corners = other.get_coordinates()
 
-        # Calcola l'IoU tra le due bounding boxes
-        return self._compute_iou(self_corners, other_corners, iou_type=iou_type)
 
     def __repr__(self):
         return f"BBox(img_height={self.img_height}, img_width={self.img_width}, coordinates={self.__normalized_coordinates})"
