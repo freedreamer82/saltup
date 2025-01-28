@@ -13,7 +13,7 @@ from saltup.ai.object_detection.dataset.coco import (
     replace_annotations_class, shift_class_ids,
     analyze_dataset, convert_coco_to_yolo_labels,
     split_dataset, split_and_organize_dataset,
-    count_annotations, COCODatasetLoader, ColorMode
+    count_annotations, COCOLoader, ColorMode
 )
 
 class TestCOCODataset:
@@ -334,7 +334,7 @@ class TestCOCODataset:
                 assert all(key in split_data for key in ['images', 'annotations', 'categories'])
                 
 
-class TestCOCODatasetLoader:
+class TestCOCOLoader:
     @pytest.fixture
     def sample_coco_data(self):
         """Create sample COCO format data."""
@@ -376,7 +376,7 @@ class TestCOCODatasetLoader:
         
         return image_dir
 
-    def test_coco_dataset_loader(self, dataset_dir, sample_coco_data, sample_images):
+    def test_coco_dataloader(self, dataset_dir, sample_coco_data, sample_images):
         """Test basic functionality of COCODatasetLoader."""
         # Create annotations file
         ann_file = dataset_dir / "annotations.json"
@@ -384,7 +384,7 @@ class TestCOCODatasetLoader:
             json.dump(sample_coco_data, f)
 
         # Initialize loader
-        loader = COCODatasetLoader(
+        loader = COCOLoader(
             image_dir=str(sample_images),
             annotations_file=str(ann_file)
         )
@@ -413,7 +413,7 @@ class TestCOCODatasetLoader:
             json.dump(sample_coco_data, f)
 
         with pytest.raises(FileNotFoundError):
-            COCODatasetLoader(
+            COCOLoader(
                 image_dir=str(dataset_dir / "nonexistent"),
                 annotations_file=str(ann_file)
             )
@@ -421,7 +421,7 @@ class TestCOCODatasetLoader:
     def test_missing_annotations_file(self, dataset_dir, sample_images):
         """Test loader with non-existent annotations file."""
         with pytest.raises(FileNotFoundError):
-            COCODatasetLoader(
+            COCOLoader(
                 image_dir=str(sample_images),
                 annotations_file=str(dataset_dir / "nonexistent.json")
             )
@@ -433,7 +433,7 @@ class TestCOCODatasetLoader:
             json.dump({"invalid": "data"}, f)
 
         with pytest.raises(ValueError):
-            COCODatasetLoader(
+            COCOLoader(
                 image_dir=str(sample_images),
                 annotations_file=str(ann_file)
             )
@@ -449,7 +449,7 @@ class TestCOCODatasetLoader:
         (sample_images / "img1.jpg").unlink()
 
         # Initialize loader
-        loader = COCODatasetLoader(
+        loader = COCOLoader(
             image_dir=str(sample_images),
             annotations_file=str(ann_file)
         )
@@ -464,7 +464,7 @@ class TestCOCODatasetLoader:
             json.dump(sample_coco_data, f)
 
         # Test RGB mode
-        loader_rgb = COCODatasetLoader(
+        loader_rgb = COCOLoader(
             image_dir=str(sample_images),
             annotations_file=str(ann_file),
             color_mode=ColorMode.RGB
@@ -473,7 +473,7 @@ class TestCOCODatasetLoader:
         assert image.get_data().shape[-1] == 3
 
         # Test BGR mode
-        loader_bgr = COCODatasetLoader(
+        loader_bgr = COCOLoader(
             image_dir=str(sample_images),
             annotations_file=str(ann_file),
             color_mode=ColorMode.BGR
@@ -482,7 +482,7 @@ class TestCOCODatasetLoader:
         assert image.get_data().shape[-1] == 3
 
         # Test GRAY mode
-        loader_gray = COCODatasetLoader(
+        loader_gray = COCOLoader(
             image_dir=str(sample_images),
             annotations_file=str(ann_file),
             color_mode=ColorMode.GRAY
@@ -496,7 +496,7 @@ class TestCOCODatasetLoader:
         with open(ann_file, 'w') as f:
             json.dump(sample_coco_data, f)
 
-        loader = COCODatasetLoader(
+        loader = COCOLoader(
             image_dir=str(sample_images),
             annotations_file=str(ann_file)
         )

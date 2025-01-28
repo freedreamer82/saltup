@@ -126,7 +126,7 @@ class TestPascalVOCDataset:
         assert val_annotations_dir == str(root_dir / "annotations" / "val")
         
 
-class TestPascalVOCDataloader:
+class TestPascalVOCLoader:
     @pytest.fixture
     def sample_pascal_voc_data(self):
         """Create sample Pascal VOC format data."""

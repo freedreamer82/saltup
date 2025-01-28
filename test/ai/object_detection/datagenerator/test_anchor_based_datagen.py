@@ -8,13 +8,13 @@ from tensorflow import keras
 import albumentations as A
 from typing import Tuple, List
 
-from saltup.ai.object_detection.dataloader.anchors_based_dataloader import (
-    AnchorsBasedDataloader, BaseDatasetLoader, PyTorchAnchorBasedLoader, KerasAnchorBasedLoader
+from saltup.ai.object_detection.datagenerator.anchors_based_datagen import (
+    AnchorsBasedDatagen, BaseDataloader, PyTorchAnchorBasedLoader, KerasAnchorBasedLoader
 )
 
 
 # Mock dataset loader for testing
-class MockDatasetLoader(BaseDatasetLoader):
+class MockDatasetLoader(BaseDataloader):
     def __init__(self, num_samples: int = 100):
         self.num_samples = num_samples
         self.current_idx = 0
@@ -127,8 +127,8 @@ class TestAnchorsBasedDataloader:
         
     @pytest.fixture
     def dataloader(self, mock_loader, anchors):
-        return AnchorsBasedDataloader(
-            dataset_loader=mock_loader,
+        return AnchorsBasedDatagen(
+            dataloader=mock_loader,
             anchors=anchors,
             target_size=(224, 224),
             grid_size=(7, 7),
@@ -137,7 +137,7 @@ class TestAnchorsBasedDataloader:
     
     def test_initialization(self, dataloader, mock_loader, anchors):
         """Test dataloader initialization."""
-        assert dataloader.dataset_loader == mock_loader
+        assert dataloader.dataloader == mock_loader
         assert np.array_equal(dataloader.anchors, anchors)
         assert dataloader.target_size == (224, 224)
         assert dataloader.grid_size == (7, 7)
@@ -196,7 +196,7 @@ class TestAnchorsBasedDataloader:
         (False, True),
         (False, False)
     ])
-    def test_visualization(self, dataloader: AnchorsBasedDataloader, show_grid, show_anchors):
+    def test_visualization(self, dataloader: AnchorsBasedDatagen, show_grid, show_anchors):
         """Test visualization with different options."""
         try:
             dataloader.visualize_sample(0, show_grid=show_grid, show_anchors=show_anchors)
@@ -218,7 +218,7 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
             
     def setUp(self):
         # Common test parameters
-        self.dataset_loader = MockDatasetLoader(num_samples=10)
+        self.dataloader = MockDatasetLoader(num_samples=10)
         self.anchors = np.array([[0.12, 0.15], [0.25, 0.25], [0.35, 0.35]])
         self.target_size = (416, 416)
         self.grid_size = (13, 13)
@@ -236,7 +236,7 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
         
         # Initialize dataset
         dataset = PyTorchAnchorBasedLoader(
-            dataset_loader=self.dataset_loader,
+            dataloader=self.dataloader,
             anchors=self.anchors,
             target_size=self.target_size,
             grid_size=self.grid_size,
@@ -284,7 +284,7 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
         
         # Initialize dataset
         dataset = KerasAnchorBasedLoader(
-            dataset_loader=self.dataset_loader,
+            dataloader=self.dataloader,
             anchors=self.anchors,
             target_size=self.target_size,
             grid_size=self.grid_size,
@@ -328,6 +328,8 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
             print("Keras training completed successfully")
         except Exception as e:
             self.fail(f"Training failed with error: {str(e)}")
+            
+# TODO: Add test with DataLoader integrated with Image and BBox classes OR integrate that classes in MockDatasetLoader
 
 if __name__ == '__main__':
     unittest.main(argv=[''], verbosity=2)

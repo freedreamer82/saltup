@@ -265,7 +265,7 @@ class TestYOLODarknet:
         analyze_dataset(str(root_dir))
         
 
-class TestYOLODarknetDataloader:
+class TestYOLODarknetLoader:
     @pytest.fixture
     def sample_dataset(self, tmp_path):
         """Create a sample YOLO dataset with images and labels."""

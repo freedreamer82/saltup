@@ -6,10 +6,10 @@ from pathlib import Path
 import shutil
 
 from saltup.utils.data.image.image_utils import Image, ColorMode
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, StorageFormat
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, StorageFormat
 
 
-class MockDatasetLoader(BaseDatasetLoader):
+class MockDatasetLoader(BaseDataloader):
     """Mock dataset loader for testing BaseDatasetLoader functionality."""
     
     def __init__(self, num_samples=3, image_size=(10, 10)):
@@ -114,7 +114,7 @@ class TestBaseDatasetLoader:
         save_path = mock_loader.save_dataset(str(tmp_dataset_dir / "test.pkl"))
         
         # Load the data
-        loaded_data = list(BaseDatasetLoader.load_dataset(str(save_path)))
+        loaded_data = list(BaseDataloader.load_dataset(str(save_path)))
         
         assert len(loaded_data) == len(mock_loader)
         
@@ -130,7 +130,7 @@ class TestBaseDatasetLoader:
     def test_load_dataset_missing_file(self):
         """Test load with non-existent file."""
         with pytest.raises(FileNotFoundError):
-            list(BaseDatasetLoader.load_dataset("nonexistent.pkl"))
+            list(BaseDataloader.load_dataset("nonexistent.pkl"))
 
     def test_load_dataset_wrong_extension(self, tmp_dataset_dir):
         """Test load with wrong file extension."""
@@ -138,7 +138,7 @@ class TestBaseDatasetLoader:
         wrong_file.touch()
         
         with pytest.raises(ValueError, match="Invalid file format"):
-            list(BaseDatasetLoader.load_dataset(str(wrong_file)))
+            list(BaseDataloader.load_dataset(str(wrong_file)))
 
     def test_load_dataset_corrupted_file(self, tmp_dataset_dir):
         """Test load with corrupted pickle file."""
@@ -147,7 +147,7 @@ class TestBaseDatasetLoader:
             f.write(b'corrupted data')
         
         with pytest.raises(pickle.UnpicklingError):
-            list(BaseDatasetLoader.load_dataset(str(corrupted_file)))
+            list(BaseDataloader.load_dataset(str(corrupted_file)))
 
     def test_load_dataset_invalid_format(self, tmp_dataset_dir):
         """Test load with invalid data format."""
@@ -158,7 +158,7 @@ class TestBaseDatasetLoader:
             pickle.dump({"invalid": "format"}, f)  # Not a list of tuples
         
         with pytest.raises(ValueError, match="Invalid dataset format"):
-            list(BaseDatasetLoader.load_dataset(str(invalid_file)))
+            list(BaseDataloader.load_dataset(str(invalid_file)))
 
     def test_save_load_cycle(self, mock_loader, tmp_dataset_dir):
         """Test full save-load cycle preserves data integrity."""
@@ -166,7 +166,7 @@ class TestBaseDatasetLoader:
         save_path = mock_loader.save_dataset(str(tmp_dataset_dir / "cycle_test.pkl"))
         
         # Load the dataset
-        loaded_data = list(BaseDatasetLoader.load_dataset(str(save_path)))
+        loaded_data = list(BaseDataloader.load_dataset(str(save_path)))
         
         # Compare original and loaded data
         original_data = [(img.get_data(), label) for img, label in mock_loader]
@@ -194,7 +194,7 @@ class TestBaseDatasetLoader:
         assert output_path.suffix == '.parquet'
         
         # Load and verify data structure
-        loaded_data = list(BaseDatasetLoader.load_dataset(
+        loaded_data = list(BaseDataloader.load_dataset(
             str(output_path),
             format=StorageFormat.PARQUET
         ))
@@ -215,7 +215,7 @@ class TestBaseDatasetLoader:
         )
         
         # Load and verify processed data
-        loaded_data = list(BaseDatasetLoader.load_dataset(
+        loaded_data = list(BaseDataloader.load_dataset(
             str(output_path),
             format=StorageFormat.PARQUET
         ))
@@ -240,7 +240,7 @@ class TestBaseDatasetLoader:
         wrong_file.touch()
         
         with pytest.raises(ValueError, match="Invalid file format"):
-            list(BaseDatasetLoader.load_dataset(
+            list(BaseDataloader.load_dataset(
                 str(wrong_file),
                 format=StorageFormat.PARQUET
             ))
@@ -252,7 +252,7 @@ class TestBaseDatasetLoader:
             f.write(b'corrupted data')
         
         with pytest.raises(ValueError):
-            list(BaseDatasetLoader.load_dataset(
+            list(BaseDataloader.load_dataset(
                 str(corrupted_file),
                 format=StorageFormat.PARQUET
             ))
@@ -266,7 +266,7 @@ class TestBaseDatasetLoader:
         )
         
         # Load the dataset
-        loaded_data = list(BaseDatasetLoader.load_dataset(
+        loaded_data = list(BaseDataloader.load_dataset(
             str(save_path),
             format=StorageFormat.PARQUET
         ))
@@ -295,7 +295,7 @@ class TestBaseDatasetLoader:
         )
         
         # Load and save in Parquet format
-        loaded_data = list(BaseDatasetLoader.load_dataset(str(pickle_path)))
+        loaded_data = list(BaseDataloader.load_dataset(str(pickle_path)))
         mock_loader.data = [(Image(img, ColorMode.RGB), label) for img, label in loaded_data]
         parquet_path = mock_loader.save_dataset(
             str(tmp_dataset_dir / "data.parquet"),
@@ -303,7 +303,7 @@ class TestBaseDatasetLoader:
         )
         
         # Load from Parquet and compare
-        final_data = list(BaseDatasetLoader.load_dataset(
+        final_data = list(BaseDataloader.load_dataset(
             str(parquet_path),
             format=StorageFormat.PARQUET
         ))

@@ -19,7 +19,7 @@ class StorageFormat(Enum):
     PARQUET = 'parquet'
 
 
-class BaseDatasetLoader(ABC):
+class BaseDataloader(ABC):
     """Base interface for dataset loaders.
 
     Abstract base class that defines the interface for dataset loaders.
@@ -189,8 +189,8 @@ class BaseDatasetLoader(ABC):
                 # Convert back from Parquet storage format
                 dataset = [
                     (
-                        BaseDatasetLoader._deserialize_array(row['image']),
-                        BaseDatasetLoader._deserialize_label(row['label'])
+                        BaseDataloader._deserialize_array(row['image']),
+                        BaseDataloader._deserialize_label(row['label'])
                     )
                     for row in df.to_dict('records')
                 ]

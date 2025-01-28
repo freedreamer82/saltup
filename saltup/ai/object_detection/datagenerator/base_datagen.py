@@ -3,10 +3,10 @@ from typing import Tuple
 import albumentations as A
 import numpy as np
 
-class BasedDataloader(ABC):
+class BasedDatagenerator(ABC):
     def __init__(
         self, 
-        dataset_loader,
+        dataloader,
         target_size: Tuple[int, int], 
         num_classes: int,
         batch_size: int = 1,
@@ -17,15 +17,15 @@ class BasedDataloader(ABC):
         Initialize the dataloader.
 
         Args:
-            dataset_loader: Base dataset loader providing image-label pairs
+            dataloader: Base dataset loader providing image-label pairs
             target_size: Model input size as (height, width)
             num_classes: Number of object classes
             batch_size: Number of samples per batch
             preprocess: Optional custom preprocessing function
             transform: Optional albumentations transforms for augmentation
         """
-        self.dataset_loader = dataset_loader
-        self._indexes = np.arange(len(dataset_loader))
+        self.dataloader = dataloader
+        self._indexes = np.arange(len(dataloader))
         
         self.batch_size = batch_size
         self.target_size = target_size

@@ -2,14 +2,14 @@ from typing import Tuple
 import albumentations as A
 import numpy as np
 
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader
-from saltup.ai.object_detection.dataloader.base_dataloader import BasedDataloader
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
+from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
 from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format, compute_anchor_iou
 from saltup.utils.configure_logging import get_logger
 
 
-class AnchorsBasedDataloader(BasedDataloader):
+class AnchorsBasedDatagen(BasedDatagenerator):
     """
     Dataloader for anchor-based object detection models.
     
@@ -25,7 +25,7 @@ class AnchorsBasedDataloader(BasedDataloader):
     
     def __init__(
         self, 
-        dataset_loader: BaseDatasetLoader,
+        dataloader: BaseDataloader,
         anchors: np.ndarray,
         target_size: Tuple[int, int], 
         grid_size: Tuple[int, int],
@@ -38,7 +38,7 @@ class AnchorsBasedDataloader(BasedDataloader):
         Initialize the dataloader.
 
         Args:
-            dataset_loader: Base dataset loader providing image-label pairs
+            dataloader: Base dataset loader providing image-label pairs
             anchors: Anchor boxes as array of (width, height) pairs
             target_size: Model input size as (height, width)
             grid_size: Output grid dimensions as (rows, cols)
@@ -48,7 +48,7 @@ class AnchorsBasedDataloader(BasedDataloader):
             transform: Optional albumentations transforms for augmentation
         """
         super().__init__(
-            dataset_loader=dataset_loader,
+            dataloader=dataloader,
             target_size=target_size,
             num_classes=num_classes,
             batch_size=batch_size,
@@ -70,7 +70,7 @@ class AnchorsBasedDataloader(BasedDataloader):
         self._logger.info("Initializing AnchorsBasedDataloader")
     
     def __len__(self):
-        return int(np.ceil(len(self.dataset_loader) / self.batch_size))
+        return int(np.ceil(len(self.dataloader) / self.batch_size))
     
     def __iter__(self):
         for i in range(0, len(self), self.batch_size):
@@ -105,7 +105,7 @@ class AnchorsBasedDataloader(BasedDataloader):
         for i, idx in enumerate(batch_indexes):
             try:
                 # Get image and labels from dataset loader
-                image, annotation_data = next(self.dataset_loader)
+                image, annotation_data = next(self.dataloader)
                 
                 # Extract boxes and class labels
                 boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
@@ -194,7 +194,7 @@ class AnchorsBasedDataloader(BasedDataloader):
         import matplotlib.patches as patches
         
         try:
-            image, annotation_data = self.dataset_loader[idx]
+            image, annotation_data = self.dataloader[idx]
             
             # Extract boxes and class labels
             boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
@@ -319,7 +319,7 @@ class AnchorsBasedDataloader(BasedDataloader):
 
 from tensorflow.keras.utils import Sequence #type: ignore
 
-class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
+class KerasAnchorBasedLoader(AnchorsBasedDatagen, Sequence):
     """
     Keras-specific wrapper for AnchorsBasedDataloader.
     
@@ -332,7 +332,7 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
     
     def __init__(
         self,
-        dataset_loader: BaseDatasetLoader,
+        dataloader: BaseDataloader,
         anchors: np.ndarray,
         target_size: Tuple[int, int],
         grid_size: Tuple[int, int],
@@ -347,9 +347,9 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
         Args match parent class AnchorsBasedDataloader.
         See AnchorsBasedDataloader documentation for details.
         """
-        AnchorsBasedDataloader.__init__(
+        AnchorsBasedDatagen.__init__(
             self,
-            dataset_loader=dataset_loader,
+            dataloader=dataloader,
             anchors=anchors,
             target_size=target_size,
             grid_size=grid_size,
@@ -375,7 +375,7 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
 from torch.utils.data import Dataset
 import torch
 
-class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
+class PyTorchAnchorBasedLoader(AnchorsBasedDatagen, Dataset):
     """
     PyTorch-specific wrapper for AnchorsBasedDataloader.
     
@@ -389,7 +389,7 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
     
     def __init__(
         self,
-        dataset_loader: BaseDatasetLoader,
+        dataloader: BaseDataloader,
         anchors: np.ndarray,
         target_size: Tuple[int, int],
         grid_size: Tuple[int, int],
@@ -404,7 +404,7 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
             batch_size is fixed to 1 since PyTorch handles batching through DataLoader
         
         Args:
-            dataset_loader: Base dataset loader providing image-label pairs
+            dataloader: Base dataset loader providing image-label pairs
             anchors: Anchor boxes as array of (width, height) pairs
             target_size: Model input size as (height, width)
             grid_size: Output grid dimensions as (rows, cols)
@@ -412,9 +412,9 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
             preprocess: Optional custom preprocessing function
             transform: Optional albumentations transforms for augmentation
         """
-        AnchorsBasedDataloader.__init__(
+        AnchorsBasedDatagen.__init__(
             self,
-            dataset_loader=dataset_loader,
+            dataloader=dataloader,
             anchors=anchors,
             target_size=target_size,
             grid_size=grid_size,
@@ -426,7 +426,7 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
         
     def __len__(self) -> int:
         # Return the total number of samples
-        return len(self.dataset_loader)
+        return len(self.dataloader)
         
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """

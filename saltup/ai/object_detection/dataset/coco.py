@@ -31,11 +31,11 @@ import random
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode
 from saltup.utils.configure_logging import logging
 
 
-class COCODatasetLoader(BaseDatasetLoader):
+class COCOLoader(BaseDataloader):
     def __init__(
         self,
         image_dir: str,
