@@ -999,7 +999,7 @@ class BBoxClassId(BBox):
         return f"""BBoxClassId(
             img_height={self.img_height},
             img_width={self.img_width},
-            coordinates={self.__normalized_coordinates},
+            coordinates={self.get_coordinates()},
             class_id={self.class_id},
             class_name={self.class_name})"""
 
@@ -1078,7 +1078,7 @@ class BBoxClassIdScore(BBoxClassId):
         return f"""BBoxClassIdScore(
             img_height={self.img_height},
             img_width={self.img_width},
-            coordinates={self.__normalized_coordinates},
+            coordinates={self.get_coordinates()},
             class_id={self.class_id},
             class_name={self.class_name},
             score={self.score})"""

@@ -3,6 +3,7 @@ import os
 import json
 import random
 import shutil
+import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict, Counter
@@ -17,7 +18,7 @@ from saltup.utils import configure_logging
 class YoloDarknetLoader(BaseDataloader):
     def __init__(
         self,
-        image_dir: str,
+        images_dir: str,
         labels_dir: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
@@ -36,12 +37,12 @@ class YoloDarknetLoader(BaseDataloader):
         self.logger.info("Initializing YOLO Darknet dataset loader")
         
         # Validate directories existence
-        if not os.path.exists(image_dir):
-            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(images_dir):
+            raise FileNotFoundError(f"Images directory not found: {images_dir}")
         if not os.path.exists(labels_dir):
             raise FileNotFoundError(f"Labels directory not found: {labels_dir}")
             
-        self.image_dir = Path(image_dir)
+        self.image_dir = Path(images_dir)
         self.labels_dir = Path(labels_dir)
         self.color_mode = color_mode
         self._current_index = 0
@@ -55,7 +56,7 @@ class YoloDarknetLoader(BaseDataloader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self) -> Tuple[Image, List]:
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_label_pairs):
             self._current_index = 0  # Reset for next iteration

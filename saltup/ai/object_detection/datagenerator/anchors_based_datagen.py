@@ -319,7 +319,7 @@ class AnchorsBasedDatagen(BasedDatagenerator):
 
 from tensorflow.keras.utils import Sequence #type: ignore
 
-class KerasAnchorBasedLoader(AnchorsBasedDatagen, Sequence):
+class KerasAnchorBasedDatagen(AnchorsBasedDatagen, Sequence):
     """
     Keras-specific wrapper for AnchorsBasedDataloader.
     
@@ -375,7 +375,7 @@ class KerasAnchorBasedLoader(AnchorsBasedDatagen, Sequence):
 from torch.utils.data import Dataset
 import torch
 
-class PyTorchAnchorBasedLoader(AnchorsBasedDatagen, Dataset):
+class PyTorchAnchorBasedDatagen(AnchorsBasedDatagen, Dataset):
     """
     PyTorch-specific wrapper for AnchorsBasedDataloader.
     

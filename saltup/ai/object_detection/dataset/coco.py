@@ -23,6 +23,7 @@ Key functions:
 import os
 import json
 import shutil
+import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict
@@ -38,7 +39,7 @@ from saltup.utils.configure_logging import logging
 class COCOLoader(BaseDataloader):
     def __init__(
         self,
-        image_dir: str,
+        images_dir: str,
         annotations_file: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
@@ -58,12 +59,12 @@ class COCOLoader(BaseDataloader):
         self.logger.info("Initializing COCO dataset loader")
         
         # Validate input paths
-        if not os.path.exists(image_dir):
-            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(images_dir):
+            raise FileNotFoundError(f"Images directory not found: {images_dir}")
         if not os.path.exists(annotations_file):
             raise FileNotFoundError(f"Annotations file not found: {annotations_file}")
             
-        self.image_dir = Path(image_dir)
+        self.image_dir = Path(images_dir)
         self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
         self._current_index = 0
@@ -79,7 +80,7 @@ class COCOLoader(BaseDataloader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self) -> Tuple[Image, List]:
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration

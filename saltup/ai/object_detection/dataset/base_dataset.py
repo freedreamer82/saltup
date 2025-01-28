@@ -6,10 +6,11 @@ from tqdm import tqdm
 from datetime import datetime
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Iterator, Tuple, Any
+from typing import Iterator, Tuple, Any, List, Tuple, Union
 import base64
 import io
 
+from saltup.ai.object_detection.utils.bbox import BBoxClassId
 from saltup.utils.data.image.image_utils import Image, ColorMode
 
 
@@ -29,6 +30,11 @@ class BaseDataloader(ABC):
     @abstractmethod
     def __iter__(self):
         """Returns iterator over image and label paths."""
+        raise NotImplementedError
+    
+    @abstractmethod
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+        """Get next item from dataset."""
         raise NotImplementedError
 
     @abstractmethod

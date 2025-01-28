@@ -186,7 +186,7 @@ class TestPascalVOCLoader:
         _, dirs = sample_dataset
         
         loader = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"])
         )
         
@@ -216,14 +216,14 @@ class TestPascalVOCLoader:
         # Test with non-existent image directory
         with pytest.raises(FileNotFoundError):
             PascalVOCLoader(
-                image_dir="/nonexistent/path",
+                images_dir="/nonexistent/path",
                 annotations_dir=str(dirs["annotation_dir"])
             )
         
         # Test with non-existent annotations directory
         with pytest.raises(FileNotFoundError):
             PascalVOCLoader(
-                image_dir=str(dirs["image_dir"]),
+                images_dir=str(dirs["image_dir"]),
                 annotations_dir="/nonexistent/path"
             )
 
@@ -237,7 +237,7 @@ class TestPascalVOCLoader:
         
         # Should not raise error but should skip missing pairs
         loader = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(incomplete_annotations)
         )
         
@@ -248,7 +248,7 @@ class TestPascalVOCLoader:
         _, dirs = sample_dataset
         
         loader = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"])
         )
         
@@ -272,21 +272,21 @@ class TestPascalVOCLoader:
         
         # Test RGB mode
         loader_rgb = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"]),
             color_mode=ColorMode.RGB
         )
         
         # Test BGR mode
         loader_bgr = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"]),
             color_mode=ColorMode.BGR
         )
         
         # Test GRAY mode
         loader_gray = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"]),
             color_mode=ColorMode.GRAY
         )

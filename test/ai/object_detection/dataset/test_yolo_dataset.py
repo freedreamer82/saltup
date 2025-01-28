@@ -304,7 +304,7 @@ class TestYOLODarknetLoader:
         _, dirs = sample_dataset
         
         loader = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"])
         )
         
@@ -343,21 +343,21 @@ class TestYOLODarknetLoader:
         
         # Test RGB mode
         loader_rgb = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"]),
             color_mode=ColorMode.RGB
         )
         
         # Test BGR mode
         loader_bgr = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"]),
             color_mode=ColorMode.BGR
         )
         
         # Test GRAY mode
         loader_gray = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"]),
             color_mode=ColorMode.GRAY
         )
@@ -380,14 +380,14 @@ class TestYOLODarknetLoader:
         # Test with non-existent image directory
         with pytest.raises(FileNotFoundError):
             YoloDarknetLoader(
-                image_dir="/nonexistent/path",
+                images_dir="/nonexistent/path",
                 labels_dir=str(dirs["labels_dir"])
             )
         
         # Test with non-existent labels directory
         with pytest.raises(FileNotFoundError):
             YoloDarknetLoader(
-                image_dir=str(dirs["image_dir"]),
+                images_dir=str(dirs["image_dir"]),
                 labels_dir="/nonexistent/path"
             )
 
@@ -401,7 +401,7 @@ class TestYOLODarknetLoader:
         
         # Should not raise error but should skip missing pairs
         loader = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(incomplete_labels)
         )
         
@@ -412,7 +412,7 @@ class TestYOLODarknetLoader:
         _, dirs = sample_dataset
         
         loader = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"])
         )
         

@@ -385,7 +385,7 @@ class TestCOCOLoader:
 
         # Initialize loader
         loader = COCOLoader(
-            image_dir=str(sample_images),
+            images_dir=str(sample_images),
             annotations_file=str(ann_file)
         )
 
@@ -414,7 +414,7 @@ class TestCOCOLoader:
 
         with pytest.raises(FileNotFoundError):
             COCOLoader(
-                image_dir=str(dataset_dir / "nonexistent"),
+                images_dir=str(dataset_dir / "nonexistent"),
                 annotations_file=str(ann_file)
             )
 
@@ -422,7 +422,7 @@ class TestCOCOLoader:
         """Test loader with non-existent annotations file."""
         with pytest.raises(FileNotFoundError):
             COCOLoader(
-                image_dir=str(sample_images),
+                images_dir=str(sample_images),
                 annotations_file=str(dataset_dir / "nonexistent.json")
             )
 
@@ -434,7 +434,7 @@ class TestCOCOLoader:
 
         with pytest.raises(ValueError):
             COCOLoader(
-                image_dir=str(sample_images),
+                images_dir=str(sample_images),
                 annotations_file=str(ann_file)
             )
 
@@ -450,7 +450,7 @@ class TestCOCOLoader:
 
         # Initialize loader
         loader = COCOLoader(
-            image_dir=str(sample_images),
+            images_dir=str(sample_images),
             annotations_file=str(ann_file)
         )
 
@@ -465,7 +465,7 @@ class TestCOCOLoader:
 
         # Test RGB mode
         loader_rgb = COCOLoader(
-            image_dir=str(sample_images),
+            images_dir=str(sample_images),
             annotations_file=str(ann_file),
             color_mode=ColorMode.RGB
         )
@@ -474,7 +474,7 @@ class TestCOCOLoader:
 
         # Test BGR mode
         loader_bgr = COCOLoader(
-            image_dir=str(sample_images),
+            images_dir=str(sample_images),
             annotations_file=str(ann_file),
             color_mode=ColorMode.BGR
         )
@@ -483,7 +483,7 @@ class TestCOCOLoader:
 
         # Test GRAY mode
         loader_gray = COCOLoader(
-            image_dir=str(sample_images),
+            images_dir=str(sample_images),
             annotations_file=str(ann_file),
             color_mode=ColorMode.GRAY
         )
@@ -497,7 +497,7 @@ class TestCOCOLoader:
             json.dump(sample_coco_data, f)
 
         loader = COCOLoader(
-            image_dir=str(sample_images),
+            images_dir=str(sample_images),
             annotations_file=str(ann_file)
         )
 

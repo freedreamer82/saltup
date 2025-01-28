@@ -34,6 +34,7 @@ Key functions:
 """
 
 import os
+import numpy as np
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from pathlib import Path
@@ -48,7 +49,7 @@ from saltup.utils import configure_logging
 class PascalVOCLoader(BaseDataloader):
     def __init__(
         self,
-        image_dir: str,
+        images_dir: str,
         annotations_dir: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
@@ -67,12 +68,12 @@ class PascalVOCLoader(BaseDataloader):
         self.logger.info("Initializing Pascal VOC dataset loader")
         
         # Validate directories existence
-        if not os.path.exists(image_dir):
-            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(images_dir):
+            raise FileNotFoundError(f"Images directory not found: {images_dir}")
         if not os.path.exists(annotations_dir):
             raise FileNotFoundError(f"Annotations directory not found: {annotations_dir}")
             
-        self.image_dir = Path(image_dir)
+        self.image_dir = Path(images_dir)
         self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
         self._current_index = 0
@@ -86,7 +87,7 @@ class PascalVOCLoader(BaseDataloader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self) -> Tuple[Image, List]:
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration

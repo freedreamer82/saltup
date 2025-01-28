@@ -9,7 +9,7 @@ import albumentations as A
 from typing import Tuple, List
 
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import (
-    AnchorsBasedDatagen, BaseDataloader, PyTorchAnchorBasedLoader, KerasAnchorBasedLoader
+    AnchorsBasedDatagen, BaseDataloader, PyTorchAnchorBasedDatagen, KerasAnchorBasedDatagen
 )
 
 
@@ -235,7 +235,7 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
         print("\nTesting PyTorch Dataloader...")
         
         # Initialize dataset
-        dataset = PyTorchAnchorBasedLoader(
+        dataset = PyTorchAnchorBasedDatagen(
             dataloader=self.dataloader,
             anchors=self.anchors,
             target_size=self.target_size,
@@ -249,7 +249,7 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
             dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=PyTorchAnchorBasedLoader.collate_fn
+            collate_fn=PyTorchAnchorBasedDatagen.collate_fn
         )
         
         # Test model
@@ -283,7 +283,7 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
         print("\nTesting Keras Dataloader...")
         
         # Initialize dataset
-        dataset = KerasAnchorBasedLoader(
+        dataset = KerasAnchorBasedDatagen(
             dataloader=self.dataloader,
             anchors=self.anchors,
             target_size=self.target_size,
