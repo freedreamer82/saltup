@@ -97,6 +97,7 @@ class BBoxFormat(IntEnum):
     CORNERS = auto()
     CENTER = auto()
     TOPLEFT = auto()
+
     def to_string(self):
         """Convert the BBoxFormat enum to a human-readable string."""
         if self == BBoxFormat.CORNERS:
@@ -490,7 +491,7 @@ class BBox:
                 w / img_width,
                 h / img_height
             )
-        
+
     @classmethod
     def absolute(
         cls, 
@@ -916,10 +917,171 @@ class BBox:
         return f"BBox(img_height={self.img_height}, img_width={self.img_width}, coordinates={self.__normalized_coordinates})"
 
 
+class BBoxClassId(BBox):
+    """
+    BBoxClassId is a subclass of BBox that includes additional attributes for class identification.
+    Attributes:
+        img_height (int): The height of the image.
+        img_width (int): The width of the image.
+        coordinates (Union[List, Tuple]): The coordinates of the bounding box.
+        class_id (int): The ID of the class.
+        class_name (Optional[str]): The name of the class.
+        format (BBoxFormat): The format of the bounding box coordinates. Default is BBoxFormat.CORNERS.
+    Methods:
+        class_id: Getter and setter for the class ID.
+        class_name: Getter and setter for the class name.
+    """
+
+    def __init__(
+        self,
+        img_height: int,
+        img_width: int,
+        coordinates: Union[List, Tuple],
+        class_id: int,
+        class_name: Optional[str] = None,
+        format: BBoxFormat = BBoxFormat.CORNERS
+    ):
+        """
+        Initializes a bounding box object with image dimensions, coordinates, class ID, and class name.
+
+        Args:
+            img_height (int): The height of the image.
+            img_width (int): The width of the image.
+            coordinates (Union[List, Tuple]): The coordinates of the bounding box.
+            class_id (int): The ID of the class to which the bounding box belongs.
+            class_name (Optional[str]): The name of the class to which the bounding box belongs.
+            format (BBoxFormat, optional): The format of the bounding box coordinates. Defaults to BBoxFormat.CORNERS.
+        """
+        super().__init__(img_height, img_width, coordinates, format)
+        self._class_id = class_id
+        self._class_name = class_name
+
+    @property
+    def class_id(self) -> int:
+        return self._class_id
+
+    @class_id.setter
+    def class_id(self, value: int):
+        self._class_id = value
+
+    @property
+    def class_name(self) -> Optional[str]:
+        return self._class_name
+
+    @class_name.setter
+    def class_name(self, value: Optional[str]):
+        self._class_name = value
+
+    def get_data(self, notation: Optional[NotationFormat] = None) -> Tuple[Union[List, Tuple], Union[int, str]]:
+        """
+        Retrieve the bounding box data including coordinates and class information.
+
+        Args:
+            notation (Optional[NotationFormat]): The format in which to return the coordinates. 
+                                                 If None, the default format is used.
+
+        Returns:
+            tuple: A tuple containing the coordinates of the bounding box 
+                   and the class information (either class ID or class name).
+        """
+        return (self.get_coordinates(notation=notation), self.class_id if not self.class_name else self.class_name)
 
     def __repr__(self):
-        return f"BBox(img_height={self.img_height}, img_width={self.img_width}, coordinates={self.__normalized_coordinates})"
+        """
+        Returns a string representation of the BBoxClassId object.
 
+        The string includes the image height, image width, normalized coordinates,
+        class ID, and class name of the bounding box.
+
+        Returns:
+            str: A formatted string representing the BBoxClassId object.
+        """
+        return f"""BBoxClassId(
+            img_height={self.img_height},
+            img_width={self.img_width},
+            coordinates={self.__normalized_coordinates},
+            class_id={self.class_id},
+            class_name={self.class_name})"""
+
+
+class BBoxClassIdScore(BBoxClassId):
+    """
+    BBoxClassIdScore is a class that extends BBoxClassId to include a score attribute.
+    Attributes:
+        img_height (int): The height of the image.
+        img_width (int): The width of the image.
+        coordinates (Union[List, Tuple]): The coordinates of the bounding box.
+        class_id (int): The class ID of the object.
+        class_name (Optional[str]): The class name of the object.
+        score (float): The confidence score of the detection.
+        format (BBoxFormat): The format of the bounding box coordinates. Default is BBoxFormat.CORNERS.
+    Methods:
+        score: Getter and setter for the confidence score of the detection.
+    """
+
+    def __init__(
+        self,
+        img_height: int,
+        img_width: int,
+        coordinates: Union[List, Tuple],
+        class_id: int,
+        class_name: Optional[str],
+        score: float,
+        format: BBoxFormat = BBoxFormat.CORNERS
+    ):
+        """
+        Initializes a bounding box object with the given parameters.
+
+        Args:
+            img_height (int): The height of the image.
+            img_width (int): The width of the image.
+            coordinates (Union[List, Tuple]): The coordinates of the bounding box.
+            class_id (int): The ID of the class.
+            class_name (Optional[str]): The name of the class.
+            score (float): The confidence score of the bounding box.
+            format (BBoxFormat, optional): The format of the bounding box coordinates. Defaults to BBoxFormat.CORNERS.
+        """
+        super().__init__(img_height, img_width, coordinates, class_id, class_name, format)
+        self._score = score
+
+    @property
+    def score(self) -> float:
+        return self._score
+
+    @score.setter
+    def score(self, value: float):
+        self._score = value
+
+    def get_data(self, notation: Optional[NotationFormat] = None) -> Tuple[Tuple[Union[List, Tuple], Union[int, str]], float]:
+        """
+        Retrieve the data of the bounding box along with its score.
+
+        Args:
+            notation (Optional[NotationFormat]): The notation format for the bounding box data. 
+                                 If None, the default notation will be used.
+
+        Returns:
+            tuple: A tuple containing the bounding box data and the score.
+        """
+        return super().get_data(notation), self.score
+
+    def __repr__(self):
+        """
+        Return a string representation of the BBoxClassIdScore object.
+
+        The string includes the image height, image width, normalized coordinates,
+        class ID, class name, and score of the bounding box.
+
+        Returns:
+            str: A string representation of the BBoxClassIdScore object.
+        """
+        return f"""BBoxClassIdScore(
+            img_height={self.img_height},
+            img_width={self.img_width},
+            coordinates={self.__normalized_coordinates},
+            class_id={self.class_id},
+            class_name={self.class_name},
+            score={self.score})"""
 
 
 def nms(bboxes: List[BBox], scores: List[float], iou_threshold: float, max_boxes: int = None) -> List[BBox]:

@@ -30,7 +30,8 @@ from typing import Dict, List, Tuple, Optional, Union
 import random
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
+from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode
 from saltup.utils.configure_logging import logging
 
 
@@ -84,10 +85,10 @@ class COCODatasetLoader(BaseDatasetLoader):
             self._current_index = 0  # Reset for next iteration
             raise StopIteration
         
-        image_path, annotation = self.image_annotation_pairs[self._current_index]
+        image_path, annotations = self.image_annotation_pairs[self._current_index]
         self._current_index += 1
         
-        return self.load_image(image_path, self.color_mode), annotation
+        return self.load_image(image_path, self.color_mode), annotations
 
     def __len__(self):
         """Return total number of samples in dataset."""
@@ -131,8 +132,15 @@ class COCODatasetLoader(BaseDatasetLoader):
         for img in self.annotations['images']:
             image_path = os.path.join(self.image_dir, img['file_name'])
             if os.path.exists(image_path):
+                annotations = [BBoxClassId(
+                    coordinates=annotation_raw['bbox'],
+                    class_id=annotation_raw['category_id'],
+                    img_height=img['height'],
+                    img_width=img['width'],
+                    format=BBoxFormat.TOPLEFT
+                ) for annotation_raw in image_to_annotations[img['id']]]
                 image_annotation_pairs.append(
-                    (image_path, image_to_annotations[img['id']])
+                    (image_path, annotations)
                 )
             else:
                 skipped_images += 1
@@ -447,7 +455,7 @@ def convert_coco_to_yolo_labels(
     Returns:
         Dict mapping image filenames to YOLO annotations
     """
-    from saltup.ai.object_detection.utils.bbox import coco_to_yolo_bbox
+    from saltup.ai.object_detection.utils.bbox import BBox
     
     with open(coco_json, 'r') as f:
         coco_data = json.load(f)
@@ -463,15 +471,16 @@ def convert_coco_to_yolo_labels(
         
         # Convert bbox coordinates
         x, y, w, h = ann['bbox']
-        yolo_bbox = coco_to_yolo_bbox(
-            [x, y, w, h],
-            img['width'],
-            img['height']
-        )
+        yolo_bbox = BBox(
+            coordinates=[x, y, w, h],
+            img_width=img['width'],
+            img_height=img['height'],
+            format=BBoxFormat.TOPLEFT
+        ).to_yolo()
         
         # Create YOLO annotation: class_id, x, y, w, h
         class_id = categories[ann['category_id']]
-        yolo_ann = [class_id] + yolo_bbox
+        yolo_ann = [class_id] + list(yolo_bbox)
         
         # Store by image filename
         filename = os.path.splitext(img['file_name'])[0]

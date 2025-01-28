@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
 
 from saltup.utils.data.image.image_utils import Image
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
@@ -252,7 +253,7 @@ def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, 
     return stats
 
 
-def read_annotation(annotation_file: str) -> List[Dict]:
+def read_annotation(annotation_file: str) -> List[BBoxClassId]:
     """Parse Pascal VOC format annotations from an XML file.
 
     Args:
@@ -265,6 +266,9 @@ def read_annotation(annotation_file: str) -> List[Dict]:
     """
     tree = ET.parse(annotation_file)
     root = tree.getroot()
+    
+    width = int(root.find('size/width').text)
+    height = int(root.find('size/height').text)
 
     annotations = []
     for obj in root.findall('object'):
@@ -274,10 +278,15 @@ def read_annotation(annotation_file: str) -> List[Dict]:
         ymin = int(bbox.find('ymin').text)
         xmax = int(bbox.find('xmax').text)
         ymax = int(bbox.find('ymax').text)
-        annotations.append({
-            'class_name': class_name,
-            'bbox': (xmin, ymin, xmax, ymax)
-        })
+        annotations.append(BBoxClassId(
+            coordinates=(xmin, ymin, xmax, ymax),
+            class_name=class_name,
+            # Pascal VOC don't have class IDs
+            class_id=None,
+            img_height=height,
+            img_width=width,
+            format=BBoxFormat.CORNERS
+        ))
 
     return annotations
 

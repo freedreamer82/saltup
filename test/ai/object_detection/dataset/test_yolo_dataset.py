@@ -6,6 +6,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from saltup.utils.data.image.image_utils import Image as SaltupImage
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
 from saltup.ai.object_detection.dataset.yolo_darknet import (
     read_label, write_label, create_dataset_structure,
     validate_dataset_structure, analyze_dataset,
@@ -318,11 +319,23 @@ class TestYOLODarknetDataloader:
             
             # Check labels format
             for label in labels:
-                assert len(label) == 5  # class_id, x, y, w, h
-                assert 0 <= label[1] <= 1  # x normalized
-                assert 0 <= label[2] <= 1  # y normalized
-                assert 0 < label[3] <= 1   # width normalized
-                assert 0 < label[4] <= 1   # height normalized
+                if isinstance(label, np.ndarray):
+                    assert len(label) == 5  # class_id, x, y, w, h
+                    assert 0 <= label[1] <= 1  # x normalized
+                    assert 0 <= label[2] <= 1  # y normalized
+                    assert 0 < label[3] <= 1   # width normalized
+                    assert 0 < label[4] <= 1   # height normalized
+                elif isinstance(label, BBoxClassId):
+                    assert isinstance(label, BBoxClassId)
+                    coordinates = label.get_coordinates(NotationFormat.YOLO)
+                    assert len(coordinates) == 4
+                    xc, yc, w, h = coordinates
+                    assert 0 <= xc <= 1
+                    assert 0 <= yc <= 1
+                    assert 0 < w <= 1  
+                    assert 0 < h <= 1
+                else:
+                    raise ValueError(f"Label type '{type(label)}' not recognized.")
 
     def test_yolo_darknet_loader_color_modes(self, sample_dataset):
         """Test different color modes in YoloDarknetLoader."""

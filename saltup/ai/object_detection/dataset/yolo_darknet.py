@@ -9,6 +9,7 @@ from collections import defaultdict, Counter
 from typing import Iterable, Union, List, Dict, Optional, Tuple
 
 from saltup.utils.data.image.image_utils import Image
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
@@ -59,11 +60,21 @@ class YoloDarknetLoader(BaseDatasetLoader):
         if self._current_index >= len(self.image_label_pairs):
             self._current_index = 0  # Reset for next iteration
             raise StopIteration
-            
+        
         image_path, label_path = self.image_label_pairs[self._current_index]
+        image = self.load_image(image_path, self.color_mode)
+        image_width, image_height = image.get_width(), image.get_height()
+        annotations = [BBoxClassId(
+            # (class_id, xc, yc, w, h)
+            class_id=lbl[0],
+            coordinates=lbl[1:],
+            img_width=image_width,
+            img_height=image_height,
+            format=BBoxFormat.CENTER
+        ) for lbl in read_label(label_path)]
         self._current_index += 1
         
-        return self.load_image(image_path, self.color_mode), read_label(label_path)
+        return image, annotations
 
     def __len__(self):
         """Return total number of samples in dataset."""

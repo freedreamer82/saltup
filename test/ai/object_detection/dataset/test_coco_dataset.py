@@ -6,6 +6,7 @@ from PIL import Image
 from collections import defaultdict
 
 from saltup.utils.data.image.image_utils import Image as SaltupImage
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxClassId
 from saltup.ai.object_detection.dataset.coco import (
     create_dataset_structure, validate_dataset_structure,
     get_dataset_paths, read_annotations, write_annotations,
@@ -397,8 +398,13 @@ class TestCOCODatasetLoader:
             assert isinstance(image.get_data(), np.ndarray)
             assert len(annotations) > 0
             for ann in annotations:
-                assert "bbox" in ann
-                assert "category_id" in ann
+                if isinstance(ann, dict):
+                    assert "bbox" in ann
+                    assert "category_id" in ann
+                elif isinstance(ann, BBoxClassId):
+                    assert isinstance(ann, BBoxClassId)
+                else:
+                    raise ValueError(f"Annotation type '{type(ann)}' not recognized.")
 
     def test_missing_images_directory(self, dataset_dir, sample_coco_data):
         """Test loader with non-existent images directory."""
