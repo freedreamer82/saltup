@@ -14,7 +14,7 @@ from saltup.ai.object_detection.dataloader.anchors_based_dataloader import (
 
 
 # Mock dataset loader for testing
-class MockDatasetLoader:
+class MockDatasetLoader(BaseDatasetLoader):
     def __init__(self, num_samples: int = 100):
         self.num_samples = num_samples
         self.current_idx = 0
@@ -196,8 +196,7 @@ class TestAnchorsBasedDataloader:
         (False, True),
         (False, False)
     ])
-    
-    def test_visualization(self, dataloader, show_grid, show_anchors):
+    def test_visualization(self, dataloader: AnchorsBasedDataloader, show_grid, show_anchors):
         """Test visualization with different options."""
         try:
             dataloader.visualize_sample(0, show_grid=show_grid, show_anchors=show_anchors)

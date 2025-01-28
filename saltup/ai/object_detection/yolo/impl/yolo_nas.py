@@ -1,10 +1,11 @@
 import numpy as np
 import cv2
-from typing import Optional, Union, Callable, Dict, Any, List, Tuple
+from typing import Union, Any, List, Tuple
 
 from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, Image
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
+
 
 class YoloNas(BaseYolo):
     """
@@ -35,13 +36,13 @@ class YoloNas(BaseYolo):
          
     @staticmethod
     def preprocess(
-                   image: Image,
-                   target_height:int, 
-                   target_width:int,        
-                   normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
-                   apply_padding: bool = True,
-                   **kwargs: Any
-                   ) -> np.ndarray:
+        image: Union[np.ndarray, Image],
+        target_height:int, 
+        target_width:int,        
+        normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+        apply_padding: bool = True,
+        **kwargs: Any
+    ) -> np.ndarray:
         """Process input image according to supergrad model requirements.
 
         Args:
@@ -58,23 +59,31 @@ class YoloNas(BaseYolo):
         Raises:
             ValueError: For invalid or empty inputs
         """
-        raw_image = image.get_data()
-        
-        num_channel = image.get_number_channel()
+        if isinstance(image, Image):
+            raw_image = image.get_data()
+            num_channel = image.get_number_channel()
+        elif isinstance(image, np.ndarray):
+            raw_image = image
+            num_channel = 1 if len(image.shape) < 3 else image.shape[2]
+        else:
+            raise TypeError(f"Invalid type {type(image)} for image: should be 'np.ndarray' or 'saltup.Image'.")
         
         # Validate input format
         if num_channel not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
+            raise ValueError("Only 1 or 3 channels are supported for multi-channel images")
         
-        h = image.get_height()
-        w = image.get_width()
-        c = num_channel
+        # Extract dimensions
+        if isinstance(image, Image):
+            height = image.get_height()
+            width = image.get_width()
+        else:
+            height = image.shape[1]
+            width = image.shape[0]
 
         # Calculate size preserving aspect ratio
-        aspect_ratio = min(target_width / w, target_height / h)
-        new_width = int(w * aspect_ratio)
-        new_height = int(h * aspect_ratio)
+        aspect_ratio = min(target_width / width, target_height / height)
+        new_width = int(width * aspect_ratio)
+        new_height = int(height * aspect_ratio)
 
         # Resize with high-quality algorithm
         resized_image = cv2.resize(raw_image, (new_width, new_height), 

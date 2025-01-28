@@ -1,18 +1,11 @@
 from typing import Tuple
 import albumentations as A
 import numpy as np
-import os
 
 from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader
 from saltup.ai.object_detection.dataloader.base_dataloader import BasedDataloader
-from saltup.ai.object_detection.preprocessing.impl.anchors_based_preprocess import AnchorsBasedPreprocess
-from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format
-from saltup.ai.object_detection.utils.bbox import (
-    compute_iou,
-    center_to_corners_format, 
-    absolute_bbox,
-    BBoxFormat
-)
+from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
+from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format, compute_anchor_iou
 from saltup.utils.configure_logging import get_logger
 
 
@@ -54,26 +47,27 @@ class AnchorsBasedDataloader(BasedDataloader):
             preprocess: Optional custom preprocessing function
             transform: Optional albumentations transforms for augmentation
         """
-        self.dataset_loader = dataset_loader
-        self.__indexes = np.arange(len(dataset_loader))
+        super().__init__(
+            dataset_loader=dataset_loader,
+            target_size=target_size,
+            num_classes=num_classes,
+            batch_size=batch_size,
+            preprocess=preprocess,
+            transform=transform
+        )
+        
+        self.target_height, self.target_width = self.target_size
         
         self.anchors = anchors
-        self.__num_anchors = len(anchors)
-        
-        self.batch_size = batch_size
-        self.target_size = target_size
+        self._num_anchors = len(anchors)
         self.grid_size = grid_size
-        self.num_classes = num_classes
-        
-        self.__transform = transform
-        self.__augment = True if self.__transform else False
-        
+                
         self.preprocess = preprocess
         if not self.preprocess:
-            self.preprocess = AnchorsBasedPreprocess(apply_padding=False)
+            self.preprocess = YoloAnchorsBased.preprocess
             
-        self.__logger = get_logger(__name__)
-        self.__logger.info("Initializing AnchorsBasedDataloader")
+        self._logger = get_logger(__name__)
+        self._logger.info("Initializing AnchorsBasedDataloader")
     
     def __len__(self):
         return int(np.ceil(len(self.dataset_loader) / self.batch_size))
@@ -101,12 +95,12 @@ class AnchorsBasedDataloader(BasedDataloader):
             - images: [batch_size, height, width, channels]
             - labels: [batch_size, grid_h, grid_w, num_anchors, 5 + num_classes]
         """
-        batch_indexes = self.__indexes[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_indexes = self._indexes[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_size = len(batch_indexes)
         
         images = np.zeros((batch_size, self.target_size[0], self.target_size[1], 1), dtype=np.float32)
         labels = np.zeros((batch_size, self.grid_size[0], self.grid_size[1],
-                        self.__num_anchors, 5 + self.num_classes), dtype=np.float32)
+                        self._num_anchors, 5 + self.num_classes), dtype=np.float32)
         
         for i, idx in enumerate(batch_indexes):
             try:
@@ -117,12 +111,12 @@ class AnchorsBasedDataloader(BasedDataloader):
                 boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
                 
                 # Preprocess image
-                image = self.preprocess(image, self.target_size)
+                image = self.preprocess(image, self.target_height, self.target_width, apply_padding=False)
                 
                 # Apply augmentations
-                if len(boxes) > 0 and self.__augment:
+                if len(boxes) > 0 and self.do_augment:
                     try:
-                        transformed = self.__transform(
+                        transformed = self.transform(
                             image=image.squeeze(),
                             bboxes=boxes.tolist(),
                             class_labels=class_labels
@@ -146,7 +140,7 @@ class AnchorsBasedDataloader(BasedDataloader):
                             else:
                                 pass
                     except Exception as e:
-                        self.__logger.error(f"Error in augmenting: {e}")
+                        self._logger.error(f"Error in augmenting: {e}")
                 
                 # Convert labels to grid format
                 if len(boxes) > 0:
@@ -162,26 +156,13 @@ class AnchorsBasedDataloader(BasedDataloader):
                     images[i] = image
                 
             except Exception as e:
-                self.__logger.error(f"Failed to process batch item {idx}: {e}")
+                self._logger.error(f"Failed to process batch item {idx}: {e}")
                 continue
             
         return images, labels
         
     def on_epoch_end(self):
-        np.random.shuffle(self.__indexes)
-        
-    @property
-    def transform(self):
-        return self.__transform
-    
-    @transform.setter
-    def transform(self, value):
-        self.__transform = value
-        self.__augment = True if value else False
-        
-    @property
-    def augment(self):
-        return self.__augment
+        np.random.shuffle(self._indexes)
 
     def visualize_sample(self, idx, show_grid=True, show_anchors=False):
         """
@@ -219,7 +200,9 @@ class AnchorsBasedDataloader(BasedDataloader):
             boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
 
             # Preprocess image
-            processed_image = self.preprocess(image, self.target_size)
+            processed_image = self.preprocess(
+                image, self.target_height, self.target_width, apply_padding=False
+            )
             
             # Create subplot
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
@@ -288,7 +271,7 @@ class AnchorsBasedDataloader(BasedDataloader):
                     
                     # Find best matching anchor
                     for anchor in self.anchors:
-                        iou = compute_iou(np.array([width, height]), np.array(anchor))
+                        iou = compute_anchor_iou(np.array([width, height]), np.array(anchor))
                         if iou > best_iou:
                             best_iou = iou
                             best_anchor = anchor
