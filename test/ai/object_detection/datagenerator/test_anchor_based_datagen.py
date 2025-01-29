@@ -1,5 +1,8 @@
-import unittest
 import pytest
+import os
+import yaml
+from dotmap import DotMap
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,6 +11,8 @@ from tensorflow import keras
 import albumentations as A
 from typing import Tuple, List
 
+from saltup.utils.data.image.image_utils import Image
+from saltup.ai.object_detection.utils.bbox import BBoxClassId
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import (
     AnchorsBasedDatagen, BaseDataloader, PyTorchAnchorBasedDatagen, KerasAnchorBasedDatagen
 )
@@ -15,9 +20,20 @@ from saltup.ai.object_detection.datagenerator.anchors_based_datagen import (
 
 # Mock dataset loader for testing
 class MockDatasetLoader(BaseDataloader):
-    def __init__(self, num_samples: int = 100):
+    def __init__(
+        self, 
+        num_samples: int = 100, 
+        img_height=416, 
+        img_width=416, 
+        num_channels=1, 
+        use_embedded_classes: bool = False
+    ):
         self.num_samples = num_samples
         self.current_idx = 0
+        self.img_height = img_height
+        self.img_width = img_width
+        self.num_channels = num_channels
+        self.use_embedded_classes = use_embedded_classes
         
     def __len__(self) -> int:
         return self.num_samples
@@ -31,7 +47,9 @@ class MockDatasetLoader(BaseDataloader):
             raise StopIteration
             
         # Generate mock image and annotations
-        image = np.random.rand(416, 416, 1).astype(np.float32)
+        image = np.random.rand(self.img_height, self.img_width, self.num_channels).astype(np.float32)
+        if self.use_embedded_classes:
+            image = Image(image)
         num_objects = np.random.randint(1, 4)
         
         # Generate random boxes and labels
@@ -42,7 +60,16 @@ class MockDatasetLoader(BaseDataloader):
             width = np.random.uniform(0.1, 0.3)
             height = np.random.uniform(0.1, 0.3)
             label = np.random.randint(0, 3)  # 3 classes
-            boxes.append([x_center, y_center, width, height, label])
+            if self.use_embedded_classes:
+                bbox = BBoxClassId(
+                    coordinates=[x_center, y_center, width, height],
+                    class_id=label,
+                    img_height=self.img_height,
+                    img_width=self.img_width
+                )
+            else:
+                bbox = [x_center, y_center, width, height, label]
+            boxes.append(bbox)
             
         self.current_idx += 1
         return image, np.array(boxes)
@@ -117,68 +144,96 @@ def create_simple_keras_model(input_shape: Tuple[int, int, int], num_classes: in
 
 
 class TestAnchorsBasedDataloader:
-    @pytest.fixture
-    def mock_loader(self):
-        return MockDatasetLoader(num_samples=4)
     
     @pytest.fixture
-    def anchors(self):
-        return np.array([[0.2, 0.2], [0.5, 0.5]])
-        
+    def configs(self, root_dir):
+        with open(os.path.join(str(root_dir), 'tests_data/configs/anchor_based_datagen.yaml')) as stream:
+            configs = yaml.safe_load(stream)
+        return DotMap(configs["TestAnchorsBasedDataloader"])
+    
     @pytest.fixture
-    def dataloader(self, mock_loader, anchors):
+    def mock_loader(self, configs):
+        return MockDatasetLoader(**configs.MockDatasetLoader)
+           
+    @pytest.fixture
+    def dataloader(self, mock_loader, configs):
+        datagen_configs = configs.AnchorsBasedDatagen
         return AnchorsBasedDatagen(
             dataloader=mock_loader,
-            anchors=anchors,
-            target_size=(224, 224),
-            grid_size=(7, 7),
-            num_classes=2
+            anchors=datagen_configs.anchors,
+            target_size=tuple(datagen_configs.target_size),
+            grid_size=tuple(datagen_configs.grid_size),
+            num_classes=2,
+            batch_size=datagen_configs.batch_size
         )
     
-    def test_initialization(self, dataloader, mock_loader, anchors):
+    def test_initialization(self, dataloader, mock_loader, configs):
         """Test dataloader initialization."""
+        datagen_configs = configs.AnchorsBasedDatagen
         assert dataloader.dataloader == mock_loader
-        assert np.array_equal(dataloader.anchors, anchors)
-        assert dataloader.target_size == (224, 224)
-        assert dataloader.grid_size == (7, 7)
-        assert dataloader.num_classes == 2
-        assert dataloader.batch_size == 1
+        assert np.array_equal(dataloader.anchors, datagen_configs.anchors)
+        assert dataloader.target_size == tuple(datagen_configs.target_size)
+        assert dataloader.grid_size == tuple(datagen_configs.grid_size)
+        assert dataloader.num_classes == datagen_configs.num_classes
+        assert dataloader.batch_size == datagen_configs.batch_size
         assert not dataloader.do_augment
         
-    def test_length(self, dataloader):
+    def test_length(self, dataloader, configs):
         """Test length calculation."""
-        assert len(dataloader) == 4  # From mock loader
+        num_samples = configs.MockDatasetLoader.num_samples
+        batch_size = configs.AnchorsBasedDatagen.batch_size
+        assert len(dataloader) == math.ceil(num_samples / batch_size)
         
         # Test with different batch sizes
         dataloader.batch_size = 2
-        assert len(dataloader) == 2
+        assert len(dataloader) == math.ceil(num_samples / 2)
         
         dataloader.batch_size = 3
-        assert len(dataloader) == 2  # Ceil(4/3)
+        assert len(dataloader) == math.ceil(num_samples / 3)
         
-    def test_batch_generation(self, dataloader):
+    def test_batch_generation(self, dataloader, configs):
         """Test batch generation."""
+        datagen_configs = configs.AnchorsBasedDatagen
         images, labels = next(iter(dataloader))
         
         # Check shapes
-        assert images.shape == (1, 224, 224, 1)
-        assert labels.shape == (1, 7, 7, 2, 7)  # batch, grid_h, grid_w, anchors, 5+num_classes
+        expected_image_shape = (datagen_configs.batch_size, *datagen_configs.target_size, 
+                              configs.MockDatasetLoader.num_channels)
+        expected_label_shape = (datagen_configs.batch_size, *datagen_configs.grid_size, 
+                              len(datagen_configs.anchors), 5 + datagen_configs.num_classes)
+        
+        assert images.shape == expected_image_shape
+        assert labels.shape == expected_label_shape
         
         # Check value ranges
         assert np.all((images >= 0) & (images <= 1))
         assert np.all((labels >= 0) & (labels <= 1))
         
-    def test_batch_size(self, dataloader):
+    def test_batch_size(self, dataloader, configs):
         """Test different batch sizes."""
-        dataloader.batch_size = 2
+        datagen_configs = configs.AnchorsBasedDatagen
+        target_size = datagen_configs.target_size
+        grid_size = datagen_configs.grid_size
+        num_anchors = len(datagen_configs.anchors)
+        num_classes = datagen_configs.num_classes
+        num_channels = configs.MockDatasetLoader.num_channels
+        
+        test_batch_size = 2
+        dataloader.batch_size = test_batch_size
         images, labels = next(iter(dataloader))
         
-        assert images.shape[0] == 2
-        assert labels.shape[0] == 2
+        assert images.shape == (test_batch_size, *target_size, num_channels)
+        assert labels.shape == (test_batch_size, *grid_size, num_anchors, 5 + num_classes)
         
-    def test_augmentation(self, dataloader):
+    def test_augmentation(self, dataloader, configs):
         """Test with augmentations."""
-        import albumentations as A
+        datagen_configs = configs.AnchorsBasedDatagen
+        target_size = datagen_configs.target_size
+        grid_size = datagen_configs.grid_size
+        num_anchors = len(datagen_configs.anchors)
+        num_classes = datagen_configs.num_classes
+        batch_size = datagen_configs.batch_size
+        num_channels = configs.MockDatasetLoader.num_channels
         
         dataloader.transform = A.Compose([
             A.RandomBrightnessContrast(p=1)
@@ -187,8 +242,8 @@ class TestAnchorsBasedDataloader:
         assert dataloader.do_augment
         images, labels = next(iter(dataloader))
         
-        assert images.shape == (1, 224, 224, 1)
-        assert labels.shape == (1, 7, 7, 2, 7)
+        assert images.shape == (batch_size, *target_size, num_channels)
+        assert labels.shape == (batch_size, *grid_size, num_anchors, 5 + num_classes)
         
     @pytest.mark.parametrize("show_grid,show_anchors", [
         (True, True),
@@ -204,58 +259,63 @@ class TestAnchorsBasedDataloader:
             pytest.fail(f"Visualization failed: {e}")
 
 
-class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        # Configure TensorFlow to use CPU only
+class TestFrameworksAnchorsBasedDataloader:
+    
+    @pytest.fixture
+    def configs(self, root_dir):
+        with open(os.path.join(str(root_dir), 'tests_data/configs/anchor_based_datagen.yaml')) as stream:
+            configs = yaml.safe_load(stream)
+        return DotMap(configs["TestFrameworksAnchorsBasedDataloader"])
+    
+    @pytest.fixture
+    def mock_loader(self, configs):
+        return MockDatasetLoader(**configs.MockDatasetLoader)
+
+    @pytest.fixture
+    def tensorflow_config(self):
+        """Configure TensorFlow to use CPU only."""
         tf.config.set_visible_devices([], 'GPU')
         physical_devices = tf.config.list_physical_devices('CPU')
         try:
-            # Configurazione per la CPU
             tf.config.experimental.set_memory_growth(physical_devices[0], True)
         except:
             pass
             
-    def setUp(self):
-        # Common test parameters
-        self.dataloader = MockDatasetLoader(num_samples=10)
-        self.anchors = np.array([[0.12, 0.15], [0.25, 0.25], [0.35, 0.35]])
-        self.target_size = (416, 416)
-        self.grid_size = (13, 13)
-        self.num_classes = 3
-        self.batch_size = 2
-        
-        # Test augmentation
-        self.transform = A.Compose([
+    @pytest.fixture
+    def transform(self):
+        """Test augmentation transform."""
+        return A.Compose([
             A.RandomBrightnessContrast(p=0.5),
             A.GaussNoise(p=0.5)
         ], bbox_params=A.BboxParams(format='yolo'))
-        
-    def test_pytorch_dataloader(self):
+    
+    def test_pytorch_dataloader(self, tensorflow_config, mock_loader, configs, transform):
+        """Test PyTorch dataloader implementation."""
         print("\nTesting PyTorch Dataloader...")
         
+        datagen_configs = configs.AnchorsBasedDatagen
         # Initialize dataset
         dataset = PyTorchAnchorBasedDatagen(
-            dataloader=self.dataloader,
-            anchors=self.anchors,
-            target_size=self.target_size,
-            grid_size=self.grid_size,
-            num_classes=self.num_classes,
-            transform=self.transform
+            dataloader=mock_loader,
+            anchors=np.array(datagen_configs.anchors),
+            target_size=tuple(datagen_configs.target_size),
+            grid_size=tuple(datagen_configs.grid_size),
+            num_classes=datagen_configs.num_classes,
+            transform=transform
         )
         
         # Create dataloader
         dataloader = torch.utils.data.DataLoader(
             dataset,
-            batch_size=self.batch_size,
+            batch_size=datagen_configs.batch_size,
             shuffle=True,
             collate_fn=PyTorchAnchorBasedDatagen.collate_fn
         )
         
         # Test model
         model = SimplePyTorchModel(
-            num_classes=self.num_classes,
-            num_anchors=len(self.anchors)
+            num_classes=datagen_configs.num_classes,
+            num_anchors=len(datagen_configs.anchors)
         )
         optimizer = torch.optim.Adam(model.parameters())
         
@@ -263,8 +323,9 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
         model.train()
         for batch_idx, (images, targets) in enumerate(dataloader):
             # Verify shapes
-            self.assertEqual(images.shape, (self.batch_size, 1, 416, 416))
-            self.assertEqual(targets.shape, (self.batch_size, 13, 13, 3, 8))  # 8 = 5 + num_classes
+            assert images.shape == (datagen_configs.batch_size, 1, *datagen_configs.target_size)
+            assert targets.shape == (datagen_configs.batch_size, *datagen_configs.grid_size, 
+                                  len(datagen_configs.anchors), 5 + datagen_configs.num_classes)
             
             # Test forward pass
             optimizer.zero_grad()
@@ -279,34 +340,37 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
             if batch_idx >= 2:  # Test a few batches
                 break
                 
-    def test_keras_dataloader(self):
+    def test_keras_dataloader(self, tensorflow_config, mock_loader, configs, transform):
+        """Test Keras dataloader implementation."""
         print("\nTesting Keras Dataloader...")
         
+        datagen_configs = configs.AnchorsBasedDatagen
         # Initialize dataset
         dataset = KerasAnchorBasedDatagen(
-            dataloader=self.dataloader,
-            anchors=self.anchors,
-            target_size=self.target_size,
-            grid_size=self.grid_size,
-            num_classes=self.num_classes,
-            batch_size=self.batch_size,
-            transform=self.transform
+            dataloader=mock_loader,
+            anchors=np.array(datagen_configs.anchors),
+            target_size=tuple(datagen_configs.target_size),
+            grid_size=tuple(datagen_configs.grid_size),
+            num_classes=datagen_configs.num_classes,
+            batch_size=datagen_configs.batch_size,
+            transform=transform
         )
         
         # Verify dataset can generate batches correctly
         for _ in range(2):
             batch = next(iter(dataset))
-            self.assertEqual(len(batch), 2)  # images and labels
+            assert len(batch) == 2  # images and labels
             images, labels = batch
-            self.assertEqual(images.shape, (self.batch_size, 416, 416, 1))
-            self.assertEqual(labels.shape, (self.batch_size, 13, 13, 3, 8))
+            assert images.shape == (datagen_configs.batch_size, *datagen_configs.target_size, 1)
+            assert labels.shape == (datagen_configs.batch_size, *datagen_configs.grid_size, 
+                                 len(datagen_configs.anchors), 5 + datagen_configs.num_classes)
 
         # Create and compile model with mixed precision disabled
         tf.keras.mixed_precision.set_global_policy('float32')
         model = create_simple_keras_model(
-            input_shape=(416, 416, 1),
-            num_classes=self.num_classes,
-            num_anchors=len(self.anchors)
+            input_shape=(*datagen_configs.target_size, 1),
+            num_classes=datagen_configs.num_classes,
+            num_anchors=len(datagen_configs.anchors)
         )
         
         model.compile(
@@ -316,20 +380,14 @@ class TestFrameworksAnchorsBasedDataloader(unittest.TestCase):
         )
         
         # Test training with reduced steps
-        try:
-            history = model.fit(
-                dataset,
-                epochs=1,
-                steps_per_epoch=2,
-                verbose=1
-            )
-            
-            self.assertTrue(len(history.history['loss']) == 1)
-            print("Keras training completed successfully")
-        except Exception as e:
-            self.fail(f"Training failed with error: {str(e)}")
-            
-# TODO: Add test with DataLoader integrated with Image and BBox classes OR integrate that classes in MockDatasetLoader
+        history = model.fit(
+            dataset,
+            epochs=1,
+            steps_per_epoch=2,
+            verbose=1
+        )
+        
+        assert len(history.history['loss']) == 1
+        print("Keras training completed successfully")            
 
-if __name__ == '__main__':
-    unittest.main(argv=[''], verbosity=2)
+# TODO: Add test with DataLoader integrated with Image and BBox classes OR integrate that classes in MockDatasetLoader

@@ -29,6 +29,7 @@ albumentations
 
 # Utilities and progress tracking
 tqdm
+dotmap
 IPython
 
 # Jupyter Notebook support

@@ -5,7 +5,7 @@ from pathlib import Path
 
 @pytest.fixture(scope="session")
 def root_dir():
-    """Fixture che fornisce il percorso della directory root dei test."""
+    """Fixture that provides the path to the test root directory."""
     return Path(__file__).parent
 
 @pytest.fixture(scope="session")
