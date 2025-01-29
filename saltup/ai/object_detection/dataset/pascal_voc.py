@@ -93,14 +93,59 @@ class PascalVOCLoader(BaseDataloader):
             self._current_index = 0  # Reset for next iteration
             raise StopIteration
             
-        image_path, annotation_path = self.image_annotation_pairs[self._current_index]
-        self._current_index += 1
-        
-        return self.load_image(image_path, self.color_mode), read_annotation(annotation_path)
+        image, annotations = self._load_item(self._current_index)
+        self._current_index += 1        
+        return image, annotations
 
     def __len__(self):
         """Return total number of samples in dataset."""
         return len(self.image_annotation_pairs)
+    
+    def __getitem__(self, idx: Union[int, slice]) -> Union[
+        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
+        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+    ]:
+        """Get item(s) by index.
+        
+        Args:
+            idx: Integer index or slice object
+            
+        Returns:
+            Single (image, annotations) tuple or list of tuples if slice
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        if isinstance(idx, slice):
+            # Handle slice
+            indices = range(*idx.indices(len(self)))
+            return [self._load_item(i) for i in indices]
+        else:
+            # Handle single index
+            return self._load_item(idx)
+    
+    def _load_item(self, idx: int) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+        """Load single item by index.
+        
+        Args:
+            idx: Index of the item to load
+            
+        Returns:
+            Tuple of (image, annotations)
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        if idx < 0:
+            idx += len(self)
+        if not 0 <= idx < len(self):
+            raise IndexError("Index out of range")
+            
+        image_path, annotation_path = self.image_annotation_pairs[idx]
+        image = self.load_image(image_path, self.color_mode)
+        annotations = read_annotation(annotation_path)
+        
+        return image, annotations
 
     def _load_image_annotation_pairs(self) -> List[Tuple[str, str]]:
         """

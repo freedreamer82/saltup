@@ -41,6 +41,48 @@ class BaseDataloader(ABC):
     def __len__(self) -> int:
         """Returns total number of samples in dataset."""
         raise NotImplementedError
+    
+    def __getitem__(self, idx: Union[int, slice]) -> Union[
+        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
+        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+    ]:
+        """Get item(s) by index.
+        
+        Provides a default implementation that uses iteration to access elements.
+        Subclasses can override this method with more efficient implementations
+        that directly access their data structures.
+        
+        Args:
+            idx: Integer index or slice object
+            
+        Returns:
+            Single (image, annotations) tuple or list of tuples if slice
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        # Handle negative indices
+        if isinstance(idx, int):
+            if idx < 0:
+                idx += len(self)
+            if not 0 <= idx < len(self):
+                raise IndexError("Index out of range")
+            
+            # Iterate until we reach the desired index
+            iterator = iter(self)
+            for _ in range(idx):
+                next(iterator)
+            return next(iterator)
+            
+        elif isinstance(idx, slice):
+            # Get the actual indices from the slice
+            indices = range(*idx.indices(len(self)))
+            
+            # Use the integer indexing we just defined
+            return [self[i] for i in indices]
+        
+        else:
+            raise TypeError(f"Invalid index type: {type(idx)}")
 
     @staticmethod
     def load_image(
