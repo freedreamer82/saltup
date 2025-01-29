@@ -5,5 +5,5 @@ saltup.egg-info
 *.vscode
 *.code-workspace
 custom_yolo_fpn*
-test/results/models/model_1.onnx
+test/tests_data/models/model_1.onnx
 .tmp
