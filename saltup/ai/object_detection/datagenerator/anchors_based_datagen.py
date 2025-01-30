@@ -5,6 +5,8 @@ import numpy as np
 from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
 from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
+from saltup.utils.data.image.image_utils import Image
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
 from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format, compute_anchor_iou
 from saltup.utils.configure_logging import get_logger
 
@@ -32,7 +34,8 @@ class AnchorsBasedDatagen(BasedDatagenerator):
         num_classes: int,
         batch_size: int = 1,
         preprocess: callable = None,
-        transform: A.Compose = None
+        transform: A.Compose = None,
+        seed: int = None
     ):
         """
         Initialize the dataloader.
@@ -53,7 +56,8 @@ class AnchorsBasedDatagen(BasedDatagenerator):
             num_classes=num_classes,
             batch_size=batch_size,
             preprocess=preprocess,
-            transform=transform
+            transform=transform,
+            seed = seed
         )
         
         self.target_height, self.target_width = self.target_size
@@ -105,11 +109,28 @@ class AnchorsBasedDatagen(BasedDatagenerator):
         for i, idx in enumerate(batch_indexes):
             try:
                 # Get image and labels from dataset loader
-                image, annotation_data = next(self.dataloader)
+                image, annotation_data = self.dataloader[idx]
                 
                 # Extract boxes and class labels
-                boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
-                
+                if len(annotation_data) > 0:
+                    # Check type and extract data
+                    if isinstance(annotation_data[0], BBoxClassId):
+                        boxes, class_labels = map(np.array, zip(*[
+                            [item.get_coordinates(notation=NotationFormat.YOLO), item.class_id]
+                            for item in annotation_data
+                        ]))
+                    elif isinstance(annotation_data[0], np.ndarray):
+                        boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
+                    else:
+                        raise TypeError(
+                            f"Annotation data type '{type(annotation_data[0])}' not supported. "
+                            "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
+                        )
+                else:
+                    # No annotations case - create empty arrays with correct shapes
+                    boxes = np.empty((0, 4), dtype=np.float32)
+                    class_labels = np.empty(0, dtype=np.int32)
+        
                 # Preprocess image
                 image = self.preprocess(image, self.target_height, self.target_width, apply_padding=False)
                 
@@ -139,6 +160,7 @@ class AnchorsBasedDatagen(BasedDatagenerator):
                                 class_labels = np.array(transformed['class_labels'])[valid_mask]
                             else:
                                 pass
+                        
                     except Exception as e:
                         self._logger.error(f"Error in augmenting: {e}")
                 
@@ -162,7 +184,7 @@ class AnchorsBasedDatagen(BasedDatagenerator):
         return images, labels
         
     def on_epoch_end(self):
-        np.random.shuffle(self._indexes)
+        self._rng.shuffle(self._indexes)
 
     def visualize_sample(self, idx, show_grid=True, show_anchors=False):
         """
@@ -184,10 +206,6 @@ class AnchorsBasedDatagen(BasedDatagenerator):
             
         Returns:
             None: Displays a matplotlib plot and prints statistics
-            
-        Todo:
-            * Make bbox visualization independent from dataset format
-            * Add support for different annotation formats (COCO, Pascal VOC)
         """
         
         import matplotlib.pyplot as plt
@@ -197,7 +215,32 @@ class AnchorsBasedDatagen(BasedDatagenerator):
             image, annotation_data = self.dataloader[idx]
             
             # Extract boxes and class labels
-            boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
+            if len(annotation_data) > 0:
+                # Check type and extract data
+                if isinstance(annotation_data[0], BBoxClassId):
+                    boxes, class_labels = map(np.array, zip(*[
+                        [item.get_coordinates(notation=NotationFormat.YOLO), item.class_id]
+                        for item in annotation_data
+                    ]))
+                elif isinstance(annotation_data[0], np.ndarray):
+                    boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
+                else:
+                    raise TypeError(
+                        f"Annotation data type '{type(annotation_data[0])}' not supported. "
+                        "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
+                    )
+            else:
+                # No annotations case - create empty arrays with correct shapes
+                boxes = np.empty((0, 4), dtype=np.float32)
+                class_labels = np.empty(0, dtype=np.int32)
+
+            # Get image data and dimensions
+            if isinstance(image, Image):
+                image_data = image.get_data()
+                img_width, img_height = image.get_width(), image.get_height()
+            else:
+                image_data = image
+                img_height, img_width = image.shape[:2]
 
             # Preprocess image
             processed_image = self.preprocess(
@@ -208,37 +251,37 @@ class AnchorsBasedDatagen(BasedDatagenerator):
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
             
             # Plot original image
-            ax1.imshow(image, cmap='gray' if len(image.shape) == 2 else None)
-            ax1.set_title(f'Original Image ({image.shape[1]}x{image.shape[0]})')
+            ax1.imshow(image_data, cmap='gray' if len(image_data.shape) == 2 else None)
+            ax1.set_title(f'Original Image ({img_width}x{img_height})')
             
             # Draw original boxes
-            for box, class_id in zip(boxes, class_labels):
-                x_center, y_center, width, height = box
-                
-                # TODO: makes bbox indipendent from the dataset format
-                # Convert normalized coordinates to pixels
-                x1 = int((x_center - width/2) * image.shape[1])
-                y1 = int((y_center - height/2) * image.shape[0])
-                x2 = int((x_center + width/2) * image.shape[1])
-                y2 = int((y_center + height/2) * image.shape[0])
-                
-                # Draw rectangle
-                rect = patches.Rectangle(
-                    (x1, y1), x2-x1, y2-y1,
-                    linewidth=2,
-                    edgecolor='r',
-                    facecolor='none'
-                )
-                ax1.add_patch(rect)
-                
-                # Add label
-                ax1.text(
-                    x1, y1-5,
-                    f'Class {int(class_id)}',
-                    color='red',
-                    fontsize=8,
-                    bbox=dict(facecolor='white', alpha=0.7)
-                )
+            if len(boxes) > 0:
+                for box, class_id in zip(boxes, class_labels):
+                    x_center, y_center, width, height = box
+                    
+                    # Convert normalized coordinates to pixels
+                    x1 = int((x_center - width/2) * img_width)
+                    y1 = int((y_center - height/2) * img_height)
+                    x2 = int((x_center + width/2) * img_width)
+                    y2 = int((y_center + height/2) * img_height)
+                    
+                    # Draw rectangle
+                    rect = patches.Rectangle(
+                        (x1, y1), x2-x1, y2-y1,
+                        linewidth=2,
+                        edgecolor='r',
+                        facecolor='none'
+                    )
+                    ax1.add_patch(rect)
+                    
+                    # Add label 
+                    ax1.text(
+                        x1, y1-5,
+                        f'Class {int(class_id)}',
+                        color='red',
+                        fontsize=8,
+                        bbox=dict(facecolor='white', alpha=0.7)
+                    )
             
             # Plot preprocessed image
             ax2.imshow(processed_image.squeeze(), cmap='gray' if len(processed_image.shape) == 3 else None)
@@ -297,24 +340,26 @@ class AnchorsBasedDatagen(BasedDatagenerator):
             plt.show()
             
             # Print statistics
-            print("\nStatistics:")
-            print(f"Number of objects: {len(boxes)}")
-            
-            # Count objects per class
-            for class_id in np.unique(class_labels):
-                count = np.sum(class_labels == class_id)
-                print(f"- Class {int(class_id)}: {count} objects")
-            
             if len(boxes) > 0:
-                boxes = np.array(boxes)
-                widths = boxes[:, 2]
-                heights = boxes[:, 3]
-                print("\nBox dimensions (normalized):")
-                print(f"Width  - min: {widths.min():.3f}, max: {widths.max():.3f}, mean: {widths.mean():.3f}")
-                print(f"Height - min: {heights.min():.3f}, max: {heights.max():.3f}, mean: {heights.mean():.3f}")
+                print("\nStatistics:")
+                print(f"Number of objects: {len(boxes)}")
                 
+                # Count objects per class
+                for class_id in np.unique(class_labels):
+                    count = np.sum(class_labels == class_id)
+                    print(f"- Class {int(class_id)}: {count} objects")
+                
+                if len(boxes) > 0:
+                    boxes = np.array(boxes)
+                    widths = boxes[:, 2]
+                    heights = boxes[:, 3]
+                    print("\nBox dimensions (normalized):")
+                    print(f"Width  - min: {widths.min():.3f}, max: {widths.max():.3f}, mean: {widths.mean():.3f}")
+                    print(f"Height - min: {heights.min():.3f}, max: {heights.max():.3f}, mean: {heights.mean():.3f}")
+                    
         except Exception as e:
-            self.__logger.error(f"Error visualizing sample: {e}")
+            self._logger.error(f"Error visualizing sample: {e}")
+            raise
 
 
 from tensorflow.keras.utils import Sequence #type: ignore

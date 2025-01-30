@@ -402,7 +402,7 @@ class BBox:
         """
         # Input validation
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-            raise TypeError("bbox must be a list or tuple of 4 elements")
+            raise TypeError(f"bbox must be a list or tuple of 4 elements. Passed {type(bbox)}.")
         if not isinstance(img_width, (int, np.integer)) or not isinstance(img_height, (int, np.integer)):
             raise TypeError("Image dimensions must be integers")
         if img_width <= 0 or img_height <= 0:
@@ -826,7 +826,7 @@ class BBox:
 
             # Check that the co-ordinates are a list or tuple of 4 elements
             if not isinstance(coordinates, (list, tuple)) or len(coordinates) != 4:
-                raise ValueError("bbox must be a list or tuple of 4 elements")
+                raise ValueError(f"coordinates must be a list or tuple of 4 elements. Passed {type(coordinates)}.")
 
             if format == BBoxFormat.CORNERS:
                 if self.is_normalized(coordinates, format):
@@ -919,17 +919,19 @@ class BBox:
 
 class BBoxClassId(BBox):
     """
-    BBoxClassId is a subclass of BBox that includes additional attributes for class identification.
+    A bounding box class that includes class identification information.
+    
+    This class extends the base BBox class by adding class identification capabilities
+    through a class ID and optional class name. It supports various coordinate formats
+    and provides methods for data retrieval and manipulation.
+
     Attributes:
-        img_height (int): The height of the image.
-        img_width (int): The width of the image.
-        coordinates (Union[List, Tuple]): The coordinates of the bounding box.
-        class_id (int): The ID of the class.
-        class_name (Optional[str]): The name of the class.
-        format (BBoxFormat): The format of the bounding box coordinates. Default is BBoxFormat.CORNERS.
-    Methods:
-        class_id: Getter and setter for the class ID.
-        class_name: Getter and setter for the class name.
+        img_height (int): Height of the reference image in pixels.
+        img_width (int): Width of the reference image in pixels.
+        coordinates (Union[List, Tuple]): Bounding box coordinates in the specified format.
+        class_id (int): Numeric identifier for the object class.
+        class_name (Optional[str]): Human-readable name for the object class.
+        format (BBoxFormat): Format specification for the coordinates. Defaults to BBoxFormat.CORNERS.
     """
 
     def __init__(
@@ -985,6 +987,30 @@ class BBoxClassId(BBox):
                    and the class information (either class ID or class name).
         """
         return (self.get_coordinates(notation=notation), self.class_id if not self.class_name else self.class_name)
+    
+    def __getitem__(self, idx):
+        """
+        Enable numpy-style indexing for the bounding box coordinates and class ID.
+
+        This method allows accessing the bounding box data (coordinates + class_id) 
+        using index notation. The coordinates are concatenated with the class ID 
+        to form a single array that can be indexed.
+
+        Args:
+            idx: Index or slice to access the data. Valid indices are:
+                0-3: Access the bounding box coordinates
+                4: Access the class ID
+
+        Returns:
+            float: The requested coordinate value or class ID.
+
+        Example:
+            >>> bbox = BBoxClassId(480, 640, [0.1, 0.2, 0.3, 0.4], class_id=1)
+            >>> bbox[0]  # Returns first coordinate (0.1)
+            >>> bbox[4]  # Returns class_id (1)
+            >>> bbox[1:3]  # Returns array([0.2, 0.3])
+        """
+        return np.array(list(self.get_coordinates()) + [self.class_id])[idx]
 
     def __repr__(self):
         """

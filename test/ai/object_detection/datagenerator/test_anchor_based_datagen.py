@@ -9,6 +9,7 @@ import torch.nn as nn
 import tensorflow as tf
 from tensorflow import keras
 import albumentations as A
+import matplotlib.pyplot as plt
 from typing import Tuple, List
 
 from saltup.utils.data.image.image_utils import Image
@@ -192,22 +193,46 @@ class TestAnchorsBasedDataloader:
         assert len(dataloader) == math.ceil(num_samples / 3)
         
     def test_batch_generation(self, dataloader, configs):
-        """Test batch generation."""
+        """Test batch generation with Anchor Based models specific grid format encoding.
+        
+        In Anchor Based models (like YOLO v2), each grid cell predicts B bounding boxes using anchor boxes.
+        For each box we predict 5 + num_classes values:
+        - tx, ty: Center coordinates offset relative to grid cell (0 to 1)
+        - tw, th: Width and height as log-scale transformations relative to anchors (unbounded)
+        - confidence: Objectness score (0 to 1)
+        - class probabilities: One score per class (0 to 1)
+        """
         datagen_configs = configs.AnchorsBasedDatagen
         images, labels = next(iter(dataloader))
         
         # Check shapes
         expected_image_shape = (datagen_configs.batch_size, *datagen_configs.target_size, 
-                              configs.MockDatasetLoader.num_channels)
-        expected_label_shape = (datagen_configs.batch_size, *datagen_configs.grid_size, 
-                              len(datagen_configs.anchors), 5 + datagen_configs.num_classes)
+                            configs.MockDatasetLoader.num_channels)
+        expected_label_shape = (datagen_configs.batch_size, *datagen_configs.grid_size,
+                            len(datagen_configs.anchors), 5 + datagen_configs.num_classes)
         
         assert images.shape == expected_image_shape
         assert labels.shape == expected_label_shape
         
-        # Check value ranges
+        # Images should be normalized to [0,1]
         assert np.all((images >= 0) & (images <= 1))
-        assert np.all((labels >= 0) & (labels <= 1))
+        
+        # tx, ty: Box center coordinates relative to grid cell
+        # These are sigmoid activated in the network, so should be in [0,1]
+        assert np.all((labels[..., 0:2] >= 0) & (labels[..., 0:2] <= 1))
+        
+        # tw, th: Width and height relative to anchors
+        # These use a log-space transform: t = log(truth/anchor)
+        # Can be negative (box smaller than anchor) or positive (box larger than anchor)
+        # No range assertions needed as they can be any real number
+        
+        # Objectness score (confidence) should be in [0,1] 
+        # This is sigmoid activated in the network
+        assert np.all((labels[..., 4] >= 0) & (labels[..., 4] <= 1))
+        
+        # Class probabilities should be in [0,1]
+        # These are softmax activated in the network
+        assert np.all((labels[..., 5:] >= 0) & (labels[..., 5:] <= 1))
         
     def test_batch_size(self, dataloader, configs):
         """Test different batch sizes."""
@@ -251,10 +276,20 @@ class TestAnchorsBasedDataloader:
         (False, True),
         (False, False)
     ])
-    def test_visualization(self, dataloader: AnchorsBasedDatagen, show_grid, show_anchors):
+    def test_visualization(self, dataloader: AnchorsBasedDatagen, show_grid, show_anchors, monkeypatch):
         """Test visualization with different options."""
+        
+        # Mock plt.show() per i test
+        shown = False
+        def mock_show():
+            nonlocal shown
+            shown = True
+        monkeypatch.setattr(plt, 'show', mock_show)
+        
         try:
             dataloader.visualize_sample(0, show_grid=show_grid, show_anchors=show_anchors)
+            # Verifica che plt.show() sia stato chiamato
+            assert shown, "Plot was not displayed"
         except Exception as e:
             pytest.fail(f"Visualization failed: {e}")
 

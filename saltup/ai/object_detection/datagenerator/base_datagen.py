@@ -3,15 +3,18 @@ from typing import Tuple
 import albumentations as A
 import numpy as np
 
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
+
 class BasedDatagenerator(ABC):
     def __init__(
         self, 
-        dataloader,
+        dataloader: BaseDataloader,
         target_size: Tuple[int, int], 
         num_classes: int,
         batch_size: int = 1,
         preprocess: callable = None,
-        transform: A.Compose = None
+        transform: A.Compose = None,
+        seed: int = None
     ):
         """
         Initialize the dataloader.
@@ -26,6 +29,11 @@ class BasedDatagenerator(ABC):
         """
         self.dataloader = dataloader
         self._indexes = np.arange(len(dataloader))
+        if seed:
+            self._rng = np.random.default_rng(seed)
+            self._rng.shuffle(self._indexes)
+        else:
+            self._rng = np.random.default_rng()
         
         self.batch_size = batch_size
         self.target_size = target_size
