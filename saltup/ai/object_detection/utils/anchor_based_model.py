@@ -212,7 +212,9 @@ def postprocess_decode(yolo_output, anchors, num_classes, input_shape, calc_loss
     box_xy = 1 / (1 + np.exp(-yolo_output[..., 0:2]))
     box_wh = np.exp(yolo_output[..., 2:4])
     box_confidence = 1 / (1 + np.exp(-yolo_output[..., 4:5]))
-    box_class_probs = 1 / (1 + np.exp(-yolo_output[..., 5:]))
+    #box_class_probs = 1 / (1 + np.exp(-yolo_output[..., 5:]))
+    exp_class = np.exp(yolo_output[..., 5:])
+    box_class_probs = exp_class / np.sum(exp_class, axis=-1, keepdims=True)
 
     grid_y = np.arange(grid_h).reshape(-1, 1, 1, 1)
     grid_x = np.arange(grid_w).reshape(1, -1, 1, 1)
@@ -231,7 +233,7 @@ def postprocess_decode(yolo_output, anchors, num_classes, input_shape, calc_loss
     return box_xy, box_wh, box_confidence, box_class_probs
 
 
-def postprocess_filter_boxes(my_boxes, boxes, box_confidence, box_class_probs, threshold=0.5):
+def postprocess_filter_boxes(centers_boxes, corners_boxes, box_confidence, box_class_probs, threshold=0.5):
     """
     Filters YOLO boxes based on object and class confidence.
 
@@ -256,12 +258,12 @@ def postprocess_filter_boxes(my_boxes, boxes, box_confidence, box_class_probs, t
     prediction_mask = box_class_scores >= threshold
     
     # Apply boolean mask to filter boxes
-    boxes = boxes[prediction_mask]
-    my_boxes = my_boxes[prediction_mask]
+    corners_boxes = corners_boxes[prediction_mask]
+    centers_boxes = centers_boxes[prediction_mask]
     scores = box_class_scores[prediction_mask]
     classes = box_classes[prediction_mask]
 
-    return boxes, scores, classes, my_boxes
+    return corners_boxes, scores, classes, centers_boxes
 
 
 def tiny_anchors_based_nms(
@@ -282,24 +284,24 @@ def tiny_anchors_based_nms(
         List of selected boxes, scores, and classes.
     """
     box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
-    boxes, my_boxes = convert_matrix_boxes(box_xy, box_wh)
-    boxes, scores, classes, my_boxes = postprocess_filter_boxes(
-        my_boxes, boxes, box_confidence, box_class_probs, threshold=score_threshold
+    corners_boxes, centers_boxes = convert_matrix_boxes(box_xy, box_wh)
+    corners_boxes, scores, classes, centers_boxes = postprocess_filter_boxes(
+        centers_boxes, corners_boxes, box_confidence, box_class_probs, threshold=score_threshold
     )
 
     # Scale boxes to image dimensions
     height, width = image_shape
     image_dims = np.array([width, height, width, height], dtype=np.float32)
-    boxes = boxes * image_dims  # Convert to original image dimensions
+    corners_boxes = corners_boxes * image_dims  # Convert to original image dimensions
     
     #to avoid invalid boxes (negative values)
-    boxes[:, 0] = np.maximum(0, np.minimum(width, boxes[:, 0]))  # x1
-    boxes[:, 1] = np.maximum(0, np.minimum(height, boxes[:, 1]))  # y1
-    boxes[:, 2] = np.maximum(0, np.minimum(width, boxes[:, 2]))  # x2
-    boxes[:, 3] = np.maximum(0, np.minimum(height, boxes[:, 3]))  # y2
+    corners_boxes[:, 0] = np.maximum(0, np.minimum(width, corners_boxes[:, 0]))  # x1
+    corners_boxes[:, 1] = np.maximum(0, np.minimum(height, corners_boxes[:, 1]))  # y1
+    corners_boxes[:, 2] = np.maximum(0, np.minimum(width, corners_boxes[:, 2]))  # x2
+    corners_boxes[:, 3] = np.maximum(0, np.minimum(height, corners_boxes[:, 3]))  # y2
 
     # Wrap boxes into BBox objects
-    bboxes = [BBox(img_height=height, img_width=width, coordinates=box.tolist(), format=BBoxFormat.CORNERS) for box in boxes]
+    bboxes = [BBox(img_height=height, img_width=width, coordinates=box.tolist(), format=BBoxFormat.CORNERS) for box in corners_boxes]
 
     total_boxes, total_scores, total_classes = [], [], []
 
@@ -324,14 +326,14 @@ def tiny_anchors_based_nms(
 
     # Convert results to numpy arrays
     if total_boxes:
-        s_boxes = np.array([box.get_coordinates() for box in total_boxes], dtype=np.float32)
+        s_corners_boxes = np.array([box.get_coordinates() for box in total_boxes], dtype=np.float32)
         s_scores = np.array(total_scores, dtype=np.float32)
         s_classes = np.array(total_classes, dtype=np.int32)
-        s_my_boxes = np.array([box.to_yolo() for box in total_boxes], dtype=np.float32)
+        s_centers_boxes = np.array([box.to_yolo() for box in total_boxes], dtype=np.float32)
     else:
-        s_boxes = np.empty((0, 4), dtype=np.float32)
+        s_corners_boxes = np.empty((0, 4), dtype=np.float32)
         s_scores = np.empty((0,), dtype=np.float32)
         s_classes = np.empty((0,), dtype=np.int32)
-        s_my_boxes = np.empty((0, 4), dtype=np.float32)
+        s_centers_boxes = np.empty((0, 4), dtype=np.float32)
 
-    return s_boxes, s_scores, s_classes, s_my_boxes
+    return s_corners_boxes, s_scores, s_classes, s_centers_boxes

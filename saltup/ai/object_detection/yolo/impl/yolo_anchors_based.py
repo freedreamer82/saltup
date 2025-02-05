@@ -153,7 +153,7 @@ class YoloAnchorsBased(BaseYolo):
             raw_output, anchors, self.number_class, input_shape, calc_loss=False)
         input_image_shape = [image_height, image_width]
 
-        boxes, scores, classes, my_boxes = tiny_anchors_based_nms(
+        corners_boxes, scores, classes, centers_boxes = tiny_anchors_based_nms(
             yolo_outputs=preds_decoded,
             image_shape=input_image_shape,
             max_boxes=self.max_output_boxes,
@@ -164,7 +164,7 @@ class YoloAnchorsBased(BaseYolo):
 
         result = []
         for i, c in reversed(list(enumerate(classes))):
-            box = boxes[i]
+            box = corners_boxes[i]
             score = scores[i]
 
             if all(coord >= 0 for coord in box):

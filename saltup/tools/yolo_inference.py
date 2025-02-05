@@ -131,7 +131,6 @@ def main(args=None):
     parser.add_argument("--type", type=str, help="Input your YOLO model type.")
     parser.add_argument("--img", type=str, default="bus.jpg", help="Path to input image or folder.")
     parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
-    parser.add_argument("--preprocess", type=str, default='true', help="Preprocess the image before entering the model.")
     parser.add_argument("--label", type=str, help="Path to image label or folder.")
     parser.add_argument("--gui", action='store_true', help="Open GUI to draw bounding boxes.")
     parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
