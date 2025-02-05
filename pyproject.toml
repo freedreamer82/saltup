@@ -20,6 +20,7 @@ dependencies = [
     "boto3",
     "onnx",
     "onnxruntime",
+    "onnxruntime-gpu",
     "tensorflow",
     "tf_keras"
 ]

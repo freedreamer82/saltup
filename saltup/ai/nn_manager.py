@@ -73,8 +73,18 @@ class NeuralNetworkManager:
 
             
             elif model_path.endswith(".onnx"):
+                use_gpu = os.getenv("SALTUP_ENV_USE_GPU", "1") == "1"
+                providers = ort.get_available_providers()
+                
+                if use_gpu and "CUDAExecutionProvider" in providers:
+                    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                else:
+                    providers = ["CPUExecutionProvider"]
+                
+                # Load ONNX model with specified providers
+                self.model = ort.InferenceSession(model_path, providers=providers)
                 # Load ONNX model
-                self.model = ort.InferenceSession(model_path)
+                #self.model = ort.InferenceSession(model_path)
                 input_metadata = self.model.get_inputs()[0]
                 model_input_shape = tuple(input_metadata.shape)
                 output_metadata = self.model.get_outputs()[0]
