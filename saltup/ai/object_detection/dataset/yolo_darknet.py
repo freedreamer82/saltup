@@ -4,14 +4,15 @@ import json
 import random
 import shutil
 import numpy as np
+from functools import lru_cache
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict, Counter
-from typing import Iterable, Union, List, Dict, Optional, Tuple
+from typing import Iterable, Union, List, Dict, Optional, Tuple, Set
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode, StorageFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat, NotationFormat
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode, Dataset
 from saltup.utils import configure_logging
 
 
@@ -33,8 +34,8 @@ class YoloDarknetLoader(BaseDataloader):
         Raises:
             FileNotFoundError: If directories don't exist
         """
-        self.logger = configure_logging.get_logger(__name__)
-        self.logger.info("Initializing YOLO Darknet dataset loader")
+        self.__logger = configure_logging.get_logger(__name__)
+        self.__logger.info("Initializing YOLO Darknet dataset loader")
         
         # Validate directories existence
         if not os.path.exists(images_dir):
@@ -42,14 +43,14 @@ class YoloDarknetLoader(BaseDataloader):
         if not os.path.exists(labels_dir):
             raise FileNotFoundError(f"Labels directory not found: {labels_dir}")
             
-        self.image_dir = Path(images_dir)
-        self.labels_dir = Path(labels_dir)
+        self._images_dir = Path(images_dir)
+        self._labels_dir = Path(labels_dir)
         self.color_mode = color_mode
         self._current_index = 0
         
         # Load image-label pairs
         self.image_label_pairs = self._load_image_label_pairs()
-        self.logger.info(f"Found {len(self.image_label_pairs)} image-label pairs")
+        self.__logger.info(f"Found {len(self.image_label_pairs)} image-label pairs")
 
     def __iter__(self):
         """Return iterator object (self in this case)."""
@@ -136,23 +137,349 @@ class YoloDarknetLoader(BaseDataloader):
         image_label_pairs = []
         skipped_images = 0
         
-        for image_file in os.listdir(self.image_dir):
+        for image_file in os.listdir(self._images_dir):
             if image_file.endswith(('.jpg', '.jpeg', '.png')):
                 base_name = os.path.splitext(image_file)[0]
-                image_path = str(self.image_dir / image_file)
-                label_path = str(self.labels_dir / f"{base_name}.txt")
+                image_path = str(self._images_dir / image_file)
+                label_path = str(self._labels_dir / f"{base_name}.txt")
                 
                 if os.path.exists(label_path):
                     image_label_pairs.append((image_path, label_path))
                 else:
                     skipped_images += 1
-                    self.logger.warning(f"Label not found for {image_file}")
+                    self.__logger.warning(f"Label not found for {image_file}")
         
         if skipped_images > 0:
-            self.logger.warning(f"Skipped {skipped_images} images due to missing labels")
+            self.__logger.warning(f"Skipped {skipped_images} images due to missing labels")
             
         return image_label_pairs
 
+class YoloDataset(Dataset):
+    def __init__(self, images_dir: str, labels_dir: str, refresh_each: int = -1):
+        """
+        Initialize the YoloDataset for medium to large datasets.
+
+        Args:
+            images_dir (str): Directory containing image files.
+            labels_dir (str): Directory containing label files.
+            refresh_each (int): Number of operations before refreshing image IDs cache.
+                If -1, refreshes only on explicit calls. Defaults to -1.
+                
+        Raises:
+            FileNotFoundError: If images_dir or labels_dir don't exist.
+            RuntimeError: If dataset integrity check fails.
+        """
+        super().__init__(images_dir)
+        self._images_dir = Path(images_dir)
+        self._labels_dir = Path(labels_dir)
+        self.__logger = configure_logging.get_logger(__name__)
+        
+        # Validate directories
+        if not self._images_dir.exists():
+            raise FileNotFoundError(
+                f"Images directory not found: {self._images_dir}")
+        if not self._labels_dir.exists():
+            raise FileNotFoundError(
+                f"Labels directory not found: {self._labels_dir}")
+        
+        self._image_ids = self._load_image_ids()        
+        self._operations_counter = 0
+        self._operations_to_refresh = refresh_each
+        
+        # Check dataset integrity
+        if not self.check_integrity():
+            raise RuntimeError("Dataset integrity check failed")
+
+    def _refresh_image_ids(self) -> None:
+        """
+        Refresh the internal set of image IDs from disk based on operations counter.
+        
+        This method checks the operations counter against the refresh threshold.
+        If the threshold is reached, it reloads all image IDs from disk.
+        Otherwise, it just increments the counter.
+        """
+        if self._operations_counter < self._operations_to_refresh:
+            self._operations_counter += 1
+        else:
+            self._operations_counter = 0
+            self._image_ids = self._load_image_ids()
+        
+    def _load_image_ids(self) -> Set[str]:
+        """
+        Load image IDs by scanning the images directory.
+
+        Returns:
+            Set[str]: Set of image IDs (filenames without extensions).
+            
+        Note:
+            Only considers files with .jpg, .jpeg, or .png extensions.
+        """
+        return {
+            os.path.splitext(f)[0]
+            for f in os.listdir(self._images_dir)
+            if f.lower().endswith(('.jpg', '.jpeg', '.png'))
+        }
+
+    @lru_cache(maxsize=1000)  # Cache up to 1000 images
+    def get_image(self, image_id: str) -> Image:
+        """
+        Load and return the image for the given ID.
+
+        Args:
+            image_id (str): The ID of the image to retrieve.
+
+        Returns:
+            Image: The image object.
+
+        Raises:
+            FileNotFoundError: If the image file does not exist.
+        """
+        image_path = self._images_dir / f"{image_id}.jpg"
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+        return Image(image_path)
+
+    def save_image(
+        self, 
+        image: Union[np.ndarray, Image, Path], 
+        image_id: str, 
+        overwrite: bool = False
+    ):
+        """
+        Save an image to the dataset.
+
+        Args:
+            image (Union[np.ndarray, Image, Path]): The image to save.
+            image_id (str): The ID of the image.
+            overwrite (bool): Whether to overwrite an existing image.
+
+        Raises:
+            TypeError: If the image type is invalid.
+            FileExistsError: If the image already exists and overwrite is False.
+        """
+        image_dest_filepath = self._images_dir / f"{image_id}.jpg"
+
+        if image_dest_filepath.exists() and not overwrite:
+            raise FileExistsError(f"Image {image_id} already exists and overwrite is False.")
+
+        if isinstance(image, Image):
+            img_to_save = image
+        elif isinstance(image, (np.ndarray, Path)):
+            img_to_save = Image(image)
+        else:
+            raise TypeError(f"Invalid image type: {type(image)}")
+
+        img_to_save.save_jpg(str(image_dest_filepath))
+        self._refresh_image_ids()
+
+    def remove_image(self, image_id: str) -> bool:
+        """Remove an image and its annotations from the dataset."""
+        image_path = self._images_dir / f"{image_id}.jpg"
+        label_path = self._labels_dir / f"{image_id}.txt"
+        
+        removed = False
+        try:
+            if image_path.exists():
+                image_path.unlink()
+                removed = True
+            if label_path.exists():
+                label_path.unlink()
+                removed = True
+            
+            if removed:
+                self._refresh_image_ids()
+                # Clear cached data
+                self.get_image.cache_clear()
+                self.get_annotations.cache_clear()
+                
+            return removed
+            
+        except Exception as e:
+            self.__logger.error(f"Failed to remove {image_id}: {e}")
+            return False
+        
+    @lru_cache(maxsize=1000)
+    def get_annotations(self, image_id: str) -> List[BBoxClassId]:
+        """
+        Load and return the annotations for the given image ID.
+
+        Args:
+            image_id (str): The ID of the image to retrieve annotations for.
+
+        Returns:
+            List[BBoxClassId]: List of bounding box annotations.
+            Empty list if no annotations exist.
+            
+        Raises:
+            FileNotFoundError: If the image corresponding to image_id doesn't exist.
+            ValueError: If the annotations file exists but contains invalid data.
+            
+        Note:
+            Results are cached to improve performance on repeated access.
+        """
+        label_path = self._labels_dir / f"{image_id}.txt"
+        if not label_path.exists():
+            return []
+
+        # Load image to get dimensions
+        image = self.get_image(image_id)
+        image_width, image_height = image.get_width(), image.get_height()
+
+        # Parse annotations
+        annotations = []
+        for annotation in read_label(label_path):
+            class_id, x_center, y_center, width, height = annotation
+            annotations.append(BBoxClassId(
+                class_id=int(class_id),
+                coordinates=[x_center, y_center, width, height],
+                img_width=image_width,
+                img_height=image_height,
+                format=BBoxFormat.CENTER
+            ))
+
+        return annotations
+
+    def save_annotations(
+        self, 
+        annotations: Union[List, Tuple, BBoxClassId], 
+        image_id: str, 
+        overwrite: bool = False
+    ):
+        """
+        Save annotations for an image in YOLO format.
+
+        Args:
+            annotations: The annotations to save. Can be:
+                - BBoxClassId: Single bounding box with class information
+                - List/Tuple: Raw YOLO format annotations as (class_id, x, y, w, h)
+                where all coordinates are normalized [0-1]
+            image_id (str): The ID of the image.
+            overwrite (bool): Whether to overwrite existing annotations.
+
+        Raises:
+            TypeError: If the annotations type is invalid.
+            FileExistsError: If the annotations already exist and overwrite is False.
+            ValueError: If coordinates are not normalized or in wrong format.
+        """
+        label_dest_filepath = self._labels_dir / f"{image_id}.txt"
+        if isinstance(annotations, BBoxClassId):
+            annotations = annotations.get_coordinates(NotationFormat.YOLO)
+        elif isinstance(annotations, List) or isinstance(annotations, Tuple):
+            pass
+        else:
+            raise TypeError(
+                f"Type '{type(annotations)}' not correct for annotations.")
+
+        if label_dest_filepath.exists() and not overwrite:
+            raise FileExistsError(
+                f"Annotations for {image_id} already exist and overwrite is False.")
+
+        write_label(label_dest_filepath, annotations)
+
+    def save_image_annotations(
+        self, 
+        image: Union[np.ndarray, Image, Path], 
+        image_id: str, 
+        annotations: Union[List, Tuple, BBoxClassId]
+    ) -> None:
+        """
+        Save both an image and its annotations to the dataset.
+
+        This method saves the provided image to the images directory and its associated 
+        annotations to the labels directory. The image will be saved in JPG format and 
+        the annotations in YOLO format (normalized coordinates).
+
+        Args:
+            image: The image to save. Can be:
+                - numpy.ndarray: Raw image data
+                - Image: Instance of the Image class
+                - Path: Path to an existing image file
+            image_id: Unique identifier for the image. Will be used as the filename 
+                (without extension) for both the image and its annotations.
+            annotations: The annotations to save. Can be:
+                - List/Tuple: Raw YOLO format annotations as (class_id, x, y, w, h)
+                - BBoxClassId: Single bounding box with class information
+                - List[BBoxClassId]: Multiple bounding boxes
+
+        Raises:
+            TypeError: If image or annotations are not of supported types
+            FileExistsError: If image or annotations already exist and overwrite=False
+            ValueError: If the annotations format is invalid
+            OSError: If there are issues writing the files to disk
+        """
+        self.save_image(image, image_id)
+        self.save_annotations(annotations, image_id)
+
+    def list_images_ids(self, max_entries: Optional[int] = None) -> List[str]:
+        """
+        List all image IDs in the dataset.
+
+        Args:
+            max_entries (Optional[int]): Maximum number of IDs to return.
+
+        Returns:
+            List[str]: List of image IDs.
+        """
+        self._image_ids = self._load_image_ids()
+        ids = sorted(self._image_ids)  # Convert to sorted list
+        return ids[:max_entries] if max_entries else ids
+
+    def check_integrity(self, stats: dict = None) -> bool:
+        """
+        Check the integrity of the dataset.
+        
+        Performs the following checks:
+        - All image IDs have corresponding image files
+        - All image IDs have corresponding label files
+        - All label files contain valid annotations
+        
+        Args:
+            stats (dict, optional): Dictionary to store detailed integrity statistics.
+                If provided, will be populated with lists of:
+                - missing_images: Images referenced but not found
+                - missing_labels: Labels referenced but not found 
+                - invalid_annotations: Images with malformed annotations
+                
+        Returns:
+            bool: True if all checks pass, False otherwise.
+            
+        Note:
+            Issues are logged using the class logger.
+        """
+        if stats is None:
+            stats = {
+                'missing_images': [], 'missing_labels': [], 'invalid_annotations': []
+            }
+        
+        intact = True
+        for image_id in self._image_ids:
+            # Check for missing labels
+            label_path = _find_matching_label(image_id, self._labels_dir)
+            if label_path is None:
+                self.__logger.warning(f"Missing label file for image {label_path}")
+                stats['missing_labels'].append(label_path)
+                intact = False
+                
+            # Check for missing images
+            image_path = _find_matching_image(image_id, self._images_dir)
+            if image_id is None:
+                self.__logger.warning(f"Missing image file for label {image_path}")
+                stats['missing_images'].append(image_path)
+                intact = False
+
+            # Check for invalid annotations
+            try:
+                self.get_annotations(image_id)
+            except Exception as e:
+                self.__logger.warning(f"Invalid annotations for image {image_id}: {e}")
+                stats['invalid_annotations'].append(image_path)
+                intact = False
+
+        return intact
+
+    def is_annotation_valid(self, annotation):
+        # Not used in this case
+        raise NotImplementedError
 
 def create_dataset_structure(root_dir: str):
     """Creates YOLO Darknet directory structure if it doesn't exist.
@@ -308,11 +635,11 @@ def analyze_dataset(root_dir: str, class_names: Optional[List[str]] = None) -> N
                 print(f"  * {class_name}: {count}")
 
 
-def read_label(label_file: str) -> list:
+def read_label(label_file: Union[str, Path]) -> list:
     """Parse YOLO Darknet format labels from a text file.
 
     Args:
-        label_file (str): Path to the YOLO Darknet label file
+        label_file (str, Path): Path to the YOLO Darknet label file
 
     Returns:
         list: List of tuples containing (class_id, x, y, width, height) for each bounding box
@@ -340,7 +667,7 @@ def read_label(label_file: str) -> list:
     return labels
 
 
-def write_label(label_file: str, labels: Iterable[Union[list, tuple]], file_mode: str = 'w') -> None:
+def write_label(label_file: str, annotations: Iterable[Union[list, tuple]], file_mode: str = 'w') -> None:
     """Write object detection labels in YOLO format.
 
     Args:
@@ -353,17 +680,17 @@ def write_label(label_file: str, labels: Iterable[Union[list, tuple]], file_mode
         ValueError: If coordinates are not normalized [0-1] or invalid format
     """
     with open(label_file, file_mode) as file:
-        for label in labels:
-            if len(label) != 5:
+        for annotation in annotations:
+            if len(annotation) != 5:
                 raise ValueError("Each label must have 5 values: class_id, x, y, w, h")
                 
-            class_id, xc, yc, w, h = label
+            class_id, xc, yc, w, h = annotation
             
             # Validate coordinates
             if not all(0 <= coord <= 1 for coord in (xc, yc, w, h)):
                 raise ValueError("Coordinates must be normalized [0-1]")
             
-            file.write(f'{" ".join(map(str, label))}\n')
+            file.write(f'{" ".join(map(str, annotation))}\n')
 
 
 def list_all_labels(label_dir: str) -> List[str]:
@@ -991,7 +1318,7 @@ def _image_per_class_id(labels_dir: str, images_dir: str) -> dict:
     return class_to_images
 
 
-def _find_matching_image(base_name: str, images_dir: str) -> Optional[str]:
+def _find_matching_image(base_name: str, images_dir: str) -> Optional[Path]:
     """Find matching image file for a given base name.
     
     Args:
@@ -1004,11 +1331,11 @@ def _find_matching_image(base_name: str, images_dir: str) -> Optional[str]:
     for ext in ('.jpg', '.jpeg'):
         image_path = os.path.join(images_dir, f"{base_name}{ext}")
         if os.path.exists(image_path):
-            return image_path
+            return Path(image_path)
     return None
 
 
-def _find_matching_label(base_name: str, labels_dir: str) -> Optional[str]:
+def _find_matching_label(base_name: str, labels_dir: str) -> Optional[Path]:
     """Find matching label file for a given base name.
     
     Args:
@@ -1018,5 +1345,5 @@ def _find_matching_label(base_name: str, labels_dir: str) -> Optional[str]:
     Returns:
         Full path to matching label if found, None otherwise
     """
-    label_path = os.path.join(labels_dir, f"{base_name}.txt")
-    return label_path if os.path.exists(label_path) else None
+    label_path = Path(labels_dir) / f"{base_name}.txt"
+    return label_path if label_path.exists() else None

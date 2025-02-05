@@ -1028,6 +1028,16 @@ class BBoxClassId(BBox):
             coordinates={self.get_coordinates()},
             class_id={self.class_id},
             class_name={self.class_name})"""
+            
+    @classmethod
+    def from_yolo_file(cls, file_path: str, img_height: int, img_width: int) -> Tuple[List['BBoxClassId']]:
+        bbox, class_id = super().from_yolo_file(file_path, img_height, img_width)
+        return cls(
+            img_height = bbox.get_img_height(),
+            img_width = bbox.get_img_width(),
+            coordinates = bbox.get_coordinates(),
+            class_id = class_id
+        )
 
 
 class BBoxClassIdScore(BBoxClassId):
