@@ -375,6 +375,9 @@ class YoloDataset(Dataset):
                 f"Annotations for {image_id} already exist and overwrite is False.")
 
         write_label(label_dest_filepath, annotations)
+        
+        # Clear the cache for this image_id to ensure fresh data is loaded next time
+        self.get_annotations.cache_clear()
 
     def save_image_annotations(
         self, 
