@@ -424,5 +424,3 @@ class TestFrameworksAnchorsBasedDatagenerator:
         
         assert len(history.history['loss']) == 1
         print("Keras training completed successfully")            
-
-# TODO: Add test with DataLoader integrated with Image and BBox classes OR integrate that classes in MockDatasetLoader
