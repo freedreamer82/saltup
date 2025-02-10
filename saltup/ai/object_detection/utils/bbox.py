@@ -910,7 +910,6 @@ class BBox:
             TypeError: If the format is not a BBoxFormat or if the iou_type is not an IoUType.
             ValueError: If the iou_type is invalid.
         """
-        print("Computing IoU")
         return BBox.__compute_iou(self, other, format, iou_type)
         
     def __repr__(self):
