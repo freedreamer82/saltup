@@ -374,7 +374,8 @@ class YoloDataset(Dataset):
         self, 
         image: Union[np.ndarray, Image, Path], 
         image_id: str, 
-        annotations: Union[List, Tuple, BBoxClassId]
+        annotations: Union[List, Tuple, BBoxClassId],
+        overwrite: bool = False
     ) -> None:
         """
         Save both an image and its annotations to the dataset.
@@ -401,8 +402,8 @@ class YoloDataset(Dataset):
             ValueError: If the annotations format is invalid
             OSError: If there are issues writing the files to disk
         """
-        self.save_image(image, image_id)
-        self.save_annotations(annotations, image_id)
+        self.save_image(image, image_id, overwrite=overwrite)
+        self.save_annotations(annotations, image_id, overwrite=overwrite)
 
     def list_images_ids(self, max_entries: Optional[int] = None) -> List[str]:
         """
