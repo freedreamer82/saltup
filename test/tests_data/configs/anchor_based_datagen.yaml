@@ -1,4 +1,4 @@
-TestAnchorsBasedDataloader:
+TestAnchorsBasedDatagenerator:
   MockDatasetLoader:
     num_samples: 12
     img_height: 416 
@@ -12,7 +12,7 @@ TestAnchorsBasedDataloader:
     num_classes: 2
     batch_size: 4
 
-TestFrameworksAnchorsBasedDataloader:
+TestFrameworksAnchorsBasedDatagenerator:
   MockDatasetLoader:
     num_samples: 10 
     img_height: 416 

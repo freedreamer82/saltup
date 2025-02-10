@@ -144,13 +144,13 @@ def create_simple_keras_model(input_shape: Tuple[int, int, int], num_classes: in
     return keras.Model(inputs=inputs, outputs=outputs)
 
 
-class TestAnchorsBasedDataloader:
+class TestAnchorsBasedDatagenerator:
     
     @pytest.fixture
     def configs(self, root_dir):
         with open(os.path.join(str(root_dir), 'tests_data/configs/anchor_based_datagen.yaml')) as stream:
             configs = yaml.safe_load(stream)
-        return DotMap(configs["TestAnchorsBasedDataloader"])
+        return DotMap(configs["TestAnchorsBasedDatagenerator"])
     
     @pytest.fixture
     def mock_loader(self, configs):
@@ -294,13 +294,13 @@ class TestAnchorsBasedDataloader:
             pytest.fail(f"Visualization failed: {e}")
 
 
-class TestFrameworksAnchorsBasedDataloader:
+class TestFrameworksAnchorsBasedDatagenerator:
     
     @pytest.fixture
     def configs(self, root_dir):
         with open(os.path.join(str(root_dir), 'tests_data/configs/anchor_based_datagen.yaml')) as stream:
             configs = yaml.safe_load(stream)
-        return DotMap(configs["TestFrameworksAnchorsBasedDataloader"])
+        return DotMap(configs["TestFrameworksAnchorsBasedDatagenerator"])
     
     @pytest.fixture
     def mock_loader(self, configs):
@@ -324,9 +324,9 @@ class TestFrameworksAnchorsBasedDataloader:
             A.GaussNoise(p=0.5)
         ], bbox_params=A.BboxParams(format='yolo'))
     
-    def test_pytorch_dataloader(self, tensorflow_config, mock_loader, configs, transform):
-        """Test PyTorch dataloader implementation."""
-        print("\nTesting PyTorch Dataloader...")
+    def test_pytorch_datagenerator(self, tensorflow_config, mock_loader, configs, transform):
+        """Test PyTorch datagenerator implementation."""
+        print("\nTesting PyTorch DataGenerator...")
         
         datagen_configs = configs.AnchorsBasedDatagen
         # Initialize dataset
@@ -375,9 +375,9 @@ class TestFrameworksAnchorsBasedDataloader:
             if batch_idx >= 2:  # Test a few batches
                 break
                 
-    def test_keras_dataloader(self, tensorflow_config, mock_loader, configs, transform):
-        """Test Keras dataloader implementation."""
-        print("\nTesting Keras Dataloader...")
+    def test_keras_datagenerator(self, tensorflow_config, mock_loader, configs, transform):
+        """Test Keras datagenerator implementation."""
+        print("\nTesting Keras Datagenerator...")
         
         datagen_configs = configs.AnchorsBasedDatagen
         # Initialize dataset
