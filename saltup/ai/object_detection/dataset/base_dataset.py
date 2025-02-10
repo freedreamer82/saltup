@@ -6,10 +6,11 @@ from tqdm import tqdm
 from datetime import datetime
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Iterator, Tuple, Any
+from typing import Iterator, Tuple, Any, List, Tuple, Union
 import base64
 import io
 
+from saltup.ai.object_detection.utils.bbox import BBoxClassId
 from saltup.utils.data.image.image_utils import Image, ColorMode
 
 
@@ -19,7 +20,7 @@ class StorageFormat(Enum):
     PARQUET = 'parquet'
 
 
-class BaseDatasetLoader(ABC):
+class BaseDataloader(ABC):
     """Base interface for dataset loaders.
 
     Abstract base class that defines the interface for dataset loaders.
@@ -30,11 +31,58 @@ class BaseDatasetLoader(ABC):
     def __iter__(self):
         """Returns iterator over image and label paths."""
         raise NotImplementedError
+    
+    @abstractmethod
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+        """Get next item from dataset."""
+        raise NotImplementedError
 
     @abstractmethod
     def __len__(self) -> int:
         """Returns total number of samples in dataset."""
         raise NotImplementedError
+    
+    def __getitem__(self, idx: Union[int, slice]) -> Union[
+        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
+        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+    ]:
+        """Get item(s) by index.
+        
+        Provides a default implementation that uses iteration to access elements.
+        Subclasses can override this method with more efficient implementations
+        that directly access their data structures.
+        
+        Args:
+            idx: Integer index or slice object
+            
+        Returns:
+            Single (image, annotations) tuple or list of tuples if slice
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        # Handle negative indices
+        if isinstance(idx, int):
+            if idx < 0:
+                idx += len(self)
+            if not 0 <= idx < len(self):
+                raise IndexError("Index out of range")
+            
+            # Iterate until we reach the desired index
+            iterator = iter(self)
+            for _ in range(idx):
+                next(iterator)
+            return next(iterator)
+            
+        elif isinstance(idx, slice):
+            # Get the actual indices from the slice
+            indices = range(*idx.indices(len(self)))
+            
+            # Use the integer indexing we just defined
+            return [self[i] for i in indices]
+        
+        else:
+            raise TypeError(f"Invalid index type: {type(idx)}")
 
     @staticmethod
     def load_image(
@@ -189,8 +237,8 @@ class BaseDatasetLoader(ABC):
                 # Convert back from Parquet storage format
                 dataset = [
                     (
-                        BaseDatasetLoader._deserialize_array(row['image']),
-                        BaseDatasetLoader._deserialize_label(row['label'])
+                        BaseDataloader._deserialize_array(row['image']),
+                        BaseDataloader._deserialize_label(row['label'])
                     )
                     for row in df.to_dict('records')
                 ]
@@ -213,3 +261,53 @@ class BaseDatasetLoader(ABC):
                 f"Failed to unpickle dataset file: {e}")
         except Exception as e:
             raise ValueError(f"Error loading dataset: {e}")
+
+
+class Dataset(ABC):
+    def __init__(self, root_dir: str):
+        self.root_dir = root_dir
+
+    @abstractmethod
+    def get_image(self, image_id: str) -> Image:
+        """Returns the image corresponding to the specified ID."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_image(self, image: Image, image_id: str):
+        """Saves the image with the specified ID."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_annotations(self, image_id: str) -> List[BBoxClassId]:
+        """Returns the annotations corresponding to the specified image ID."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_annotations(self, annotations: List[BBoxClassId], image_id: str):
+        """Saves the annotations for the image with the specified ID."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_image_annotations(self, image: Image, image_id: str, annotations: List[BBoxClassId]):
+        """Saves both the image and its annotations with the specified ID."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_images_ids(self, max_entries: int = None) -> List[str]:
+        """Returns a list of all image ids in the dataset."""
+        raise NotImplementedError
+
+    def list_annotations(self, max_entries: int = -1) -> List[str]:
+        """Returns a list of all image ids in the dataset."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def check_integrity(self) -> bool:
+        """Checks the integrity of the dataset."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_annotation_valid(self, annotation: List[BBoxClassId]) -> bool:
+        """Checks if the given annotation is valid."""
+        raise NotImplementedError
+

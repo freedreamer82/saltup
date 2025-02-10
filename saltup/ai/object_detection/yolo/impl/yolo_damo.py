@@ -1,11 +1,11 @@
 import numpy as np
 import cv2
-from typing import Optional, Union, Callable, Dict, Any, List, Tuple
-
+from typing import Union, Any, List, Tuple
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.utils.data.image.image_utils import  Image, ColorMode ,ImageFormat
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
+
 
 class YoloDamo(BaseYolo):
     """
@@ -36,13 +36,13 @@ class YoloDamo(BaseYolo):
          
     @staticmethod
     def preprocess(
-                   image: Image,
-                   target_height:int, 
-                   target_width:int,        
-                   normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
-                   apply_padding: bool = True,
-                   **kwargs: Any
-                   ) -> np.ndarray:
+        image: Union[np.ndarray, Image],
+        target_height:int, 
+        target_width:int,        
+        normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+        apply_padding: bool = True,
+        **kwargs: Any
+    ) -> np.ndarray:
         """Process input image according to DAMO model requirements.
 
         Args:
@@ -59,14 +59,18 @@ class YoloDamo(BaseYolo):
         Raises:
             ValueError: For invalid or empty inputs
         """
-        
-        raw_image = image.get_data()
-        num_channel = image.get_number_channel()
+        if isinstance(image, Image):
+            raw_image = image.get_data()
+            num_channel = image.get_number_channel()
+        elif isinstance(image, np.ndarray):
+            raw_image = image
+            num_channel = 1 if len(image.shape) < 3 else image.shape[2]
+        else:
+            raise TypeError(f"Invalid type {type(image)} for image: should be 'np.ndarray' or 'saltup.Image'.")
         
         # Validate input format
         if num_channel not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
+            raise ValueError("Only 1 or 3 channels are supported for multi-channel images")
 
         # Resize to target dimensions
         image_data = cv2.resize(raw_image, (target_width, target_height))

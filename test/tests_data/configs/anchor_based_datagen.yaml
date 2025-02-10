@@ -1,0 +1,27 @@
+TestAnchorsBasedDatagenerator:
+  MockDatasetLoader:
+    num_samples: 12
+    img_height: 416 
+    img_width: 416 
+    num_channels: 1 
+    use_embedded_classes: True
+  AnchorsBasedDatagen:
+    anchors: [[0.2, 0.2], [0.5, 0.5]]
+    target_size: [224, 224] 
+    grid_size: [7,7]
+    num_classes: 2
+    batch_size: 4
+
+TestFrameworksAnchorsBasedDatagenerator:
+  MockDatasetLoader:
+    num_samples: 10 
+    img_height: 416 
+    img_width: 416 
+    num_channels: 1 
+    use_embedded_classes: False
+  AnchorsBasedDatagen:
+    anchors: [[0.12, 0.15], [0.25, 0.25], [0.35, 0.35]]
+    target_size: [416, 416]
+    grid_size: [13, 13]
+    num_classes: 3
+    batch_size: 2

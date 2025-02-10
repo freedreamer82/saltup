@@ -6,6 +6,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from saltup.utils.data.image.image_utils import Image as SaltupImage
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
 from saltup.ai.object_detection.dataset.yolo_darknet import (
     read_label, write_label, create_dataset_structure,
     validate_dataset_structure, analyze_dataset,
@@ -13,7 +14,7 @@ from saltup.ai.object_detection.dataset.yolo_darknet import (
     shift_class_ids, split_dataset,
     split_and_organize_dataset, count_objects,
     _extract_unique_classes, _create_labels_map,
-    _image_per_class_id, YoloDarknetLoader, ColorMode
+    _image_per_class_id, YoloDarknetLoader, ColorMode, YoloDataset
 )
 
 class TestYOLODarknet:
@@ -264,7 +265,7 @@ class TestYOLODarknet:
         analyze_dataset(str(root_dir))
         
 
-class TestYOLODarknetDataloader:
+class TestYOLODarknetLoader:
     @pytest.fixture
     def sample_dataset(self, tmp_path):
         """Create a sample YOLO dataset with images and labels."""
@@ -303,7 +304,7 @@ class TestYOLODarknetDataloader:
         _, dirs = sample_dataset
         
         loader = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"])
         )
         
@@ -318,11 +319,23 @@ class TestYOLODarknetDataloader:
             
             # Check labels format
             for label in labels:
-                assert len(label) == 5  # class_id, x, y, w, h
-                assert 0 <= label[1] <= 1  # x normalized
-                assert 0 <= label[2] <= 1  # y normalized
-                assert 0 < label[3] <= 1   # width normalized
-                assert 0 < label[4] <= 1   # height normalized
+                if isinstance(label, np.ndarray):
+                    assert len(label) == 5  # class_id, x, y, w, h
+                    assert 0 <= label[1] <= 1  # x normalized
+                    assert 0 <= label[2] <= 1  # y normalized
+                    assert 0 < label[3] <= 1   # width normalized
+                    assert 0 < label[4] <= 1   # height normalized
+                elif isinstance(label, BBoxClassId):
+                    assert isinstance(label, BBoxClassId)
+                    coordinates = label.get_coordinates(NotationFormat.YOLO)
+                    assert len(coordinates) == 4
+                    xc, yc, w, h = coordinates
+                    assert 0 <= xc <= 1
+                    assert 0 <= yc <= 1
+                    assert 0 < w <= 1  
+                    assert 0 < h <= 1
+                else:
+                    raise ValueError(f"Label type '{type(label)}' not recognized.")
 
     def test_yolo_darknet_loader_color_modes(self, sample_dataset):
         """Test different color modes in YoloDarknetLoader."""
@@ -330,21 +343,21 @@ class TestYOLODarknetDataloader:
         
         # Test RGB mode
         loader_rgb = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"]),
             color_mode=ColorMode.RGB
         )
         
         # Test BGR mode
         loader_bgr = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"]),
             color_mode=ColorMode.BGR
         )
         
         # Test GRAY mode
         loader_gray = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"]),
             color_mode=ColorMode.GRAY
         )
@@ -367,14 +380,14 @@ class TestYOLODarknetDataloader:
         # Test with non-existent image directory
         with pytest.raises(FileNotFoundError):
             YoloDarknetLoader(
-                image_dir="/nonexistent/path",
+                images_dir="/nonexistent/path",
                 labels_dir=str(dirs["labels_dir"])
             )
         
         # Test with non-existent labels directory
         with pytest.raises(FileNotFoundError):
             YoloDarknetLoader(
-                image_dir=str(dirs["image_dir"]),
+                images_dir=str(dirs["image_dir"]),
                 labels_dir="/nonexistent/path"
             )
 
@@ -388,7 +401,7 @@ class TestYOLODarknetDataloader:
         
         # Should not raise error but should skip missing pairs
         loader = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(incomplete_labels)
         )
         
@@ -399,7 +412,7 @@ class TestYOLODarknetDataloader:
         _, dirs = sample_dataset
         
         loader = YoloDarknetLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             labels_dir=str(dirs["labels_dir"])
         )
         
@@ -416,6 +429,200 @@ class TestYOLODarknetDataloader:
             assert isinstance(img1, SaltupImage)
             assert isinstance(img2, SaltupImage)
             assert np.array_equal(img1.get_data(), img2.get_data())
+
+
+class TestYoloDataset:
+    @pytest.fixture
+    def sample_dataset(self, tmpdir):
+        """Create a sample YOLO dataset with images and labels."""
+        images_dir = tmpdir.mkdir("images")
+        labels_dir = tmpdir.mkdir("labels")
+        
+        # Sample data con diverse classi e overlapping
+        sample_data = [
+            ("img1.jpg", "0 0.5 0.5 0.2 0.3\n1 0.3 0.4 0.1 0.2"),
+            ("img2.jpg", "1 0.4 0.6 0.3 0.2\n2 0.7 0.3 0.2 0.4"),
+            ("img3.jpg", "0 0.6 0.5 0.25 0.35"),
+        ]
+        
+        # Crea immagine dummy (10x10 nera)
+        dummy_image = np.zeros((10, 10, 3), dtype=np.uint8)
+        
+        # Crea i file di test
+        for img_name, label_content in sample_data:
+            # Crea e salva l'immagine
+            img_path = images_dir / img_name
+            cv2.imwrite(str(img_path), dummy_image)
+            
+            # Crea il file delle label
+            label_path = labels_dir / f"{img_name.replace('.jpg', '.txt')}"
+            with open(label_path, 'w') as f:
+                f.write(label_content)
+        
+        return str(images_dir), str(labels_dir)
+
+    def test_initialization(self, sample_dataset):
+        """Test inizializzazione del dataset."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        assert len(dataset.list_images_ids()) == 3
+
+    def test_get_annotations(self, sample_dataset):
+        """Test caricamento annotazioni."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        
+        annotations = dataset.get_annotations("img1")
+        assert len(annotations) == 2
+        assert isinstance(annotations[0], BBoxClassId)
+        assert annotations[0].class_id == 0
+        assert annotations[1].class_id == 1
+
+    def test_save_and_remove_image(self, sample_dataset):
+        """Test salvataggio e rimozione immagini."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        
+        # Salva nuova immagine
+        new_image = np.zeros((10, 10, 3), dtype=np.uint8)
+        dataset.save_image(new_image, "new_image")
+        assert "new_image" in dataset.list_images_ids()
+        
+        # Rimuovi immagine
+        assert dataset.remove_image("new_image")
+        assert "new_image" not in dataset.list_images_ids()
+
+    def test_check_integrity(self, sample_dataset):
+        """Test controllo integrità."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        
+        assert dataset.check_integrity()
+        
+        # Introduce un errore rimuovendo un file di label
+        os.remove(Path(labels_dir) / "img1.txt")
+        assert not dataset.check_integrity()
+        
+    def test_save_annotations(self, temp_dataset_dir):
+        """Test saving annotations."""
+        images_dir, labels_dir = temp_dataset_dir
+        dataset = YoloDataset(images_dir, labels_dir)
+
+        # Save new annotations
+        new_annotations = [(1, 0.4, 0.4, 0.1, 0.1)]  # YOLO format: class_id, x_center, y_center, width, height
+        dataset.save_annotations(new_annotations, "image1", overwrite=True)
+
+        # Check if annotations were saved
+        annotations = dataset.get_annotations("image1")
+        assert len(annotations) == 1
+        assert annotations[0].class_id == 1
+
+    def test_refresh_mechanism(self, sample_dataset):
+        """Test refresh mechanism."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir, refresh_each=2)
+        
+        # Test adding image
+        new_image = np.zeros((10, 10, 3), dtype=np.uint8)
+        dataset.save_image(new_image, "new_image")
+        
+        # Verify refresh after two operations
+        initial_ids = dataset.list_images_ids()
+        dataset.save_image(new_image, "another_image")  # First operation
+        mid_ids = dataset.list_images_ids()
+        dataset.save_image(new_image, "third_image")    # Second operation
+        final_ids = dataset.list_images_ids()
+        
+        assert len(final_ids) > len(initial_ids)
+        
+    def test_list_images_ids_max_entries(self, sample_dataset):
+        """Test list_images_ids with max_entries."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+
+        # Add multiple images
+        for i in range(5):
+            dummy_image = np.zeros((100, 100, 3), dtype=np.uint8)
+            dataset.save_image(dummy_image, f"image{i}")
+
+        # Check if max_entries works
+        assert len(dataset.list_images_ids(max_entries=3)) == 3
+
+    def test_save_annotations(self, sample_dataset):
+        """Test salvataggio annotazioni."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        
+        annotations = [(1, 0.4, 0.4, 0.1, 0.1)]
+        dataset.save_annotations(annotations, "img1", overwrite=True)
+        
+        loaded_annotations = dataset.get_annotations("img1")
+        assert len(loaded_annotations) == 1
+        assert loaded_annotations[0].class_id == 1
+        
+    def test_save_image_annotations(self, sample_dataset):
+        """Test combined saving of image and annotations."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        
+        # Prepare test data
+        test_image = np.zeros((10, 10, 3), dtype=np.uint8)
+        test_annotations = [
+            (0, 0.5, 0.5, 0.2, 0.3),  # class 0 in center
+            (1, 0.3, 0.7, 0.1, 0.1)   # class 1 top right
+        ]
+        
+        # Save both image and annotations
+        dataset.save_image_annotations(test_image, "test_combined", test_annotations)
+        
+        # Verify image was saved
+        assert "test_combined" in dataset.list_images_ids()
+        
+        # Load and verify image
+        loaded_image = dataset.get_image("test_combined")
+        assert isinstance(loaded_image, SaltupImage)
+        assert loaded_image.get_shape() == (10, 10, 3)
+        
+        # Load and verify annotations
+        loaded_annotations = dataset.get_annotations("test_combined")
+        assert len(loaded_annotations) == 2
+        assert loaded_annotations[0].class_id == 0
+        assert loaded_annotations[1].class_id == 1
+        
+        # Verify annotation coordinates
+        coords0 = loaded_annotations[0].get_coordinates(NotationFormat.YOLO)
+        coords1 = loaded_annotations[1].get_coordinates(NotationFormat.YOLO)
+        
+        assert coords0[0] == pytest.approx(0.5)  # x center
+        assert coords0[1] == pytest.approx(0.5)  # y center
+        assert coords1[0] == pytest.approx(0.3)  # x center
+        assert coords1[1] == pytest.approx(0.7)  # y center
+        
+    def test_invalid_image_or_annotation(self, sample_dataset):
+        """Test handling of invalid images or annotations."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+
+        # Try to load a non-existent image
+        with pytest.raises(FileNotFoundError):
+            dataset.get_image("nonexistent_image")
+
+        # Try to save invalid annotations
+        with pytest.raises(TypeError):
+            dataset.save_annotations("invalid_annotations", "image1")
+
+    def test_invalid_operations(self, sample_dataset):
+        """Test gestione operazioni invalide."""
+        images_dir, labels_dir = sample_dataset
+        dataset = YoloDataset(images_dir, labels_dir)
+        
+        # Test immagine non esistente
+        with pytest.raises(FileNotFoundError):
+            dataset.get_image("nonexistent")
+            
+        # Test annotazioni invalide
+        with pytest.raises(TypeError):
+            dataset.save_annotations("invalid", "img1")
 
 
 if __name__ == '__main__':

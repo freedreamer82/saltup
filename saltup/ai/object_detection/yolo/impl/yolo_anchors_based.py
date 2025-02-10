@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Optional, Union, Callable, Dict, Any, List, Tuple
+from typing import Union, Any, List, Tuple
 import time
 import cv2
 
@@ -10,6 +10,7 @@ from saltup.ai.object_detection.utils.anchor_based_model import (
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from saltup.utils.data.image.image_utils import  ColorMode ,ImageFormat
 from saltup.utils.data.image.image_utils import Image
+
 
 class YoloAnchorsBased(BaseYolo):
     """
@@ -48,7 +49,7 @@ class YoloAnchorsBased(BaseYolo):
     
     @staticmethod
     def preprocess(
-        image: Image,
+        image: Union[np.ndarray, Image],
         target_height: int,
         target_width: int,
         normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
@@ -79,30 +80,35 @@ class YoloAnchorsBased(BaseYolo):
             ValueError: For invalid image formats
             TypeError: For incorrect input types
         """
-        
-        
-        raw_img = image.get_data()
-        
-        channels = image.get_number_channel()
+        if isinstance(image, Image):
+            raw_img = image.get_data()
+            num_channel = image.get_number_channel()
+        elif isinstance(image, np.ndarray):
+            raw_img = image
+            num_channel = 1 if len(image.shape) < 3 else image.shape[2]
+        else:
+            raise TypeError(f"Invalid type {type(image)} for image: should be 'np.ndarray' or 'saltup.Image'.")
         
         # Validate input format
-        if channels not in [1, 3]:
-            raise ValueError(
-                "Only 1 or 3 channels are supported for multi-channel images")
+        if num_channel not in [1, 3]:
+            raise ValueError("Only 1 or 3 channels are supported for multi-channel images")
 
         # Extract dimensions
-        height = image.get_height()
-        width = image.get_width()
-
+        if isinstance(image, Image):
+            height = image.get_height()
+            width = image.get_width()
+        else:
+            height = image.shape[1]
+            width = image.shape[0]
 
         # Handle square padding if needed
         if target_height == target_width and apply_padding:
             max_dim = max(height, width)
-            if channels == 1:
+            if num_channel == 1:
                 padded = np.full((max_dim, max_dim), 114, dtype=np.uint8)
                 padded[0:height, 0:width] = raw_img
             else:
-                padded = np.full((max_dim, max_dim, channels),
+                padded = np.full((max_dim, max_dim, num_channel),
                                  114, dtype=np.uint8)
                 padded[0:height, 0:width, :] = raw_img
             raw_img = padded
@@ -115,7 +121,7 @@ class YoloAnchorsBased(BaseYolo):
         raw_img = normalize_method(raw_img)
 
         # Ensure proper channel dimension
-        if channels == 1:
+        if num_channel == 1:
             raw_img = np.expand_dims(raw_img, axis=-1)
 
         # Prepare batch dimension

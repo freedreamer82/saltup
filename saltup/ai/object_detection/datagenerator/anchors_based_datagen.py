@@ -1,22 +1,17 @@
 from typing import Tuple
 import albumentations as A
 import numpy as np
-import os
 
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader
-from saltup.ai.object_detection.dataloader.base_dataloader import BasedDataloader
-from saltup.ai.object_detection.preprocessing.impl.anchors_based_preprocess import AnchorsBasedPreprocess
-from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format
-from saltup.ai.object_detection.utils.bbox import (
-    compute_iou,
-    center_to_corners_format, 
-    absolute_bbox,
-    BBoxFormat
-)
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
+from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
+from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
+from saltup.utils.data.image.image_utils import Image
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
+from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format, compute_anchor_iou
 from saltup.utils.configure_logging import get_logger
 
 
-class AnchorsBasedDataloader(BasedDataloader):
+class AnchorsBasedDatagen(BasedDatagenerator):
     """
     Dataloader for anchor-based object detection models.
     
@@ -32,20 +27,21 @@ class AnchorsBasedDataloader(BasedDataloader):
     
     def __init__(
         self, 
-        dataset_loader: BaseDatasetLoader,
+        dataloader: BaseDataloader,
         anchors: np.ndarray,
         target_size: Tuple[int, int], 
         grid_size: Tuple[int, int],
         num_classes: int,
         batch_size: int = 1,
         preprocess: callable = None,
-        transform: A.Compose = None
+        transform: A.Compose = None,
+        seed: int = None
     ):
         """
         Initialize the dataloader.
 
         Args:
-            dataset_loader: Base dataset loader providing image-label pairs
+            dataloader: Base dataset loader providing image-label pairs
             anchors: Anchor boxes as array of (width, height) pairs
             target_size: Model input size as (height, width)
             grid_size: Output grid dimensions as (rows, cols)
@@ -54,29 +50,31 @@ class AnchorsBasedDataloader(BasedDataloader):
             preprocess: Optional custom preprocessing function
             transform: Optional albumentations transforms for augmentation
         """
-        self.dataset_loader = dataset_loader
-        self.__indexes = np.arange(len(dataset_loader))
+        super().__init__(
+            dataloader=dataloader,
+            target_size=target_size,
+            num_classes=num_classes,
+            batch_size=batch_size,
+            preprocess=preprocess,
+            transform=transform,
+            seed = seed
+        )
+        
+        self.target_height, self.target_width = self.target_size
         
         self.anchors = anchors
-        self.__num_anchors = len(anchors)
-        
-        self.batch_size = batch_size
-        self.target_size = target_size
+        self._num_anchors = len(anchors)
         self.grid_size = grid_size
-        self.num_classes = num_classes
-        
-        self.__transform = transform
-        self.__augment = True if self.__transform else False
-        
+                
         self.preprocess = preprocess
         if not self.preprocess:
-            self.preprocess = AnchorsBasedPreprocess(apply_padding=False)
+            self.preprocess = YoloAnchorsBased.preprocess
             
-        self.__logger = get_logger(__name__)
-        self.__logger.info("Initializing AnchorsBasedDataloader")
+        self._logger = get_logger(__name__)
+        self._logger.info("Initializing AnchorsBasedDataloader")
     
     def __len__(self):
-        return int(np.ceil(len(self.dataset_loader) / self.batch_size))
+        return int(np.ceil(len(self.dataloader) / self.batch_size))
     
     def __iter__(self):
         for i in range(0, len(self), self.batch_size):
@@ -101,28 +99,45 @@ class AnchorsBasedDataloader(BasedDataloader):
             - images: [batch_size, height, width, channels]
             - labels: [batch_size, grid_h, grid_w, num_anchors, 5 + num_classes]
         """
-        batch_indexes = self.__indexes[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_indexes = self._indexes[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_size = len(batch_indexes)
         
         images = np.zeros((batch_size, self.target_size[0], self.target_size[1], 1), dtype=np.float32)
         labels = np.zeros((batch_size, self.grid_size[0], self.grid_size[1],
-                        self.__num_anchors, 5 + self.num_classes), dtype=np.float32)
+                        self._num_anchors, 5 + self.num_classes), dtype=np.float32)
         
         for i, idx in enumerate(batch_indexes):
             try:
                 # Get image and labels from dataset loader
-                image, annotation_data = next(self.dataset_loader)
+                image, annotation_data = self.dataloader[idx]
                 
                 # Extract boxes and class labels
-                boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
-                
+                if len(annotation_data) > 0:
+                    # Check type and extract data
+                    if isinstance(annotation_data[0], BBoxClassId):
+                        boxes, class_labels = map(np.array, zip(*[
+                            [item.get_coordinates(notation=NotationFormat.YOLO), item.class_id]
+                            for item in annotation_data
+                        ]))
+                    elif isinstance(annotation_data[0], np.ndarray):
+                        boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
+                    else:
+                        raise TypeError(
+                            f"Annotation data type '{type(annotation_data[0])}' not supported. "
+                            "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
+                        )
+                else:
+                    # No annotations case - create empty arrays with correct shapes
+                    boxes = np.empty((0, 4), dtype=np.float32)
+                    class_labels = np.empty(0, dtype=np.int32)
+        
                 # Preprocess image
-                image = self.preprocess(image, self.target_size)
+                image = self.preprocess(image, self.target_height, self.target_width, apply_padding=False)
                 
                 # Apply augmentations
-                if len(boxes) > 0 and self.__augment:
+                if len(boxes) > 0 and self.do_augment:
                     try:
-                        transformed = self.__transform(
+                        transformed = self.transform(
                             image=image.squeeze(),
                             bboxes=boxes.tolist(),
                             class_labels=class_labels
@@ -145,8 +160,9 @@ class AnchorsBasedDataloader(BasedDataloader):
                                 class_labels = np.array(transformed['class_labels'])[valid_mask]
                             else:
                                 pass
+                        
                     except Exception as e:
-                        self.__logger.error(f"Error in augmenting: {e}")
+                        self._logger.error(f"Error in augmenting: {e}")
                 
                 # Convert labels to grid format
                 if len(boxes) > 0:
@@ -162,26 +178,13 @@ class AnchorsBasedDataloader(BasedDataloader):
                     images[i] = image
                 
             except Exception as e:
-                self.__logger.error(f"Failed to process batch item {idx}: {e}")
+                self._logger.error(f"Failed to process batch item {idx}: {e}")
                 continue
             
         return images, labels
         
     def on_epoch_end(self):
-        np.random.shuffle(self.__indexes)
-        
-    @property
-    def transform(self):
-        return self.__transform
-    
-    @transform.setter
-    def transform(self, value):
-        self.__transform = value
-        self.__augment = True if value else False
-        
-    @property
-    def augment(self):
-        return self.__augment
+        self._rng.shuffle(self._indexes)
 
     def visualize_sample(self, idx, show_grid=True, show_anchors=False):
         """
@@ -203,59 +206,82 @@ class AnchorsBasedDataloader(BasedDataloader):
             
         Returns:
             None: Displays a matplotlib plot and prints statistics
-            
-        Todo:
-            * Make bbox visualization independent from dataset format
-            * Add support for different annotation formats (COCO, Pascal VOC)
         """
         
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
         
         try:
-            image, annotation_data = self.dataset_loader[idx]
+            image, annotation_data = self.dataloader[idx]
             
             # Extract boxes and class labels
-            boxes, class_labels = annotation_data[:, :4], annotation_data[:, 4]
+            if len(annotation_data) > 0:
+                # Check type and extract data
+                if isinstance(annotation_data[0], BBoxClassId):
+                    boxes, class_labels = map(np.array, zip(*[
+                        [item.get_coordinates(notation=NotationFormat.YOLO), item.class_id]
+                        for item in annotation_data
+                    ]))
+                elif isinstance(annotation_data[0], np.ndarray):
+                    boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
+                else:
+                    raise TypeError(
+                        f"Annotation data type '{type(annotation_data[0])}' not supported. "
+                        "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
+                    )
+            else:
+                # No annotations case - create empty arrays with correct shapes
+                boxes = np.empty((0, 4), dtype=np.float32)
+                class_labels = np.empty(0, dtype=np.int32)
+
+            # Get image data and dimensions
+            if isinstance(image, Image):
+                image_data = image.get_data()
+                img_width, img_height = image.get_width(), image.get_height()
+            else:
+                image_data = image
+                img_height, img_width = image.shape[:2]
 
             # Preprocess image
-            processed_image = self.preprocess(image, self.target_size)
+            processed_image = self.preprocess(
+                image, self.target_height, self.target_width, apply_padding=False
+            )
             
             # Create subplot
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
             
             # Plot original image
-            ax1.imshow(image, cmap='gray' if len(image.shape) == 2 else None)
-            ax1.set_title(f'Original Image ({image.shape[1]}x{image.shape[0]})')
+            ax1.imshow(image_data, cmap='gray' if len(image_data.shape) == 2 else None)
+            ax1.set_title(f'Original Image ({img_width}x{img_height})')
             
             # Draw original boxes
-            for box, class_id in zip(boxes, class_labels):
-                x_center, y_center, width, height = box
-                
-                # TODO: makes bbox indipendent from the dataset format
-                # Convert normalized coordinates to pixels
-                x1 = int((x_center - width/2) * image.shape[1])
-                y1 = int((y_center - height/2) * image.shape[0])
-                x2 = int((x_center + width/2) * image.shape[1])
-                y2 = int((y_center + height/2) * image.shape[0])
-                
-                # Draw rectangle
-                rect = patches.Rectangle(
-                    (x1, y1), x2-x1, y2-y1,
-                    linewidth=2,
-                    edgecolor='r',
-                    facecolor='none'
-                )
-                ax1.add_patch(rect)
-                
-                # Add label
-                ax1.text(
-                    x1, y1-5,
-                    f'Class {int(class_id)}',
-                    color='red',
-                    fontsize=8,
-                    bbox=dict(facecolor='white', alpha=0.7)
-                )
+            if len(boxes) > 0:
+                for box, class_id in zip(boxes, class_labels):
+                    x_center, y_center, width, height = box
+                    
+                    # Convert normalized coordinates to pixels
+                    x1 = int((x_center - width/2) * img_width)
+                    y1 = int((y_center - height/2) * img_height)
+                    x2 = int((x_center + width/2) * img_width)
+                    y2 = int((y_center + height/2) * img_height)
+                    
+                    # Draw rectangle
+                    rect = patches.Rectangle(
+                        (x1, y1), x2-x1, y2-y1,
+                        linewidth=2,
+                        edgecolor='r',
+                        facecolor='none'
+                    )
+                    ax1.add_patch(rect)
+                    
+                    # Add label 
+                    ax1.text(
+                        x1, y1-5,
+                        f'Class {int(class_id)}',
+                        color='red',
+                        fontsize=8,
+                        bbox=dict(facecolor='white', alpha=0.7)
+                    )
             
             # Plot preprocessed image
             ax2.imshow(processed_image.squeeze(), cmap='gray' if len(processed_image.shape) == 3 else None)
@@ -288,7 +314,7 @@ class AnchorsBasedDataloader(BasedDataloader):
                     
                     # Find best matching anchor
                     for anchor in self.anchors:
-                        iou = compute_iou(np.array([width, height]), np.array(anchor))
+                        iou = compute_anchor_iou(np.array([width, height]), np.array(anchor))
                         if iou > best_iou:
                             best_iou = iou
                             best_anchor = anchor
@@ -314,29 +340,31 @@ class AnchorsBasedDataloader(BasedDataloader):
             plt.show()
             
             # Print statistics
-            print("\nStatistics:")
-            print(f"Number of objects: {len(boxes)}")
-            
-            # Count objects per class
-            for class_id in np.unique(class_labels):
-                count = np.sum(class_labels == class_id)
-                print(f"- Class {int(class_id)}: {count} objects")
-            
             if len(boxes) > 0:
-                boxes = np.array(boxes)
-                widths = boxes[:, 2]
-                heights = boxes[:, 3]
-                print("\nBox dimensions (normalized):")
-                print(f"Width  - min: {widths.min():.3f}, max: {widths.max():.3f}, mean: {widths.mean():.3f}")
-                print(f"Height - min: {heights.min():.3f}, max: {heights.max():.3f}, mean: {heights.mean():.3f}")
+                print("\nStatistics:")
+                print(f"Number of objects: {len(boxes)}")
                 
+                # Count objects per class
+                for class_id in np.unique(class_labels):
+                    count = np.sum(class_labels == class_id)
+                    print(f"- Class {int(class_id)}: {count} objects")
+                
+                if len(boxes) > 0:
+                    boxes = np.array(boxes)
+                    widths = boxes[:, 2]
+                    heights = boxes[:, 3]
+                    print("\nBox dimensions (normalized):")
+                    print(f"Width  - min: {widths.min():.3f}, max: {widths.max():.3f}, mean: {widths.mean():.3f}")
+                    print(f"Height - min: {heights.min():.3f}, max: {heights.max():.3f}, mean: {heights.mean():.3f}")
+                    
         except Exception as e:
-            self.__logger.error(f"Error visualizing sample: {e}")
+            self._logger.error(f"Error visualizing sample: {e}")
+            raise
 
 
 from tensorflow.keras.utils import Sequence #type: ignore
 
-class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
+class KerasAnchorBasedDatagen(AnchorsBasedDatagen, Sequence):
     """
     Keras-specific wrapper for AnchorsBasedDataloader.
     
@@ -349,7 +377,7 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
     
     def __init__(
         self,
-        dataset_loader: BaseDatasetLoader,
+        dataloader: BaseDataloader,
         anchors: np.ndarray,
         target_size: Tuple[int, int],
         grid_size: Tuple[int, int],
@@ -364,9 +392,9 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
         Args match parent class AnchorsBasedDataloader.
         See AnchorsBasedDataloader documentation for details.
         """
-        AnchorsBasedDataloader.__init__(
+        AnchorsBasedDatagen.__init__(
             self,
-            dataset_loader=dataset_loader,
+            dataloader=dataloader,
             anchors=anchors,
             target_size=target_size,
             grid_size=grid_size,
@@ -392,7 +420,7 @@ class KerasAnchorBasedLoader(AnchorsBasedDataloader, Sequence):
 from torch.utils.data import Dataset
 import torch
 
-class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
+class PyTorchAnchorBasedDatagen(AnchorsBasedDatagen, Dataset):
     """
     PyTorch-specific wrapper for AnchorsBasedDataloader.
     
@@ -406,7 +434,7 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
     
     def __init__(
         self,
-        dataset_loader: BaseDatasetLoader,
+        dataloader: BaseDataloader,
         anchors: np.ndarray,
         target_size: Tuple[int, int],
         grid_size: Tuple[int, int],
@@ -421,7 +449,7 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
             batch_size is fixed to 1 since PyTorch handles batching through DataLoader
         
         Args:
-            dataset_loader: Base dataset loader providing image-label pairs
+            dataloader: Base dataset loader providing image-label pairs
             anchors: Anchor boxes as array of (width, height) pairs
             target_size: Model input size as (height, width)
             grid_size: Output grid dimensions as (rows, cols)
@@ -429,9 +457,9 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
             preprocess: Optional custom preprocessing function
             transform: Optional albumentations transforms for augmentation
         """
-        AnchorsBasedDataloader.__init__(
+        AnchorsBasedDatagen.__init__(
             self,
-            dataset_loader=dataset_loader,
+            dataloader=dataloader,
             anchors=anchors,
             target_size=target_size,
             grid_size=grid_size,
@@ -443,7 +471,7 @@ class PyTorchAnchorBasedLoader(AnchorsBasedDataloader, Dataset):
         
     def __len__(self) -> int:
         # Return the total number of samples
-        return len(self.dataset_loader)
+        return len(self.dataloader)
         
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """

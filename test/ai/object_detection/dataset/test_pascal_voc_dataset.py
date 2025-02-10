@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 
 from saltup.utils.data.image.image_utils import Image as SaltupImage
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
 from saltup.ai.object_detection.dataset.pascal_voc import (
     PascalVOCLoader, ColorMode,
     create_dataset_structure,
@@ -105,8 +106,14 @@ class TestPascalVOCDataset:
         annotations = read_annotation(str(annotation_file))
         assert len(annotations) == len(sample_pascal_voc_data["annotations"])
         for ann, expected in zip(annotations, sample_pascal_voc_data["annotations"]):
-            assert ann["class_name"] == expected["class_name"]
-            assert ann["bbox"] == expected["bbox"]
+            if isinstance(ann, dict):
+                assert ann["class_name"] == expected["class_name"]
+                assert ann["bbox"] == expected["bbox"]
+            elif isinstance(ann, BBoxClassId):
+                assert ann.class_name == expected["class_name"]
+                assert ann.get_coordinates(notation=NotationFormat.PASCALVOC) == expected["bbox"]
+            else:
+                raise ValueError(f"Annotation type '{type(ann)}' not recognized.")
 
     def test_get_dataset_paths(self, dataset_dir):
         """Test getting directory paths for Pascal VOC dataset."""
@@ -119,7 +126,7 @@ class TestPascalVOCDataset:
         assert val_annotations_dir == str(root_dir / "annotations" / "val")
         
 
-class TestPascalVOCDataloader:
+class TestPascalVOCLoader:
     @pytest.fixture
     def sample_pascal_voc_data(self):
         """Create sample Pascal VOC format data."""
@@ -179,7 +186,7 @@ class TestPascalVOCDataloader:
         _, dirs = sample_dataset
         
         loader = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"])
         )
         
@@ -192,9 +199,15 @@ class TestPascalVOCDataloader:
             assert isinstance(image.get_data(), np.ndarray)
             assert len(annotations) == 2  # Two objects per annotation
             for ann in annotations:
-                assert "class_name" in ann
-                assert "bbox" in ann
-                assert len(ann["bbox"]) == 4
+                if isinstance(ann, dict):
+                    assert "class_name" in ann
+                    assert "bbox" in ann
+                    assert len(ann["bbox"]) == 4
+                elif isinstance(ann, BBoxClassId):
+                    assert isinstance(ann, BBoxClassId)
+                    assert len(ann.get_coordinates()) == 4
+                else:
+                    raise ValueError(f"Annotation type '{type(ann)}' not recognized.")
 
     def test_pascal_voc_loader_missing_directories(self, sample_dataset):
         """Test PascalVOCLoader with missing directories."""
@@ -203,14 +216,14 @@ class TestPascalVOCDataloader:
         # Test with non-existent image directory
         with pytest.raises(FileNotFoundError):
             PascalVOCLoader(
-                image_dir="/nonexistent/path",
+                images_dir="/nonexistent/path",
                 annotations_dir=str(dirs["annotation_dir"])
             )
         
         # Test with non-existent annotations directory
         with pytest.raises(FileNotFoundError):
             PascalVOCLoader(
-                image_dir=str(dirs["image_dir"]),
+                images_dir=str(dirs["image_dir"]),
                 annotations_dir="/nonexistent/path"
             )
 
@@ -224,7 +237,7 @@ class TestPascalVOCDataloader:
         
         # Should not raise error but should skip missing pairs
         loader = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(incomplete_annotations)
         )
         
@@ -235,7 +248,7 @@ class TestPascalVOCDataloader:
         _, dirs = sample_dataset
         
         loader = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"])
         )
         
@@ -259,21 +272,21 @@ class TestPascalVOCDataloader:
         
         # Test RGB mode
         loader_rgb = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"]),
             color_mode=ColorMode.RGB
         )
         
         # Test BGR mode
         loader_bgr = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"]),
             color_mode=ColorMode.BGR
         )
         
         # Test GRAY mode
         loader_gray = PascalVOCLoader(
-            image_dir=str(dirs["image_dir"]),
+            images_dir=str(dirs["image_dir"]),
             annotations_dir=str(dirs["annotation_dir"]),
             color_mode=ColorMode.GRAY
         )

@@ -15,8 +15,8 @@ class TestDrawBoxesOnImage(unittest.TestCase):
         image = Image(np.zeros((480, 640, 3), dtype=np.uint8))
 
         # Create some bounding boxes (in normalized format)
-        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5], format=BBoxFormat.CENTER)
-        bbox2 = BBox(img_height=480, img_width=640,coordinates=[0.6, 0.5, 0.3, 0.4], format=BBoxFormat.CENTER)
+        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5])
+        bbox2 = BBox(img_height=480, img_width=640,coordinates=[0.6, 0.5, 0.3, 0.4])
 
         # List of bounding boxes
         bboxes = [bbox1, bbox2]
@@ -61,8 +61,8 @@ class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
         image = Image(np.zeros((480, 640, 3), dtype=np.uint8))
 
         # Create some bounding boxes (in normalized format)
-        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5], format=BBoxFormat.CENTER)
-        bbox2 = BBox(img_height=480, img_width=640,coordinates=[0.6, 0.5, 0.3, 0.4], format=BBoxFormat.CENTER)
+        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5])
+        bbox2 = BBox(img_height=480, img_width=640,coordinates=[0.6, 0.5, 0.3, 0.4])
 
         # List of tuples (BBox, class_id, score)
         bboxes_with_labels_score = [

@@ -23,6 +23,7 @@ Key functions:
 import os
 import json
 import shutil
+import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict
@@ -30,14 +31,15 @@ from typing import Dict, List, Tuple, Optional, Union
 import random
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode
 from saltup.utils.configure_logging import logging
 
 
-class COCODatasetLoader(BaseDatasetLoader):
+class COCOLoader(BaseDataloader):
     def __init__(
         self,
-        image_dir: str,
+        images_dir: str,
         annotations_file: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
@@ -57,12 +59,12 @@ class COCODatasetLoader(BaseDatasetLoader):
         self.logger.info("Initializing COCO dataset loader")
         
         # Validate input paths
-        if not os.path.exists(image_dir):
-            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(images_dir):
+            raise FileNotFoundError(f"Images directory not found: {images_dir}")
         if not os.path.exists(annotations_file):
             raise FileNotFoundError(f"Annotations file not found: {annotations_file}")
             
-        self.image_dir = Path(image_dir)
+        self.image_dir = Path(images_dir)
         self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
         self._current_index = 0
@@ -78,20 +80,68 @@ class COCODatasetLoader(BaseDatasetLoader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self) -> Tuple[Image, List]:
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration
             raise StopIteration
         
-        image_path, annotation = self.image_annotation_pairs[self._current_index]
-        self._current_index += 1
-        
-        return self.load_image(image_path, self.color_mode), annotation
+        image, annotations = self._load_item(self._current_index)
+        self._current_index += 1        
+        return image, annotations
 
     def __len__(self):
         """Return total number of samples in dataset."""
         return len(self.image_annotation_pairs)
+    
+    def __getitem__(self, idx: Union[int, slice]) -> Union[
+        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
+        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+    ]:
+        """Get item(s) by index.
+        
+        Args:
+            idx: Integer index or slice object
+            
+        Returns:
+            Single (image, annotations) tuple or list of tuples if slice
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        if isinstance(idx, slice):
+            # Handle slice
+            indices = range(*idx.indices(len(self)))
+            return [self._load_item(i) for i in indices]
+        else:
+            # Handle single index
+            return self._load_item(idx)
+    
+    def _load_item(self, idx: int) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+        """Load single item by index.
+        
+        A differenza di YOLO e Pascal VOC, non necessitiamo di caricare e parsare
+        file di annotazione poiché le annotazioni sono già state processate in
+        _create_image_annotation_pairs().
+        
+        Args:
+            idx: Index of the item to load
+            
+        Returns:
+            Tuple of (image, annotations)
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        if idx < 0:
+            idx += len(self)
+        if not 0 <= idx < len(self):
+            raise IndexError("Index out of range")
+            
+        image_path, annotations = self.image_annotation_pairs[idx]
+        image = self.load_image(image_path, self.color_mode)
+        
+        return image, annotations
 
     def _load_annotations(self) -> Dict:
         """Load COCO annotations from JSON file."""
@@ -131,8 +181,15 @@ class COCODatasetLoader(BaseDatasetLoader):
         for img in self.annotations['images']:
             image_path = os.path.join(self.image_dir, img['file_name'])
             if os.path.exists(image_path):
+                annotations = [BBoxClassId(
+                    coordinates=annotation_raw['bbox'],
+                    class_id=annotation_raw['category_id'],
+                    img_height=img['height'],
+                    img_width=img['width'],
+                    format=BBoxFormat.TOPLEFT
+                ) for annotation_raw in image_to_annotations[img['id']]]
                 image_annotation_pairs.append(
-                    (image_path, image_to_annotations[img['id']])
+                    (image_path, annotations)
                 )
             else:
                 skipped_images += 1
@@ -447,7 +504,7 @@ def convert_coco_to_yolo_labels(
     Returns:
         Dict mapping image filenames to YOLO annotations
     """
-    from saltup.ai.object_detection.utils.bbox import coco_to_yolo_bbox
+    from saltup.ai.object_detection.utils.bbox import BBox
     
     with open(coco_json, 'r') as f:
         coco_data = json.load(f)
@@ -463,15 +520,16 @@ def convert_coco_to_yolo_labels(
         
         # Convert bbox coordinates
         x, y, w, h = ann['bbox']
-        yolo_bbox = coco_to_yolo_bbox(
-            [x, y, w, h],
-            img['width'],
-            img['height']
-        )
+        yolo_bbox = BBox(
+            coordinates=[x, y, w, h],
+            img_width=img['width'],
+            img_height=img['height'],
+            format=BBoxFormat.TOPLEFT
+        ).to_yolo()
         
         # Create YOLO annotation: class_id, x, y, w, h
         class_id = categories[ann['category_id']]
-        yolo_ann = [class_id] + yolo_bbox
+        yolo_ann = [class_id] + list(yolo_bbox)
         
         # Store by image filename
         filename = os.path.splitext(img['file_name'])[0]

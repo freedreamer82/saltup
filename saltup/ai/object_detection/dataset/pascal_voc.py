@@ -34,20 +34,22 @@ Key functions:
 """
 
 import os
+import numpy as np
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Union
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.dataset.base_dataset_loader import BaseDatasetLoader, ColorMode, StorageFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
+from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
 
-class PascalVOCLoader(BaseDatasetLoader):
+class PascalVOCLoader(BaseDataloader):
     def __init__(
         self,
-        image_dir: str,
+        images_dir: str,
         annotations_dir: str,
         color_mode: ColorMode = ColorMode.RGB
     ):
@@ -66,12 +68,12 @@ class PascalVOCLoader(BaseDatasetLoader):
         self.logger.info("Initializing Pascal VOC dataset loader")
         
         # Validate directories existence
-        if not os.path.exists(image_dir):
-            raise FileNotFoundError(f"Images directory not found: {image_dir}")
+        if not os.path.exists(images_dir):
+            raise FileNotFoundError(f"Images directory not found: {images_dir}")
         if not os.path.exists(annotations_dir):
             raise FileNotFoundError(f"Annotations directory not found: {annotations_dir}")
             
-        self.image_dir = Path(image_dir)
+        self.image_dir = Path(images_dir)
         self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
         self._current_index = 0
@@ -85,20 +87,65 @@ class PascalVOCLoader(BaseDatasetLoader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self) -> Tuple[Image, List]:
+    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration
             raise StopIteration
             
-        image_path, annotation_path = self.image_annotation_pairs[self._current_index]
-        self._current_index += 1
-        
-        return self.load_image(image_path, self.color_mode), read_annotation(annotation_path)
+        image, annotations = self._load_item(self._current_index)
+        self._current_index += 1        
+        return image, annotations
 
     def __len__(self):
         """Return total number of samples in dataset."""
         return len(self.image_annotation_pairs)
+    
+    def __getitem__(self, idx: Union[int, slice]) -> Union[
+        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
+        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+    ]:
+        """Get item(s) by index.
+        
+        Args:
+            idx: Integer index or slice object
+            
+        Returns:
+            Single (image, annotations) tuple or list of tuples if slice
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        if isinstance(idx, slice):
+            # Handle slice
+            indices = range(*idx.indices(len(self)))
+            return [self._load_item(i) for i in indices]
+        else:
+            # Handle single index
+            return self._load_item(idx)
+    
+    def _load_item(self, idx: int) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+        """Load single item by index.
+        
+        Args:
+            idx: Index of the item to load
+            
+        Returns:
+            Tuple of (image, annotations)
+            
+        Raises:
+            IndexError: If index out of range
+        """
+        if idx < 0:
+            idx += len(self)
+        if not 0 <= idx < len(self):
+            raise IndexError("Index out of range")
+            
+        image_path, annotation_path = self.image_annotation_pairs[idx]
+        image = self.load_image(image_path, self.color_mode)
+        annotations = read_annotation(annotation_path)
+        
+        return image, annotations
 
     def _load_image_annotation_pairs(self) -> List[Tuple[str, str]]:
         """
@@ -252,7 +299,7 @@ def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, 
     return stats
 
 
-def read_annotation(annotation_file: str) -> List[Dict]:
+def read_annotation(annotation_file: str) -> List[BBoxClassId]:
     """Parse Pascal VOC format annotations from an XML file.
 
     Args:
@@ -265,6 +312,9 @@ def read_annotation(annotation_file: str) -> List[Dict]:
     """
     tree = ET.parse(annotation_file)
     root = tree.getroot()
+    
+    width = int(root.find('size/width').text)
+    height = int(root.find('size/height').text)
 
     annotations = []
     for obj in root.findall('object'):
@@ -274,10 +324,15 @@ def read_annotation(annotation_file: str) -> List[Dict]:
         ymin = int(bbox.find('ymin').text)
         xmax = int(bbox.find('xmax').text)
         ymax = int(bbox.find('ymax').text)
-        annotations.append({
-            'class_name': class_name,
-            'bbox': (xmin, ymin, xmax, ymax)
-        })
+        annotations.append(BBoxClassId(
+            coordinates=(xmin, ymin, xmax, ymax),
+            class_name=class_name,
+            # Pascal VOC don't have class IDs
+            class_id=None,
+            img_height=height,
+            img_width=width,
+            format=BBoxFormat.CORNERS
+        ))
 
     return annotations
 
