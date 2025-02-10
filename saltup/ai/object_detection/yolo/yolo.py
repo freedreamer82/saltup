@@ -9,14 +9,12 @@ import cv2
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-from saltup.ai.object_detection.utils.bbox  import BBox,BBoxFormat
+from saltup.ai.object_detection.utils.bbox  import BBox, BBoxFormat
 from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
 from saltup.utils.data.image.image_utils import ColorMode ,ImageFormat
 from saltup.ai.nn_manager import NeuralNetworkManager
 from saltup.utils.data.image.image_utils import Image
-
-
 
 
 class YoloOutput:
@@ -347,7 +345,6 @@ class BaseYolo(NeuralNetworkManager):
         yoloOut.set_inference_time(inference_time_ms)
         yoloOut.set_postprocessing_time(postprocessing_time_ms)
         yoloOut.set_image(image=image) # input image
-            
         
         return yoloOut
 
@@ -446,6 +443,7 @@ class BaseYolo(NeuralNetworkManager):
             "fp": int(global_fp),  # False Positives
             "fn": int(global_fn),  # False Negatives
         }
+    
     @staticmethod
     @abstractmethod
     def preprocess(image: Image,
