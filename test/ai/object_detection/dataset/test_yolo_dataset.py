@@ -467,15 +467,6 @@ class TestYoloDataset:
         dataset = YoloDataset(images_dir, labels_dir)
         assert len(dataset.list_images_ids()) == 3
 
-    def test_get_image_caching(self, sample_dataset):
-        """Test caching delle immagini."""
-        images_dir, labels_dir = sample_dataset
-        dataset = YoloDataset(images_dir, labels_dir)
-        
-        image1 = dataset.get_image("img1")
-        image2 = dataset.get_image("img1")
-        assert image1 is image2  # Verifica che sia lo stesso oggetto (cached)
-
     def test_get_annotations(self, sample_dataset):
         """Test caricamento annotazioni."""
         images_dir, labels_dir = sample_dataset

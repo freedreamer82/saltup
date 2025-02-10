@@ -4,7 +4,6 @@ import json
 import random
 import shutil
 import numpy as np
-from functools import lru_cache
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict, Counter
@@ -220,7 +219,6 @@ class YoloDataset(Dataset):
             if f.lower().endswith(('.jpg', '.jpeg', '.png'))
         }
 
-    @lru_cache(maxsize=1000)  # Cache up to 1000 images
     def get_image(self, image_id: str) -> Image:
         """
         Load and return the image for the given ID.
@@ -288,9 +286,6 @@ class YoloDataset(Dataset):
             
             if removed:
                 self._refresh_image_ids()
-                # Clear cached data
-                self.get_image.cache_clear()
-                self.get_annotations.cache_clear()
                 
             return removed
             
@@ -298,7 +293,6 @@ class YoloDataset(Dataset):
             self.__logger.error(f"Failed to remove {image_id}: {e}")
             return False
         
-    @lru_cache(maxsize=1000)
     def get_annotations(self, image_id: str) -> List[BBoxClassId]:
         """
         Load and return the annotations for the given image ID.
@@ -375,9 +369,6 @@ class YoloDataset(Dataset):
                 f"Annotations for {image_id} already exist and overwrite is False.")
 
         write_label(label_dest_filepath, annotations)
-        
-        # Clear the cache for this image_id to ensure fresh data is loaded next time
-        self.get_annotations.cache_clear()
 
     def save_image_annotations(
         self, 
