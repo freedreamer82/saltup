@@ -8,7 +8,7 @@ from saltup.ai.object_detection.yolo.impl.yolo_ultralytics import YoloUltralytic
 
 class YoloFactory:
     @staticmethod
-    def create(yolo_type: YoloType, modelpath: str, number_class:int ,**kwargs) -> BaseYolo:
+    def create(yolo_type: YoloType, modelpath: str, number_class:int, **kwargs) -> BaseYolo:
         if yolo_type == YoloType.ANCHORS_BASED:
             return YoloAnchorsBased(yolo_type, modelpath, number_class, BaseYolo.load_anchors(kwargs['anchors']))
         elif yolo_type == YoloType.ULTRALYTICS:

@@ -1,144 +1,147 @@
 #!/usr/bin/env python3
 
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logging
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable OneDNN optimizations
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import time
 import argparse
-import numpy as np
-from typing import List, Tuple, Dict
+from typing import Tuple, Optional, Dict, List
 from tqdm import tqdm
 from pathlib import Path
+import signal
+import sys
+import json
 
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloOutput
 from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
-from saltup.ai.object_detection.utils.bbox import BBox, draw_boxes_on_image_with_labels_score, BBoxFormat , draw_boxes_on_image
-from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR, Image, ImageFormat
-from saltup.ai.object_detection.utils.metrics import Metric
-from saltup.utils.data.image.image_utils import generate_random_bgr_colors
-from saltup.utils.data.video.video_utils import process_video,get_video_properties
-import signal
-import sys
+from saltup.ai.object_detection.utils.bbox import draw_boxes_on_image_with_labels_score, NotationFormat
+from saltup.utils.data.image.image_utils import Image, generate_random_bgr_colors
+from saltup.utils.data.video.video_utils import process_video, get_video_properties
+from saltup.ai.object_detection.dataset.yolo_darknet import YoloDataset
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C signal to gracefully exit the program."""
     print("\nProgram interrupted with Ctrl + C!")
-    sys.exit(0)  # Terminate the script
- 
-def process_frame(yolo, frame, frame_number, args, class_colors_dict, class_labels_dict):
-    """
-    Process a video frame using the YOLO model.
-    
-    Args:
-        yolo: The YOLO model instance.
-        frame: Input frame (as a Image).
-        frame_number: Current frame number.
-        args: Command-line arguments.
-        class_colors_dict: Dictionary mapping class IDs to colors.
-        class_labels_dict: Dictionary mapping class IDs to class names.
-    
-    Returns:
-        frame_with_boxes: Frame with bounding boxes drawn.
-    """
-    # Run YOLO inference
-    yoloOut = yolo.run(frame, args.conf_thres, args.iou_thres)
-    boxes_with_info = yoloOut.get_boxes()
-    
-    boxes_list = [box[0] for box in boxes_with_info]
+    sys.exit(0)
 
-    # Draw bounding boxes on the frame
-    frame_with_boxes = draw_boxes_on_image_with_labels_score(
-        frame, 
-        boxes_with_info,
-        class_colors_bgr=class_colors_dict,
-        class_labels=class_labels_dict
-    ) 
-    
-    return frame_with_boxes
-
-def main(args=None):
-    # Se args non è fornito, usa sys.argv[1:]
-    if args is None:
-        args = sys.argv[1:]
-
+def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, help="Input NN model.")
-    parser.add_argument("--type", type=str, help="Input your YOLO model type.")
-    parser.add_argument("--input_video", type=str, required=True, help="Path to input video.")
-    parser.add_argument("--output_video", type=str, help="Path to save the output video.")
-    parser.add_argument("--anchors", type=str, default="", help="Path to the anchors if needed.")
-    parser.add_argument("--label", type=str, help="Path to frame labels folder.")
-    parser.add_argument("--conf_thres", type=float, default=0.5, help="Confidence threshold.")
-    parser.add_argument("--iou_thres", type=float, default=0.5, help="NMS IoU threshold.")
-    parser.add_argument("--num_class", type=int, help="Number of the classes.")
-    parser.add_argument("--cls_name", type=str, default="", help="Comma-separated list of class names.")
-    parser.add_argument("--fps", type=int, default=None, help="FPS of the output video (default: same as input).")
-
-    # Analizza gli argomenti
-    args = parser.parse_args(args)
+    parser.add_argument("--model", type=str, required=True, help="YOLO model file")
+    parser.add_argument("--type", type=str, required=True, help="YOLO model type")
+    parser.add_argument("--input-video", type=str, required=True, help="Input video path")
     
+    output_group = parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument("--output-video", type=str, help="Output video path")
+    output_group.add_argument("--output-dataset", type=str, help="Output dataset directory")
+    
+    parser.add_argument("--anchors", type=str, default="", help="Anchors config file")
+    parser.add_argument("--conf-thres", type=float, default=0.5, help="Confidence threshold")
+    parser.add_argument("--iou-thres", type=float, default=0.5, help="IoU threshold")
+    
+    class_group = parser.add_mutually_exclusive_group(required=True)
+    class_group.add_argument("--num-class", type=int, help="Number of classes")
+    class_group.add_argument("--cls-name", type=str, nargs="*", help="Class names list")
+    
+    parser.add_argument("--fps", type=int, help="Output FPS (default: input FPS)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    
+    return parser.parse_args()
+
+def main(args: Optional[argparse.Namespace] = None) -> None:
+    args = args or get_args()
+    
+    if args.verbose:
+        print(json.dumps(vars(args), indent=4))
+        
     signal.signal(signal.SIGINT, signal_handler)
 
+    # Initialize class metadata
+    class_labels = args.cls_name or [f"class_{i}" for i in range(args.num_class)]
+    class_colors = {i: color for i, color in enumerate(generate_random_bgr_colors(len(class_labels)))}
+    class_labels_dict = {i: lbl for i, lbl in enumerate(class_labels)}
 
-
-    """
-    Main function to process a video using the YOLO model.
-    
-    Args:
-        args: Command-line arguments.
-    """
-    # Load class names and colors
-    if args.cls_name:
-        class_labels = args.cls_name.split(',')
-    else:
-        class_labels = []
-    
-    num_classes = len(class_labels) if class_labels else args.num_class
-    class_colors = generate_random_bgr_colors(num_classes)
-    class_colors_dict = {i: color for i, color in enumerate(class_colors)}
-    class_labels_dict = {i: label for i, label in enumerate(class_labels)} if class_labels else {i: f"class_{i}" for i in range(num_classes)}
-
+    # Initialize YOLO model
     yolotype = YoloType.from_string(args.type)
-    if args.anchors:
-        yolo = YoloFactory.create(yolotype, args.model, args.num_class, anchors=args.anchors)
-    else:
-        yolo = YoloFactory.create(yolotype, args.model, args.num_class)
+    yolo_kwargs = {
+        "yolo_type": yolotype,
+        "modelpath": args.model,
+        "number_class": len(class_labels),
+        **({"anchors": args.anchors} if args.anchors else {})
+    }        
+    yolo = YoloFactory.create(**yolo_kwargs)
 
-    # Get video properties using OpenCV (manual counting)
-    input_fps, total_frames,w,h = get_video_properties(args.input_video)
+    # Get video properties
+    input_fps, total_frames, width, height = get_video_properties(args.input_video)
     print(f"Input video FPS: {input_fps}")
     print(f"Total frames: {total_frames}")
 
-    # Define the callback function for process_video
-    def callback(frame, frame_number, total_frames):
-        start_time = time.time()
-        result = process_frame(yolo, frame, frame_number, args, class_colors_dict, class_labels_dict)
-        elapsed_time = time.time() - start_time
-        
-        # Update the progress bar
-        pbar.set_postfix({
-            "Frame": f"{frame_number + 1}/{total_frames}",  # Show current frame number (1-based)
-            "Time per frame": f"{elapsed_time:.4f}s"
-        })
-        pbar.update(1)  # Increment the progress bar by 1
+    # Initialize dataset if needed
+    dataset = None
+    if args.output_dataset:
+        output_dir = Path(args.output_dataset)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        dataset = YoloDataset(output_dir, output_dir)
+        (output_dir / "classes.names").write_text('\n'.join(class_labels))
 
-        return result
-
-    # Process the video using the integrated process_video function
+    # Main processing loop
     with tqdm(total=total_frames, desc="Processing video", unit="frame") as pbar:
-        def callback_with_progress(frame, frame_number, total_frames):
-            result = callback(frame, frame_number, total_frames)
-            return result
+        
+        def process_callback(frame: Image, frame_number: int, _: int) -> Optional[Image]:
+            start_time = time.time()
+            
+            # Run inference
+            yolo_output = yolo.run(frame, args.conf_thres, args.iou_thres)
+            
+            processed_frame = None
+            annotations = []
+            
+            # Prepare output based on mode
+            if args.output_video:
+                boxes_with_info = yolo_output.get_boxes()
+                processed_frame = draw_boxes_on_image_with_labels_score(
+                    frame, 
+                    boxes_with_info,
+                    class_colors_bgr=class_colors,
+                    class_labels=class_labels_dict
+                )
+            
+            if args.output_dataset:
+                annotations = [
+                    (box_data[1], *box_data[0].get_coordinates(NotationFormat.YOLO))
+                    for box_data in yolo_output.get_boxes()
+                ]
+            
+            # Save to dataset
+            if dataset and annotations:
+                dataset.save_image_annotations(
+                    image_id=f"{Path(args.input_video).stem}_{frame_number:05d}",
+                    image=frame,  # Save original frame without boxes
+                    annotations=annotations,
+                    overwrite=True
+                )
+            
+            # Update progress
+            pbar.set_postfix({
+                "Frame": f"{frame_number+1}/{total_frames}",
+                "Time/frame": f"{time.time()-start_time:.3f}s"
+            })
+            pbar.update(1)
+            
+            return processed_frame if args.output_video else None
 
         process_video(
             video_input=args.input_video,
-            callback=callback_with_progress,
+            callback=process_callback,
             video_output=args.output_video,
-            fps=args.fps 
+            fps=args.fps or input_fps
         )
 
-    print(f"Video processing complete. Output saved to {args.output_video}")
+    print("\nProcessing completed!")
+    if args.output_video:
+        print(f"Video saved: {args.output_video}")
+    if args.output_dataset:
+        print(f"Dataset saved: {args.output_dataset}")
+
 
 if __name__ == "__main__":
     main()
