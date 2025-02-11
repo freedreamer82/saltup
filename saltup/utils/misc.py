@@ -29,9 +29,13 @@ def suppress_stderr():
             sys.stderr = old_stderr
             
 
-def match_patterns(target: str, patterns: Iterable[Union[str, List[str]]]) -> bool:
+def match_patterns(target: str, patterns: Union[str, Iterable[Union[str, List[str]]]]) -> bool:
     """
-    Match a string against single or combined wildcard patterns.
+    Match a string against single or combined wildcard patterns using fnmatch.
+
+    Note:
+        The patterns used here are not Python regex patterns but fnmatch patterns,
+        which are similar to Unix shell-style wildcards.
 
     Args:
         target: String to check against patterns
@@ -58,9 +62,13 @@ def match_patterns(target: str, patterns: Iterable[Union[str, List[str]]]) -> bo
         raise TypeError(f"Invalid pattern type: {type(pattern)}. Expected str or list[str].")
 
     try:
+        # If patterns is a single string, directly match it
+        if isinstance(patterns, str):
+            return fnmatch.fnmatch(target, patterns)
+        # If patterns is an iterable, check each pattern using _check_pattern
         return any(_check_pattern(pattern) for pattern in patterns)
     except TypeError as e:
-        raise TypeError("Invalid pattern in match_patterns") from e
+        raise TypeError(f"Invalid pattern '{patterns}' ({type(patterns)}) in match_patterns") from e
 
 
 def count_files(root_dir: str, filters: Optional[List[str]] = None, recursive: bool = True) -> Tuple[int, List[str]]:
