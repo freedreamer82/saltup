@@ -43,14 +43,14 @@ def get_args() -> argparse.Namespace:
     class_group.add_argument("--cls-name", type=str, nargs="*", help="Class names list")
     
     parser.add_argument("--fps", type=int, help="Output FPS (default: input FPS)")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--verbose", "-v", type=int, nargs='?', const=1, default=0, help="Verbose output")
     
     return parser.parse_args()
 
 def main(args: Optional[argparse.Namespace] = None) -> None:
     args = args or get_args()
     
-    if args.verbose:
+    if args.verbose > 1:
         print(json.dumps(vars(args), indent=4))
         
     signal.signal(signal.SIGINT, signal_handler)
@@ -72,8 +72,9 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
 
     # Get video properties
     input_fps, total_frames, width, height = get_video_properties(args.input_video)
-    print(f"Input video FPS: {input_fps}")
-    print(f"Total frames: {total_frames}")
+    if args.verbose:
+        print(f"Input video FPS: {input_fps}")
+        print(f"Total frames: {total_frames}")
 
     # Initialize dataset if needed
     dataset = None
@@ -136,7 +137,6 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
             fps=args.fps or input_fps
         )
 
-    print("\nProcessing completed!")
     if args.output_video:
         print(f"Video saved: {args.output_video}")
     if args.output_dataset:
