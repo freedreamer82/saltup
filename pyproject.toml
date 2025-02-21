@@ -9,8 +9,11 @@ description = "add flavor to your AI projects"
 readme = "README.md"
 requires-python = ">=3.6"
 authors = [
-    { name = "Marco Garzola" }
+    { name = "Marco Garzola" },
+    { name = "Francesco Sonnessa" },
+    { name = "Marc Randriatsimiovalaza" }
 ]
+keywords = ["AI", "deep learning", "computer vision", "YOLO"]
 license = { text = "MIT" }
 dependencies = [
     "numpy",
@@ -22,10 +25,12 @@ dependencies = [
     "onnxruntime",
     "onnxruntime-gpu",
     "tensorflow",
-    "tf_keras"
+    "tf_keras",
+    "torch",
+    "torchvision",
+    "torchaudio"
 ]
 
 [project.scripts]
 saltup_yolo_image_inference = "saltup.tools.yolo_inference:main"
 saltup_yolo_video_inference = "saltup.tools.yolo_video:main"
- 

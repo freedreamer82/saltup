@@ -14,8 +14,11 @@ Pillow
 tensorflow
 tf2onnx
 scikit-learn
-torchmetrics
 onnxruntime-gpu
+torch
+torchvision
+torchaudio
+torchmetrics
 
 # Audio processing
 librosa
