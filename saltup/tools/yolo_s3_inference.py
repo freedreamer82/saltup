@@ -5,13 +5,12 @@ import logging
 import shutil
 import signal
 import sys
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union, List
 from types import SimpleNamespace
 from tqdm import tqdm
 
-from saltup.utils.data.s3 import S3
+from saltup.utils.data.s3 import S3, list_files_by_time
 from saltup.tools import yolo_video
 
 
@@ -28,6 +27,7 @@ class SignalHandler:
         sys.exit(0)
 
 
+# TODO: improve logging
 def setup_logging(log_level: str):
     """
     Configure logging to work with tqdm progress bars.
@@ -57,6 +57,8 @@ def setup_logging(log_level: str):
                                 datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
+    
+    logging.getLogger('botocore.httpchecksum').setLevel(logging.WARNING)
 
 
 def get_args() -> argparse.Namespace:
@@ -84,10 +86,10 @@ def get_args() -> argparse.Namespace:
                          help="List of S3 folder paths to search for videos")
     s3_group.add_argument("--file-pattern", type=str, default="*.mp4",
                          help="Pattern to filter video files (default: *.mp4)")
-    s3_group.add_argument("--start-date", type=str,
-                         help="Start date for file filtering (format: DD.MM.YYYY_HH.MM.SSZ)")
-    s3_group.add_argument("--end-date", type=str,
-                         help="End date for file filtering (format: DD.MM.YYYY_HH.MM.SSZ)")
+    s3_group.add_argument("--start-time", type=str, nargs='+', default=[None],
+                         help="Start time for file filtering (format: HH.MM.SS)")
+    s3_group.add_argument("--end-time", type=str, nargs='+', default=[None],
+                         help="End time for file filtering (format: HH.MM.SS)")
     
     # YOLO Configuration
     yolo_group = parser.add_argument_group('YOLO Configuration')
@@ -150,16 +152,21 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
             )
         
         # Get list of videos matching criteria from all folders
+        if args.start_time and args.end_time:
+            assert len(args.start_time) == len(args.end_time), "Start and end times must have the same length"
+        
         video_files = []
         for folder in tqdm(args.s3_folders, desc="Scanning folders", unit="folder"):
-            folder_files = s3_client.list_files_by_date(
-                s3_folder=folder,
-                start_date=args.start_date,
-                end_date=args.end_date,
-                patterns=args.file_pattern
-            )
-            video_files.extend([os.path.join(folder, f) for f in folder_files])
-            logging.info(f"Found {len(folder_files)} videos in {folder}")
+            for start_time, end_time in zip(args.start_time, args.end_time):
+                folder_files = list_files_by_time(
+                    s3_instance=s3_client,
+                    s3_folder=folder,
+                    start_time=start_time,
+                    end_time=end_time,
+                    patterns=args.file_pattern
+                )
+                video_files.extend([os.path.join(folder, f) for f in folder_files])
+                logging.info(f"Found {len(folder_files)} videos in {folder}")
         
         if not video_files:
             logging.warning("No video files found matching the specified criteria")
@@ -195,7 +202,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
                     )
                     
                     # Prepare yolo_video arguments
-                    video_output_dir = Path(args.output_dir) / Path(video_file).stem
+                    video_output_dir = Path(args.output_dir) / Path(video_file).parent / Path(video_file).stem
                     video_output_dir.mkdir(parents=True, exist_ok=True)
                     
                     yolo_args = SimpleNamespace(
