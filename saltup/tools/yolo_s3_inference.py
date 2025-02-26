@@ -118,6 +118,8 @@ def get_args() -> argparse.Namespace:
                            help="Base directory for inference output")
     output_group.add_argument("--output-type", type=str, choices=['video', 'dataset'], default='dataset',
                            help="Type of output to generate (default: dataset)")
+    output_group.add_argument("--frame-percent", type=float, default=1.0,
+                           help="Percentage of frames to process randomly (only with dataset output type, value between 0.0 and 1.0)")
     
     # Logging Configuration
     parser.add_argument("--log-level", type=str, default="INFO",
@@ -134,6 +136,15 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
     # Setup logging
     setup_logging(args.log_level)
     logging.info("=== Starting YOLO S3 Inference ===")
+    
+    # Validate frame-percent parameter
+    if args.frame_percent <= 0 or args.frame_percent > 1.0:
+        logging.error("Error: --frame-percent must be between 0.0 and 1.0")
+        sys.exit(1)
+    
+    # Check that frame-percent is only used with dataset output type
+    if args.frame_percent < 1.0 and args.output_type != 'dataset':
+        logging.warning("Warning: --frame-percent is only applicable with --output-type=dataset, ignoring")
     
     # Initialize SignalHandler
     try:
@@ -217,7 +228,8 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
                         num_class=args.num_class,
                         cls_name=args.cls_name,
                         fps=None,
-                        verbose=args.log_level == "DEBUG"
+                        verbose=args.log_level == "DEBUG",
+                        frame_percent=args.frame_percent  # Pass the frame percentage to yolo_video
                     )
                     
                     # Process video using yolo_video
