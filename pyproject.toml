@@ -22,7 +22,6 @@ dependencies = [
     "opencv-python",
     "boto3",
     "onnx",
-    "onnxruntime",
     "onnxruntime-gpu",
     "tensorflow",
     "tf_keras",
@@ -34,3 +33,6 @@ dependencies = [
 [project.scripts]
 saltup_yolo_image_inference = "saltup.tools.yolo_inference:main"
 saltup_yolo_video_inference = "saltup.tools.yolo_video:main"
+saltup_yolo_count_classes = "saltup.tools.yolo_count_classes:main"
+saltup_yolo_simlink_per_classes = "saltup.tools.yolo_simlink_per_classes:main"
+

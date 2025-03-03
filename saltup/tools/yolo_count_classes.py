@@ -17,10 +17,13 @@ def get_agrs():
     return parser.parse_args()
 
 
-def main(args):
+def main(args=None):
     """
     Main function to parse command-line arguments and count occurrences of classes in dataset annotations.
     """
+    
+    if not args:
+        args = get_agrs()
 
     # Count label occurrences and annotated images based on the provided arguments
     if args.format == 'yolo':
