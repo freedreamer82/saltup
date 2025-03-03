@@ -7,3 +7,4 @@ saltup.egg-info
 custom_yolo_fpn*
 test/tests_data/models/model_1.onnx
 .tmp
+.aider*
