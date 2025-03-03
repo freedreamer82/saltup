@@ -191,6 +191,9 @@ class BBox:
 
         Raises:
             ValueError: If the coordinates are invalid or not in the correct format.
+            
+        Note:
+            Internally, the BBox class uses treats the bounding box in the NORMALIZED CORNERS format.
         """
         self.set_coordinates(img_height, img_width, coordinates, format)
 

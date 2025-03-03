@@ -273,9 +273,10 @@ def _infer_codec_from_filename(filename: Union[str, Path]) -> str:
      }
     return codec_mapping.get(extension, 'XVID')   
 
+
 def process_video(
     video_input: Union[str, Path],
-    callback: Callable[[Image, int, int], Image],  # Updated callback signature
+    callback: Callable[[Image, int, int], Image] = None,  # Updated callback signature
     video_output: Union[str, Path] = None,
     fps: int = None,
 ):
@@ -315,8 +316,11 @@ def process_video(
             break
 
         # Apply the callback to the frame
-        processed_frame = callback(Image(frame), frame_number, total_frames)  # Pass total_frames to callback
-
+        if callback:
+            processed_frame = callback(Image(frame), frame_number, total_frames)
+        else:
+            processed_frame = Image(frame)
+        
         # If an output video is specified, write the processed frame
         if out is not None:
             out.write(processed_frame.get_data())
