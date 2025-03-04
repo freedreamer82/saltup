@@ -1089,10 +1089,10 @@ def count_objects(
     
     txt_label_files = tqdm(txt_label_files, desc='Processing YOLO labels', disable=not verbose)
     for label_file in txt_label_files:
-        with open(label_file, 'r') as file:
-            for line in file:
-                class_id = int(line.split()[0])
-                label_counts[class_id] += 1
+        lbls = read_label(label_file)
+        for lbl in lbls:
+            class_id = lbl[0]
+            label_counts[class_id] += 1
 
     if class_names:
         label_counts = {
@@ -1110,6 +1110,8 @@ def create_symlinks_by_class(
     class_names: Optional[List[str]] = None
 ) -> None:
     """Create symbolic links for images and labels organized by class.
+    
+    Only creates class directories if there are files to link for that class.
 
     Args:
         imgs_dirpath (str): Path to directory containing images
@@ -1150,42 +1152,58 @@ def create_symlinks_by_class(
     # Create classes.names file
     class_names_file = dest_path / 'classes.names'
     with class_names_file.open('w') as f:
-        f.write('\n'.join(class_names))
+        f.write('\n'.join(map(str, class_names)))
     logger.info(f"Created classes file: {class_names_file}")
 
-    # Create class-specific directories
-    for class_name in class_names:
-        class_dir = dest_path / class_name
+    # Create labels map
+    labels_map = _create_labels_map(lbl_files, class_names)
+    
+    # Find which classes have files
+    classes_with_files = set()
+    for lbl_file in labels_map:
+        # Get the actual image file path
+        img_file = Path(_find_matching_image(lbl_file.stem, str(imgs_path)))
+        
+        # Only count classes with both image and label files
+        if img_file is not None and img_file.exists():
+            classes_with_files.update(labels_map[lbl_file].keys())
+    
+    logger.info(f"Found {len(classes_with_files)} classes with files to link")
+    
+    # Create only necessary class directories
+    for class_name in classes_with_files:
+        class_dir = dest_path / str(class_name)
         class_dir.mkdir(exist_ok=True)
         logger.debug(f"Created class directory: {class_dir}")
 
-    # Create labels map and symbolic links
-    labels_map = _create_labels_map(lbl_files, class_names)
-
+    # Create symbolic links
     symlink_count = 0
     for lbl_file in labels_map:
         # Get actual paths for image and label files
         img_file = Path(_find_matching_image(lbl_file.stem, str(imgs_path)))
         lbl_file = lbls_path / lbl_file.name
 
+        if img_file is None or not img_file.exists():
+            logger.warning(f"No matching image found for {lbl_file.name}")
+            continue
+
         for class_name in labels_map[lbl_file]:
-            if img_file.exists():
-                try:
-                    # Create symlinks
-                    lbl_symlink = dest_path / class_name / lbl_file.name
-                    img_symlink = dest_path / class_name / img_file.name
+            try:
+                # Create symlinks
+                lbl_symlink = dest_path / str(class_name) / lbl_file.name
+                img_symlink = dest_path / str(class_name) / img_file.name
 
-                    os.symlink(str(lbl_file.absolute()), str(lbl_symlink))
-                    os.symlink(str(img_file.absolute()), str(img_symlink))
+                os.symlink(str(lbl_file.absolute()), str(lbl_symlink))
+                os.symlink(str(img_file.absolute()), str(img_symlink))
 
-                    symlink_count += 2
-                    logger.debug(f"Created symlinks for {lbl_file.name} and {img_file.name}")
-                except FileExistsError:
-                    logger.warning(f"Symlink already exists for {lbl_file.name}")
-                except PermissionError:
-                    logger.error(f"Permission denied creating symlink for {lbl_file.name}")
+                symlink_count += 2
+                logger.debug(f"Created symlinks for {lbl_file.name} and {img_file.name}")
+            except FileExistsError:
+                logger.warning(f"Symlink already exists for {lbl_file.name}")
+            except PermissionError:
+                logger.error(f"Permission denied creating symlink for {lbl_file.name}")
 
-    logger.info(f"Created {symlink_count} symlinks across {len(class_names)} classes")
+    logger.info(f"Created {symlink_count} symlinks across {len(classes_with_files)} classes")
 
 
 def find_image_label_pairs(labels_dir: str, images_dir: str) -> Tuple[List[str], List[List[str]], List[str]]:
