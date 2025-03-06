@@ -92,7 +92,6 @@ def main(args=None):
         error_msg = f'Number of images and labels directories do not match: {len(image_dirs)} != {len(label_dirs)}'
         logger.error(error_msg)
         raise ValueError(error_msg)
-        sys.exit(1)
     
     # Auto-detect classes if not specified
     if not args.classes:
