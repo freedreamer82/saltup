@@ -830,7 +830,6 @@ class BBox:
 
             if format == BBoxFormat.CORNERS:
                 if self.is_normalized(coordinates, format):
-                    # If the co-ordinates are normalized, convert them to absolute pixel values
                     self.__normalized_coordinates = coordinates
                 else:
                     # If the co-ordinates are not normalized, normalize them
@@ -838,7 +837,6 @@ class BBox:
 
             elif format == BBoxFormat.CENTER:
                 if self.is_normalized(coordinates, format):
-                    # If the co-ordinates are normalized, convert them to absolute pixel values
                     self.__normalized_coordinates = self.center_to_corners_format(coordinates)
                 else:
                     # If the co-ordinates are not normalized, normalize them
@@ -847,7 +845,6 @@ class BBox:
 
             elif format == BBoxFormat.TOPLEFT:
                 if self.is_normalized(coordinates, format):
-                    # If the co-ordinates are normalized, convert them to absolute pixel values
                     self.__normalized_coordinates = self.topleft_to_corners_format(coordinates)
                 else:
                     # If the co-ordinates are not normalized, normalize them

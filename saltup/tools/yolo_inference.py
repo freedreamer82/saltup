@@ -235,7 +235,7 @@ def main(args=None):
             if args.gui:               
                 # Draw bounding boxes on the image
                 image_with_boxes = draw_boxes_on_image_with_labels_score(image, 
-                                                                        yoloOut.get_boxes(format=BBoxFormat.CORNERS),
+                                                                        yoloOut.get_boxes(),
                                                                         class_colors_bgr=class_colors_dict,
                                                                         class_labels=class_labels_dict)
                 
@@ -272,8 +272,6 @@ def main(args=None):
     print(f"  - Recall: {metric.getRecall():.4f}")
     print(f"  - F1 Score: {metric.getF1Score():.4f}")
     
-
-
 
 if __name__ == "__main__":
     main()
