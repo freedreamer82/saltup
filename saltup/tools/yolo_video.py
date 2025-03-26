@@ -5,6 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import time
 import argparse
+import random
 from typing import Tuple, Optional, Dict, List
 from tqdm import tqdm
 from pathlib import Path
@@ -43,17 +44,27 @@ def get_args() -> argparse.Namespace:
     class_group.add_argument("--cls-name", type=str, nargs="*", help="Class names list")
     
     parser.add_argument("--fps", type=int, help="Output FPS (default: input FPS)")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--verbose", "-v", type=int, nargs='?', const=1, default=0, help="Verbose output")
+    parser.add_argument("--frame-percent", type=float, default=1.0, help="Percentage of frames to process randomly (only with --output-dataset)")
     
     return parser.parse_args()
 
 def main(args: Optional[argparse.Namespace] = None) -> None:
     args = args or get_args()
     
-    if args.verbose:
+    if args.verbose > 1:
         print(json.dumps(vars(args), indent=4))
         
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Validate frame-percent parameter
+    if args.frame_percent <= 0 or args.frame_percent > 1.0:
+        print("Error: --frame-percent must be between 0 and 100")
+        sys.exit(1)
+    
+    # Check that frame-percent is only used with output-dataset
+    if args.frame_percent < 1.0 and not args.output_dataset:
+        print("Warning: --frame-percent is only applicable with --output-dataset, ignoring")
 
     # Initialize class metadata
     class_labels = args.cls_name or [f"class_{i}" for i in range(args.num_class)]
@@ -72,8 +83,11 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
 
     # Get video properties
     input_fps, total_frames, width, height = get_video_properties(args.input_video)
-    print(f"Input video FPS: {input_fps}")
-    print(f"Total frames: {total_frames}")
+    if args.verbose:
+        print(f"Input video FPS: {input_fps}")
+        print(f"Total frames: {total_frames}")
+        if args.output_dataset and args.frame_percent < 1.0:
+            print(f"Processing approximately {args.frame_percent*100}% of frames randomly")
 
     # Initialize dataset if needed
     dataset = None
@@ -89,30 +103,37 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         def process_callback(frame: Image, frame_number: int, _: int) -> Optional[Image]:
             start_time = time.time()
             
-            # Run inference
-            yolo_output = yolo.run(frame, args.conf_thres, args.iou_thres)
+            # Determine if we should process this frame (for dataset mode)
+            process_for_dataset = True
+            if args.output_dataset and args.frame_percent < 1.0:
+                # Use random sampling to decide whether to process this frame
+                process_for_dataset = random.random() <= args.frame_percent
             
             processed_frame = None
             annotations = []
             
-            # Prepare output based on mode
-            if args.output_video:
-                boxes_with_info = yolo_output.get_boxes()
-                processed_frame = draw_boxes_on_image_with_labels_score(
-                    frame, 
-                    boxes_with_info,
-                    class_colors_bgr=class_colors,
-                    class_labels=class_labels_dict
-                )
+            # Run inference (always for video output, conditionally for dataset)
+            if args.output_video or (args.output_dataset and process_for_dataset):
+                yolo_output = yolo.run(frame, args.conf_thres, args.iou_thres)
+                
+                # Prepare output based on mode
+                if args.output_video:
+                    boxes_with_info = yolo_output.get_boxes()
+                    processed_frame = draw_boxes_on_image_with_labels_score(
+                        frame, 
+                        boxes_with_info,
+                        class_colors_bgr=class_colors,
+                        class_labels=class_labels_dict
+                    )
+                
+                if args.output_dataset and process_for_dataset:
+                    annotations = [
+                        (box_data[1], *box_data[0].get_coordinates(NotationFormat.YOLO))
+                        for box_data in yolo_output.get_boxes()
+                    ]
             
-            if args.output_dataset:
-                annotations = [
-                    (box_data[1], *box_data[0].get_coordinates(NotationFormat.YOLO))
-                    for box_data in yolo_output.get_boxes()
-                ]
-            
-            # Save to dataset
-            if dataset and annotations:
+            # Save to dataset if we're processing this frame
+            if dataset and process_for_dataset and annotations:
                 dataset.save_image_annotations(
                     image_id=f"{Path(args.input_video).stem}_{frame_number:05d}",
                     image=frame,  # Save original frame without boxes
@@ -136,7 +157,6 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
             fps=args.fps or input_fps
         )
 
-    print("\nProcessing completed!")
     if args.output_video:
         print(f"Video saved: {args.output_video}")
     if args.output_dataset:

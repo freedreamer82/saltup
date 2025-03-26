@@ -3,7 +3,7 @@ import logging
 import boto3
 import configparser
 import re
-from datetime import datetime
+from datetime import datetime, time
 from typing import Union, Iterable, List
 
 from saltup.utils.misc import match_patterns
@@ -119,6 +119,11 @@ class S3:
             if aws_access_key_id and aws_secret_access_key:
                 return aws_access_key_id, aws_secret_access_key
             raise ValueError("Unrecognized credentials format")
+        
+    def get_credentials(self) -> tuple:
+        """
+        Returns the AWS credentials.
+        """
 
     def download_file(
         self, 
@@ -162,7 +167,7 @@ class S3:
                     logging.error(f"Failed to download file '{file_path}' after {retries} attempts.")
                     return False
 
-    def download_file_from_folder(
+    def download_files_from_folder(
         self, 
         folder_path: str, 
         destination_path: str, 
@@ -314,68 +319,184 @@ class S3:
 
         return file_list
 
-    def list_files_by_date(
-        self,
-        s3_folder: str = './',
-        start_date: Union[str, datetime] = None,
-        end_date: Union[str, datetime] = None,
-        patterns: Union[str, Iterable[Union[str, List[str]]]] = None,
-        only_basename: bool = True
-    ) -> List[str]:
-        """
-        List files from an S3 bucket filtered by date range, reusing ls() functionality.
-        
-        Args:
-            s3_folder: The folder path in the S3 bucket to list contents of. Defaults to './'.
-            start_date (Union[str, datetime], optional): Start date. If string, format should be '%d.%m.%Y_%H.%M.%SZ'.
-            end_date (Union[str, datetime], optional): End date. If string, format should be '%d.%m.%Y_%H.%M.%SZ'.
-            patterns: Unix-like patterns to filter the files. Defaults to None.
-                Uses the `saltup.utils.misc.match_patterns()` function to allow for more pattern possibilities.
-            only_basename: If True, returns only filenames. If False, returns full S3 paths.
 
-        Returns:
-            List[str]: List of filtered file paths/names that match the date criteria and patterns.
-            
-        Example:
-            >>> s3.list_files_by_date(
-            ...     s3_folder="data/logs/",
-            ...     start_date="01.01.2024_00.00.00Z",
-            ...     end_date="31.01.2024_23.59.59Z",
-            ...     patterns="*.txt"
-            ... )
-            ['log@15.01.2024_10.30.00Z_data.txt', 'log@16.01.2024_15.45.00Z_data.txt']
-        """
-        # Convert string dates to datetime if needed
-        if isinstance(start_date, str):
-            start_date = datetime.strptime(start_date, '%d.%m.%Y_%H.%M.%SZ')
-        if isinstance(end_date, str):
-            end_date = datetime.strptime(end_date, '%d.%m.%Y_%H.%M.%SZ')
+def list_files_by_date(
+    s3_instance,
+    s3_folder: str = './',
+    start_date: Union[str, datetime] = None,
+    end_date: Union[str, datetime] = None,
+    patterns: Union[str, Iterable[Union[str, List[str]]]] = None,
+    only_basename: bool = True
+) -> List[str]:
+    """
+    List files from an S3 bucket filtered by date range based on filename timestamps.
+    The function expects filenames to contain a timestamp in the format: '@DD.MM.YYYY_HH.MM.SSZ_'
+    
+    Args:
+        s3_instance: An instance of the S3 class with ls() method implemented
+        s3_folder: The folder path in the S3 bucket to list contents of. Defaults to './'.
+        start_date (Union[str, datetime], optional): Start date for filtering. 
+            If string, format must be '%d.%m.%Y_%H.%M.%SZ' (e.g., "01.01.2024_00.00.00Z").
+        end_date (Union[str, datetime], optional): End date for filtering. 
+            If string, format must be '%d.%m.%Y_%H.%M.%SZ' (e.g., "31.01.2024_23.59.59Z").
+        patterns: Unix-like patterns to filter the files by name. Defaults to None.
+            Uses the `saltup.utils.misc.match_patterns()` function to allow for more pattern possibilities.
+        only_basename: If True, returns only filenames. If False, returns full S3 paths.
 
-        # If no date filtering is needed, just return ls() results
-        if not start_date and not end_date:
-            return self.ls(s3_folder=s3_folder, patterns=patterns, only_basename=only_basename)
+    Returns:
+        List[str]: List of filtered file paths/names that match both the date criteria and patterns.
+        
+    Notes:
+        - The function searches for timestamps in filenames using the pattern '@DD.MM.YYYY_HH.MM.SSZ_'
+        - Files without a matching timestamp pattern are skipped
+        - The comparison is based purely on the timestamp in the filename, not the actual file metadata
+        
+    Example:
+        >>> s3 = S3('my-bucket')
+        >>> # This will find files named like: "log@15.01.2024_10.30.00Z_data.txt"
+        >>> list_files_by_date(
+        ...     s3_instance=s3,
+        ...     s3_folder="data/logs/",
+        ...     start_date="01.01.2024_00.00.00Z",
+        ...     end_date="31.01.2024_23.59.59Z",
+        ...     patterns="*.txt"
+        ... )
+        ['log@15.01.2024_10.30.00Z_data.txt', 'log@16.01.2024_15.45.00Z_data.txt']
+    """
+    # Convert string dates to datetime if needed
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, '%d.%m.%Y_%H.%M.%SZ')
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, '%d.%m.%Y_%H.%M.%SZ')
 
-        # Get all files that match the patterns using ls()
-        all_files = self.ls(s3_folder=s3_folder, patterns=patterns, only_basename=only_basename)
+    # If no date filtering is needed, just return ls() results
+    if not start_date and not end_date:
+        return s3_instance.ls(s3_folder=s3_folder, patterns=patterns, only_basename=only_basename)
+
+    # Get all files that match the patterns using ls()
+    all_files = s3_instance.ls(s3_folder=s3_folder, patterns=patterns, only_basename=only_basename)
+    
+    # Pattern for extracting datetime from filenames
+    pattern = r'@(\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}Z)_'
+    
+    filtered_files = []
+    for file_path in all_files:
+        filename = os.path.basename(file_path)
+        match = re.search(pattern, filename)
         
-        # Pattern for extracting datetime from filenames
-        pattern = r'@(\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}Z)_'
+        if not match:
+            continue
+            
+        file_date = datetime.strptime(match.group(1), '%d.%m.%Y_%H.%M.%SZ')
         
-        filtered_files = []
-        for file_path in all_files:
-            filename = os.path.basename(file_path)
-            match = re.search(pattern, filename)
-            
-            if not match:
-                continue
-                
-            file_date = datetime.strptime(match.group(1), '%d.%m.%Y_%H.%M.%SZ')
-            
-            if start_date and file_date < start_date:
-                continue
-            if end_date and file_date > end_date:
-                continue
-            
-            filtered_files.append(file_path)
+        if start_date and file_date < start_date:
+            continue
+        if end_date and file_date > end_date:
+            continue
         
-        return filtered_files
+        filtered_files.append(file_path)
+    
+    return filtered_files
+
+
+def list_files_by_time(
+    s3_instance,
+    s3_folder: str = './',
+    start_time: Union[str, time] = None,
+    end_time: Union[str, time] = None,
+    patterns: Union[str, Iterable[Union[str, List[str]]]] = None,
+    only_basename: bool = True
+) -> List[str]:
+    """
+    List files from an S3 bucket filtered by time of day based on filename timestamps.
+    The function expects filenames to contain a timestamp in the format: '@DD.MM.YYYY_HH.MM.SSZ_'
+    
+    Args:
+        s3_instance: An instance of the S3 class with ls() method implemented
+        s3_folder: The folder path in the S3 bucket to list contents of. Defaults to './'.
+        start_time (Union[str, time], optional): Start time for filtering. 
+            If string, format must be 'HH.MM.SS' (e.g., "08.00.00").
+        end_time (Union[str, time], optional): End time for filtering. 
+            If string, format must be 'HH.MM.SS' (e.g., "17.00.00").
+        patterns: Unix-like patterns to filter the files by name. Defaults to None.
+            Uses the `saltup.utils.misc.match_patterns()` function to allow for more pattern possibilities.
+        only_basename: If True, returns only filenames. If False, returns full S3 paths.
+
+    Returns:
+        List[str]: List of filtered file paths/names that match both the time criteria and patterns.
+        
+    Notes:
+        - The function searches for timestamps in filenames using the pattern '@DD.MM.YYYY_HH.MM.SSZ_'
+        - Files without a matching timestamp pattern are skipped
+        - Only the time portion (HH.MM.SS) of the timestamp is used for filtering
+        - The comparison is based purely on the timestamp in the filename, not the actual file metadata
+        - Handles overnight ranges (e.g., 22:00 to 06:00) correctly by considering both cases:
+          * If start_time <= end_time: normal case (e.g., 08:00 to 17:00)
+          * If start_time > end_time: overnight case (e.g., 22:00 to 06:00)
+        
+    Example:
+        >>> s3 = S3('my-bucket')
+        >>> # This will find files named like: "log@15.01.2024_10.30.00Z_data.txt"
+        >>> list_files_by_time(
+        ...     s3_instance=s3,
+        ...     s3_folder="data/logs/",
+        ...     start_time="08.00.00",  # Filter files from 8 AM
+        ...     end_time="17.00.00",    # to 5 PM
+        ...     patterns="*.txt"
+        ... )
+        ['log@15.01.2024_10.30.00Z_data.txt', 'log@16.01.2024_15.45.00Z_data.txt']
+        
+        >>> # Example with overnight range
+        >>> list_files_by_time(
+        ...     s3_instance=s3,
+        ...     s3_folder="data/logs/",
+        ...     start_time="22.00.00",  # Filter files from 10 PM
+        ...     end_time="06.00.00",    # to 6 AM next day
+        ...     patterns="*.txt"
+        ... )
+        ['log@15.01.2024_23.45.00Z_data.txt', 'log@16.01.2024_02.30.00Z_data.txt']
+    """
+    # Convert string times to time objects if needed
+    if isinstance(start_time, str):
+        start_time = datetime.strptime(start_time, '%H.%M.%S').time()
+    if isinstance(end_time, str):
+        end_time = datetime.strptime(end_time, '%H.%M.%S').time()
+
+    # If no time filtering is needed, just return ls() results
+    if not start_time and not end_time:
+        return s3_instance.ls(s3_folder=s3_folder, patterns=patterns, only_basename=only_basename)
+
+    # Get all files that match the patterns using ls()
+    all_files = s3_instance.ls(s3_folder=s3_folder, patterns=patterns, only_basename=only_basename)
+    
+    # Pattern for extracting datetime from filenames
+    pattern = r'@\d{2}\.\d{2}\.\d{4}_(\d{2}\.\d{2}\.\d{2})Z_'
+    
+    filtered_files = []
+    for file_path in all_files:
+        filename = os.path.basename(file_path)
+        match = re.search(pattern, filename)
+        
+        if not match:
+            continue
+            
+        file_time = datetime.strptime(match.group(1), '%H.%M.%S').time()
+        
+        # Handle time range cases, including overnight ranges
+        if start_time and end_time:
+            if start_time <= end_time:
+                # Normal case: e.g., 08:00 to 17:00
+                if not (start_time <= file_time <= end_time):
+                    continue
+            else:
+                # Overnight case: e.g., 22:00 to 06:00
+                if not (file_time >= start_time or file_time <= end_time):
+                    continue
+        elif start_time and file_time < start_time:
+            continue
+        elif end_time and file_time > end_time:
+            continue
+        
+        filtered_files.append(file_path)
+    
+    return filtered_files
