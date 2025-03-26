@@ -93,19 +93,48 @@ from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR
 from saltup.utils.data.image.image_utils import Image, ImageFormat
 
 
+class CoordinateFormat(IntEnum):
+    CENTER = auto()
+    TOPLEFT = auto()
+    CORNERS = auto()
+
+class ScaleFormat(IntEnum):
+    NORMALIZED = auto()
+    ABSOLUTE = auto()
+
 class BBoxFormat(IntEnum):
     CORNERS_NORMALIZED = 1
     CENTER_NORMALIZED = 2
     TOPLEFT_NORMALIZED = 3
-    
+
     CORNERS_ABSOLUTE = 4
     CENTER_ABSOLUTE = 5
     TOPLEFT_ABSOLUTE = 6
-    
+
     # Common Notations
     YOLO = 2
     COCO = 6
     PASCALVOC = 4
+    
+    def to_coordinate_format(self):
+        """Convert the BBoxFormat enum to a CoordinateFormat enum."""
+        if self in [BBoxFormat.CENTER_NORMALIZED, BBoxFormat.CENTER_ABSOLUTE]:
+            return CoordinateFormat.CENTER
+        elif self in [BBoxFormat.TOPLEFT_NORMALIZED, BBoxFormat.TOPLEFT_ABSOLUTE]:
+            return CoordinateFormat.TOPLEFT
+        elif self in [BBoxFormat.CORNERS_NORMALIZED, BBoxFormat.CORNERS_ABSOLUTE]:
+            return CoordinateFormat.CORNERS
+        else:
+            raise ValueError(f"Unknown BBoxFormat: {self}")
+        
+    def to_scale_format(self):
+        """Convert the BBoxFormat enum to a ScaleFormat enum."""
+        if self in [BBoxFormat.CORNERS_NORMALIZED, BBoxFormat.CENTER_NORMALIZED, BBoxFormat.TOPLEFT_NORMALIZED]:
+            return ScaleFormat.NORMALIZED
+        elif self in [BBoxFormat.CORNERS_ABSOLUTE, BBoxFormat.CENTER_ABSOLUTE, BBoxFormat.TOPLEFT_ABSOLUTE]:
+            return ScaleFormat.ABSOLUTE
+        else:
+            raise ValueError(f"Unknown BBoxFormat: {self}")
 
     def to_string(self):
         """Convert the BBoxFormat enum to a human-readable string."""
@@ -131,11 +160,11 @@ class BBoxFormat(IntEnum):
             raise ValueError(f"Unknown BBoxFormat: {self}")
 
 
-class IoUType(Enum):
-    IOU = "iou"
-    DIOU = "diou"
-    CIOU = "ciou"
-    GIOU = "giou"
+class IoUType(IntEnum):
+    IOU = auto()
+    DIOU = auto()
+    CIOU = auto()
+    GIOU = auto()
 
 
 def convert_matrix_boxes(box_xy, box_wh):
