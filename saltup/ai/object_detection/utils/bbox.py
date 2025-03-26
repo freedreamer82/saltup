@@ -94,40 +94,41 @@ from saltup.utils.data.image.image_utils import Image, ImageFormat
 
 
 class BBoxFormat(IntEnum):
-    CORNERS = auto()
-    CENTER = auto()
-    TOPLEFT = auto()
+    CORNERS_NORMALIZED = 1
+    CENTER_NORMALIZED = 2
+    TOPLEFT_NORMALIZED = 3
+    
+    CORNERS_ABSOLUTE = 4
+    CENTER_ABSOLUTE = 5
+    TOPLEFT_ABSOLUTE = 6
+    
+    # Common Notations
+    YOLO = 2
+    COCO = 6
+    PASCALVOC = 4
 
     def to_string(self):
         """Convert the BBoxFormat enum to a human-readable string."""
-        if self == BBoxFormat.CORNERS:
-            return "Corners (x1, y1, x2, y2)"
-        elif self == BBoxFormat.CENTER:
-            return "Center (center_x, center_y, width, height)"
-        elif self == BBoxFormat.TOPLEFT:
-            return "Top-left (x, y, width, height)"
+        if self == BBoxFormat.CORNERS_NORMALIZED:
+            return "Corners Normalized (x1, y1, x2, y2)"
+        elif self == BBoxFormat.CENTER_NORMALIZED:
+            return "Center Normalized (center_x, center_y, width, height)"
+        elif self == BBoxFormat.TOPLEFT_NORMALIZED:
+            return "Top-left Normalized (x, y, width, height)"
+        elif self == BBoxFormat.CORNERS_ABSOLUTE:
+            return "Corners Absolute (x1, y1, x2, y2)"
+        elif self == BBoxFormat.CENTER_ABSOLUTE:
+            return "Center Absolute (center_x, center_y, width, height)"
+        elif self == BBoxFormat.TOPLEFT_ABSOLUTE:
+            return "Top-left Absolute (x, y, width, height)"
+        elif self == BBoxFormat.YOLO:
+            return "YOLO (normalized center-x, center-y, width, height)"
+        elif self == BBoxFormat.COCO:
+            return "COCO (absolute x1, y1, width, height)"
+        elif self == BBoxFormat.PASCALVOC:
+            return "PASCAL VOC (absolute x1, y1, x2, y2)"
         else:
             raise ValueError(f"Unknown BBoxFormat: {self}")
-
-
-class NotationFormat(IntEnum):
-    YOLO = auto()       # YOLO format (normalized center-x, center-y, width, height)
-    COCO = auto()       # COCO format (absolute x1, y1, width, height)
-    PASCALVOC = auto()  # PASCAL VOC format (absolute x1, y1, x2, y2)
-    CORNERS_NORMALIZED = auto()  # corners format (normalized x1, y1, x2, y2)
-
-    def to_string(self):
-        """Convert the NotationFormat enum to a human-readable string."""
-        if self == NotationFormat.YOLO:
-            return "YOLO (normalized center-x, center-y, width, height)"
-        elif self == NotationFormat.COCO:
-            return "COCO (absolute x1, y1, width, height)"
-        elif self == NotationFormat.PASCALVOC:
-            return "PASCAL VOC (absolute x1, y1, x2, y2)"
-        elif self == NotationFormat.CORNERS_NORMALIZED:
-            return "CORNERS_NORMALIZED (normalized x1, y1, x2, y2)"
-        else:
-            raise ValueError(f"Unknown NotationFormat: {self}")
 
 
 class IoUType(Enum):
