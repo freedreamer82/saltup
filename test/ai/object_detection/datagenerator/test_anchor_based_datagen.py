@@ -276,22 +276,35 @@ class TestAnchorsBasedDatagenerator:
         (False, True),
         (False, False)
     ])
-    def test_visualization(self, dataloader: AnchorsBasedDatagen, show_grid, show_anchors, monkeypatch):
+    def test_visualization(self, dataloader, show_grid, show_anchors, monkeypatch):
         """Test visualization with different options."""
         
-        # Mock plt.show() per i test
+        # Mock plt.show() to avoid display issues in test environments
         shown = False
         def mock_show():
             nonlocal shown
             shown = True
         monkeypatch.setattr(plt, 'show', mock_show)
         
+        # Mock plt.figure() to return a proper figure object
+        original_figure = plt.figure
+        def mock_figure(*args, **kwargs):
+            fig = original_figure(*args, **kwargs)
+            return fig
+        monkeypatch.setattr(plt, 'figure', mock_figure)
+        
+        # Mock any matplotlib operation that might cause issues in headless environment
+        monkeypatch.setattr(plt, 'savefig', lambda *args, **kwargs: None)
+        
+        # Make sure we're using the 'Agg' backend which doesn't require a display
+        plt.switch_backend('Agg')
+        
         try:
+            # Call visualization with a try/except to catch and log specific errors
             dataloader.visualize_sample(0, show_grid=show_grid, show_anchors=show_anchors)
-            # Verifica che plt.show() sia stato chiamato
             assert shown, "Plot was not displayed"
         except Exception as e:
-            pytest.fail(f"Visualization failed: {e}")
+            pytest.fail(f"Visualization failed with error: {e}")
 
 
 class TestFrameworksAnchorsBasedDatagenerator:
