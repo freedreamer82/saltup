@@ -186,7 +186,7 @@ class COCOLoader(BaseDataloader):
                     class_id=annotation_raw['category_id'],
                     img_height=img['height'],
                     img_width=img['width'],
-                    format=BBoxFormat.TOPLEFT
+                    fmt=BBoxFormat.TOPLEFT_ABSOLUTE
                 ) for annotation_raw in image_to_annotations[img['id']]]
                 image_annotation_pairs.append(
                     (image_path, annotations)
@@ -504,7 +504,7 @@ def convert_coco_to_yolo_labels(
     Returns:
         Dict mapping image filenames to YOLO annotations
     """
-    from saltup.ai.object_detection.utils.bbox import BBox
+    from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
     
     with open(coco_json, 'r') as f:
         coco_data = json.load(f)
@@ -522,10 +522,10 @@ def convert_coco_to_yolo_labels(
         x, y, w, h = ann['bbox']
         yolo_bbox = BBox(
             coordinates=[x, y, w, h],
+            fmt=BBoxFormat.TOPLEFT_ABSOLUTE,
             img_width=img['width'],
-            img_height=img['height'],
-            format=BBoxFormat.TOPLEFT
-        ).to_yolo()
+            img_height=img['height']
+        ).get_coordinates(fmt=BBoxFormat.YOLO)
         
         # Create YOLO annotation: class_id, x, y, w, h
         class_id = categories[ann['category_id']]

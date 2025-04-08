@@ -6,7 +6,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from saltup.utils.data.image.image_utils import Image as SaltupImage
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.dataset.yolo_darknet import (
     read_label, write_label, create_dataset_structure,
     validate_dataset_structure, analyze_dataset,
@@ -327,7 +327,7 @@ class TestYOLODarknetLoader:
                     assert 0 < label[4] <= 1   # height normalized
                 elif isinstance(label, BBoxClassId):
                     assert isinstance(label, BBoxClassId)
-                    coordinates = label.get_coordinates(NotationFormat.YOLO)
+                    coordinates = label.get_coordinates(fmt=BBoxFormat.YOLO)
                     assert len(coordinates) == 4
                     xc, yc, w, h = coordinates
                     assert 0 <= xc <= 1
@@ -590,8 +590,8 @@ class TestYoloDataset:
         assert loaded_annotations[1].class_id == 1
         
         # Verify annotation coordinates
-        coords0 = loaded_annotations[0].get_coordinates(NotationFormat.YOLO)
-        coords1 = loaded_annotations[1].get_coordinates(NotationFormat.YOLO)
+        coords0 = loaded_annotations[0].get_coordinates(fmt=BBoxFormat.YOLO)
+        coords1 = loaded_annotations[1].get_coordinates(fmt=BBoxFormat.YOLO)
         
         assert coords0[0] == pytest.approx(0.5)  # x center
         assert coords0[1] == pytest.approx(0.5)  # y center

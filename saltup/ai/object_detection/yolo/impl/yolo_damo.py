@@ -130,10 +130,12 @@ class YoloDamo(BaseYolo):
                 x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
                 y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
                 
-                box_object = BBox(img_height=image_height, 
-                                  img_width=image_width, 
-                                  coordinates=(x1, y1, x2, y2), 
-                                  format=BBoxFormat.CORNERS)
+                box_object = BBox(
+                    coordinates=(x1, y1, x2, y2), 
+                    fmt=BBoxFormat.CORNERS_ABSOLUTE,
+                    img_height=image_height, 
+                    img_width=image_width
+                )
                               
                 boxes.append(box_object)
                 probs.append(prob)

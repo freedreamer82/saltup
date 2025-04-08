@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 
 from saltup.utils.data.image.image_utils import Image as SaltupImage
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.dataset.pascal_voc import (
     PascalVOCLoader, ColorMode,
     create_dataset_structure,
@@ -111,7 +111,7 @@ class TestPascalVOCDataset:
                 assert ann["bbox"] == expected["bbox"]
             elif isinstance(ann, BBoxClassId):
                 assert ann.class_name == expected["class_name"]
-                assert ann.get_coordinates(notation=NotationFormat.PASCALVOC) == expected["bbox"]
+                assert ann.get_coordinates(fmt=BBoxFormat.PASCALVOC) == expected["bbox"]
             else:
                 raise ValueError(f"Annotation type '{type(ann)}' not recognized.")
 
@@ -205,7 +205,7 @@ class TestPascalVOCLoader:
                     assert len(ann["bbox"]) == 4
                 elif isinstance(ann, BBoxClassId):
                     assert isinstance(ann, BBoxClassId)
-                    assert len(ann.get_coordinates()) == 4
+                    assert len(ann.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)) == 4
                 else:
                     raise ValueError(f"Annotation type '{type(ann)}' not recognized.")
 

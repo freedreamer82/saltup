@@ -16,7 +16,7 @@ class YoloUltralytics(BaseYolo):
         yolot: YoloType, 
         model_path: str,  
         number_class: int
-        ):
+    ):
         """
         Initialize the Ultralytics YOLO model.
 
@@ -36,14 +36,15 @@ class YoloUltralytics(BaseYolo):
         
     @staticmethod    
     def letterbox(
-                img: np.ndarray,
-                target_shape: Tuple[int, int], 
-                shape_override: Optional[Tuple[int, int]] = None,
-                auto: bool = False,
-                scale_fill: bool = False,
-                scale_up: bool = True,
-                center: bool = False,
-                stride: int = 32) -> Tuple[np.ndarray, Dict]:
+            img: np.ndarray,
+            target_shape: Tuple[int, int], 
+            shape_override: Optional[Tuple[int, int]] = None,
+            auto: bool = False,
+            scale_fill: bool = False,
+            scale_up: bool = True,
+            center: bool = False,
+            stride: int = 32
+        ) -> Tuple[np.ndarray, Dict]:
         """Resize image to target shape and adds padding if needed while preserving aspect ratio.
 
         Args:
@@ -98,6 +99,7 @@ class YoloUltralytics(BaseYolo):
         )
 
         return img
+    
     @staticmethod
     def preprocess(
         image: Image,
@@ -168,12 +170,14 @@ class YoloUltralytics(BaseYolo):
         #     if original_params:
         #         self.__dict__.update(original_params)
 
-    def postprocess(self, 
-                    raw_output: np.ndarray,
-                    image_height:int, 
-                    image_width:int, 
-                    confidence_thr:float=0.5, 
-                    iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
+    def postprocess(
+        self, 
+        raw_output: np.ndarray,
+        image_height:int, 
+        image_width:int, 
+        confidence_thr:float=0.5, 
+        iou_threshold:float=0.5
+    ) -> List[Tuple[BBox, int, float]]:
         """
         Postprocess the output from the Ultralytics-yolo model.
 
@@ -212,10 +216,12 @@ class YoloUltralytics(BaseYolo):
             x2 = np.maximum(0, np.minimum(image_width, x2))  # x2
             y2 = np.maximum(0, np.minimum(image_height, y2))  # y2
             
-            box_object = BBox(img_height=image_height, 
-                            img_width=image_width, 
-                            coordinates=(x1, y1, x2, y2), 
-                            format=BBoxFormat.CORNERS)
+            box_object = BBox(
+                coordinates=(x1, y1, x2, y2), 
+                fmt=BBoxFormat.CORNERS_ABSOLUTE,
+                img_height=image_height, 
+                img_width=image_width
+            )
             boxes.append(box_object)
             probs.append(prob)
             class_ids.append(class_id)

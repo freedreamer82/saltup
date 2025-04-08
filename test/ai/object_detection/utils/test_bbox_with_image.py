@@ -61,8 +61,8 @@ class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
         image = Image(np.zeros((480, 640, 3), dtype=np.uint8))
 
         # Create some bounding boxes (in normalized format)
-        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5])
-        bbox2 = BBox(img_height=480, img_width=640,coordinates=[0.6, 0.5, 0.3, 0.4])
+        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5], )
+        bbox2 = BBox(img_height=480, img_width=640, coordinates=[0.6, 0.5, 0.3, 0.4], )
 
         # List of tuples (BBox, class_id, score)
         bboxes_with_labels_score = [
@@ -104,7 +104,7 @@ class TestDrawBoxesOnImageWithLabelsScore(unittest.TestCase):
             color = class_colors_dict[class_id]
 
             # Convert the bounding box coordinates to integers
-            x1, y1, x2, y2 = bbox.get_coordinates()
+            x1, y1, x2, y2 = bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
             # Ensure coordinates are within the image dimensions

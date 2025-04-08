@@ -273,11 +273,11 @@ class TestCOCODataset:
         for filename, annotations in yolo_annotations.items():
             for ann in annotations:
                 # Check format [class_id, x, y, w, h]
-                assert len(ann) == 5
+                assert len(ann) == 5, f"Invalid annotation length: {len(ann)}"
                 # Verify normalized coordinates
-                assert all(0 <= coord <= 1 for coord in ann[1:])
+                assert all(0 <= coord <= 1 for coord in ann[1:]), "Coordinates not normalized"
                 # Verify class_id is integer
-                assert isinstance(ann[0], int)
+                assert isinstance(ann[0], int), f"Class ID not integer: {ann[0]}"
         
         # Verify output files if directory was provided
         assert output_dir.exists()

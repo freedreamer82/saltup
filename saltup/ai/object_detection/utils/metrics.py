@@ -1,5 +1,5 @@
 import numpy as np
-from saltup.ai.object_detection.utils.bbox import BBox
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from typing import List, Tuple, Union
  
 
