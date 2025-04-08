@@ -62,8 +62,8 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_perfect_match(self):
         """Test the case where all predictions correspond exactly to ground truths."""
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
@@ -76,9 +76,9 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_false_positives(self):
         """Test the case where there are false positives."""
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
-        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)   
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
+        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], fmt=BBoxFormat.CORNERS_ABSOLUTE)   
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8), (bbox3, 1, 0.7)])   
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
@@ -91,9 +91,9 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_false_negatives(self):
         """Test the case where there are false negatives."""
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
-        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])
         ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 1)]
 
@@ -106,8 +106,8 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_no_predictions(self):
         """Test the case where there are no predictions."""
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)  
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         predictions = YoloOutput([])  
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
@@ -120,8 +120,8 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_no_ground_truth(self):
         """Test the case where there are no ground truths."""
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)   
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)  
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)   
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
         ground_truth = []
 
@@ -134,8 +134,8 @@ class TestEvaluate(unittest.TestCase):
 
     def test_evaluate_partial_overlap(self):
         """Test the case where predictions have partial overlap with ground truths."""
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[1, 1, 11, 11], format=BBoxFormat.CORNERS)
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[1, 1, 11, 11], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         predictions = YoloOutput([(bbox2, 0, 0.9)])
         ground_truth = [(bbox1, 0)]
 
@@ -152,9 +152,9 @@ class TestEvaluate(unittest.TestCase):
         Verify that both implementations produce similar results.
         """
         # Create test data
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], format=BBoxFormat.CORNERS)
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], format=BBoxFormat.CORNERS)
-        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], format=BBoxFormat.CORNERS)
+        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         
         predictions = YoloOutput([
             (bbox1, 0, 0.9),
@@ -174,11 +174,12 @@ class TestEvaluate(unittest.TestCase):
         
         # Access YoloOutput data using get_boxes()
         for box, cls, score in predictions.get_boxes():
+            coords = box.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)
             pred_boxes.append([
-                box.get_coordinates()[0],
-                box.get_coordinates()[1],
-                box.get_coordinates()[2],
-                box.get_coordinates()[3]
+                coords[0],
+                coords[1],
+                coords[2],
+                coords[3]
             ])
             pred_scores.append(score)
             pred_labels.append(cls + 1)  # torchmetrics uses 1-based labels
@@ -187,11 +188,12 @@ class TestEvaluate(unittest.TestCase):
         gt_labels = []
         
         for box, cls in ground_truth:
+            coords = box.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)
             gt_boxes.append([
-                box.get_coordinates()[0],
-                box.get_coordinates()[1],
-                box.get_coordinates()[2],
-                box.get_coordinates()[3]
+                coords[0],
+                coords[1],
+                coords[2],
+                coords[3]
             ])
             gt_labels.append(cls + 1)
         

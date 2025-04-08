@@ -2,13 +2,13 @@ import pytest
 from typing import List, Tuple, Optional
 import numpy as np
 from saltup.ai.object_detection.yolo.yolo import YoloOutput
-from saltup.ai.object_detection.utils.bbox  import BBox, BBoxFormat, NotationFormat
+from saltup.ai.object_detection.utils.bbox  import BBox, BBoxFormat
 from saltup.utils.data.image.image_utils import Image
 
 
 def test_yolo_output():
     # Test constructor
-    boxes = [(BBox(100, 100, (10, 20, 30, 40)), 1, 0.9)]
+    boxes = [(BBox(coordinates=(10, 20, 30, 40), fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=100, img_width=100), 1, 0.9)]
     image = Image(np.zeros((100, 100, 3)))
     yolo_output = YoloOutput(boxes, image)
     
@@ -16,7 +16,7 @@ def test_yolo_output():
     assert yolo_output.get_boxes() == boxes
     
     # Test set_boxes
-    new_boxes = [(BBox(100, 100, (50, 60, 70, 80)), 2, 0.8)]
+    new_boxes = [(BBox(coordinates=(50, 60, 70, 80), fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=100, img_width=100), 2, 0.8)]
     yolo_output.set_boxes(new_boxes)
     assert yolo_output.get_boxes() == new_boxes
     

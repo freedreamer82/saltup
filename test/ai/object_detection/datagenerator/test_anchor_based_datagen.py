@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from typing import Tuple, List
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.utils.bbox import BBoxClassId
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import (
     AnchorsBasedDatagen, BaseDataloader, PyTorchAnchorBasedDatagen, KerasAnchorBasedDatagen
 )
@@ -65,6 +65,7 @@ class MockDatasetLoader(BaseDataloader):
                 bbox = BBoxClassId(
                     coordinates=[x_center, y_center, width, height],
                     class_id=label,
+                    fmt=BBoxFormat.YOLO,
                     img_height=self.img_height,
                     img_width=self.img_width
                 )

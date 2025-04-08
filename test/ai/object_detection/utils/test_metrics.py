@@ -9,20 +9,20 @@ from saltup.ai.object_detection.utils.metrics import compute_ap, compute_ap_for_
 class TestAveragePrecision(unittest.TestCase):
     def setUp(self):
         # Create more challenging test cases
-        self.gt_bbox1 = BBox(img_height=100, img_width=100, coordinates=[10, 10, 20, 20], format=BBoxFormat.CORNERS)
-        self.gt_bbox2 = BBox(img_height=100, img_width=100, coordinates=[30, 30, 40, 40], format=BBoxFormat.CORNERS)
+        self.gt_bbox1 = BBox(img_height=100, img_width=100, coordinates=[10, 10, 20, 20], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        self.gt_bbox2 = BBox(img_height=100, img_width=100, coordinates=[30, 30, 40, 40], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         
         # Good match but not perfect
-        self.pred_bbox1 = BBox(img_height=100, img_width=100, coordinates=[12, 12, 21, 21], format=BBoxFormat.CORNERS)
+        self.pred_bbox1 = BBox(img_height=100, img_width=100, coordinates=[12, 12, 21, 21], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         
         # Clear false positive - completely different location
-        self.pred_bbox2 = BBox(img_height=100, img_width=100, coordinates=[50, 50, 60, 60], format=BBoxFormat.CORNERS)
+        self.pred_bbox2 = BBox(img_height=100, img_width=100, coordinates=[50, 50, 60, 60], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         
         # Partial overlap but below threshold false positive
-        self.pred_bbox3 = BBox(img_height=100, img_width=100, coordinates=[15, 15, 25, 25], format=BBoxFormat.CORNERS)
+        self.pred_bbox3 = BBox(img_height=100, img_width=100, coordinates=[15, 15, 25, 25], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         
         # Perfect match for gt_bbox2
-        self.pred_bbox4 = BBox(img_height=100, img_width=100, coordinates=[30, 30, 40, 40], format=BBoxFormat.CORNERS)
+        self.pred_bbox4 = BBox(img_height=100, img_width=100, coordinates=[30, 30, 40, 40], fmt=BBoxFormat.CORNERS_ABSOLUTE)
 
     def test_false_positive(self):
         """Test case with false positives"""
