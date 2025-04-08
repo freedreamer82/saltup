@@ -301,7 +301,7 @@ def tiny_anchors_based_nms(
     corners_boxes[:, 3] = np.maximum(0, np.minimum(height, corners_boxes[:, 3]))  # y2
 
     # Wrap boxes into BBox objects
-    bboxes = [BBox(img_height=height, img_width=width, coordinates=box.tolist(), format=BBoxFormat.CORNERS) for box in corners_boxes]
+    bboxes = [BBox(coordinates=box.tolist(), fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=height, img_width=width) for box in corners_boxes]
 
     total_boxes, total_scores, total_classes = [], [], []
 
@@ -329,7 +329,7 @@ def tiny_anchors_based_nms(
         s_corners_boxes = np.array([box.get_coordinates() for box in total_boxes], dtype=np.float32)
         s_scores = np.array(total_scores, dtype=np.float32)
         s_classes = np.array(total_classes, dtype=np.int32)
-        s_centers_boxes = np.array([box.to_yolo() for box in total_boxes], dtype=np.float32)
+        s_centers_boxes = np.array([box.get_coordinates(fmt=BBoxFormat.YOLO) for box in total_boxes], dtype=np.float32)
     else:
         s_corners_boxes = np.empty((0, 4), dtype=np.float32)
         s_scores = np.empty((0,), dtype=np.float32)
