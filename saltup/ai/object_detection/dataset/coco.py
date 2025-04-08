@@ -520,12 +520,12 @@ def convert_coco_to_yolo_labels(
         
         # Convert bbox coordinates
         x, y, w, h = ann['bbox']
-        yolo_bbox = BBox(
+        yolo_bbox = BBox.converter(
             coordinates=[x, y, w, h],
-            fmt=BBoxFormat.TOPLEFT_ABSOLUTE,
-            img_width=img['width'],
-            img_height=img['height']
-        ).get_coordinates(fmt=BBoxFormat.YOLO)
+            from_fmt=BBoxFormat.TOPLEFT_ABSOLUTE,
+            to_fmt=BBoxFormat.YOLO,
+            img_shape= (img['height'], img['width'])
+        )
         
         # Create YOLO annotation: class_id, x, y, w, h
         class_id = categories[ann['category_id']]

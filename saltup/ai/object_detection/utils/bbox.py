@@ -85,12 +85,11 @@ import cv2
 import os
 import numpy as np
 from copy import deepcopy
-import matplotlib.pyplot as plt
-from enum import auto, IntEnum, Enum
+from enum import auto, IntEnum
 from typing import List, Tuple, Dict, Optional, Union
 
-from saltup.utils.data.image.image_utils import ColorMode, ColorsBGR
-from saltup.utils.data.image.image_utils import Image, ImageFormat
+from saltup.utils.data.image.image_utils import ColorMode
+from saltup.utils.data.image.image_utils import Image
 
 
 class CoordinateFormat(IntEnum):
@@ -158,7 +157,8 @@ class BBoxFormat(IntEnum):
             return "PASCAL VOC (absolute x1, y1, x2, y2)"
         else:
             raise ValueError(f"Unknown BBoxFormat: {self}")
-
+        
+BBOX_INNER_FORMAT = BBoxFormat.CORNERS_ABSOLUTE
 
 class IoUType(IntEnum):
     IOU = auto()
@@ -215,19 +215,27 @@ class BBox:
 
         Args:
             coordinates: The bounding box coordinates.
-            fmt: The format of the coordinates (BBoxFormat enum). Defaults to BBoxFormat.YOLO.
+            fmt: Input coordinates format (BBoxFormat enum). Defaults to BBoxFormat.YOLO.
             img_width: The width of the image (required for normalization).
             img_height: The height of the image (required for normalization).
 
         Raises:
             ValueError: If the coordinates are invalid or not in the correct format.
 
+        Note:
+            Internally, the BBox class always stores coordinates in CORNERS_ABSOLUTE format.
         """
         if coordinates is None:
-            self.__internal_coordinates = []
-            self.__internal_fmt = None
+            self.__coordinates = []
         else:
-            self.set_coordinates(coordinates, fmt, img_height, img_width)
+            self.__coordinates = BBox.converter(
+                coordinates, 
+                from_fmt = fmt, 
+                to_fmt = BBOX_INNER_FORMAT,
+                img_shape = (img_height, img_width)
+            )
+            self.img_width = img_width
+            self.img_height = img_height
 
     def copy(self):
         """Create a deep copy of the BoundingBox object."""
@@ -563,23 +571,23 @@ class BBox:
             x1, y1, x2, y2 = bbox
             if x1 > x2 or y1 > y2:
                 raise ValueError("Invalid box: x1/y1 must be less than x2/y2")
-            return (
+            return tuple(map(int, (
                 x1 * img_width,
                 y1 * img_height,
                 x2 * img_width,
                 y2 * img_height
-            )
+            )))
 
         elif fmt == BBoxFormat.TOPLEFT_NORMALIZED:
             x, y, w, h = bbox
             if w <= 0 or h <= 0:
                 raise ValueError("Width and height must be positive")
-            return (
+            return tuple(map(int, (
                 x * img_width,
                 y * img_height,
                 w * img_width,
                 h * img_height
-            )
+            )))
 
         elif fmt == BBoxFormat.CENTER_NORMALIZED or fmt == BBoxFormat.YOLO:
             xc, yc, w, h = bbox
@@ -587,12 +595,12 @@ class BBox:
                 raise ValueError("Width and height must be positive")
             if (xc - w/2) < 0 or (yc - h/2) < 0 or (xc + w/2) > 1 or (yc + h/2) > 1:
                 raise ValueError("Box extends outside normalized bounds")
-            return (
+            return tuple(map(int, (
                 xc * img_width,
                 yc * img_height,
                 w * img_width,
                 h * img_height
-            )
+            )))
 
         raise ValueError(f"Unsupported format: {fmt}")
 
@@ -818,72 +826,107 @@ class BBox:
 
     def get_img_shape(self) -> Tuple[int, int]:
         return self.img_height, self.img_width
-
-    def get_coordinates(self, fmt: BBoxFormat = None, img_shape: tuple = None) -> Tuple[float, float, float, float]:
+    
+    @staticmethod
+    def converter(
+        coordinates: Union[List, Tuple],
+        from_fmt: BBoxFormat,
+        to_fmt: BBoxFormat,
+        img_shape: tuple = None
+    ) -> Tuple[float, float, float, float]:
         """
-        Get the bounding box coordinates in the specified format.
-
-        Args:
-            fmt: The desired format for the bounding box 
-            coordinates. If None, returns the coordinates in the internal format.
-            img_shape: A tuple representing the shape of the image as (height, width). Defaults to None.
-
-        Returns:
-            Tuple of coordinates in the specified format.
-            
-        Raises:
-            ValueError: If the specified format is not supported.
-        """
-        if fmt is None or fmt == self.__internal_fmt:
-            return tuple(self.__internal_coordinates)
+        Converts bounding box coordinates from one format and scale to another.
         
-        coordinates = self.__internal_coordinates        
-        current_coord_format, current_scale = self.__internal_fmt.to_coordinate_format(), self.__internal_fmt.to_scale_format()
-        target_coord_format, target_scale = fmt.to_coordinate_format(), fmt.to_scale_format()
+        Args:
+            coordinates (Union[List, Tuple]): The bounding box coordinates to be converted.
+                The format of the coordinates depends on the `from_fmt` parameter.
+            from_fmt (BBoxFormat): The current format of the bounding box coordinates.
+            to_fmt (BBoxFormat): The desired format to convert the bounding box coordinates to.
+            img_shape (tuple, optional): The shape of the image as (height, width). Required
+                if scale conversion is needed (e.g., from absolute to normalized or vice versa).
+        
+        Returns:
+            tuple: The converted bounding box coordinates in the desired format and scale.
+        
+        Raises:
+            ValueError: If the target coordinate format is unsupported.
+            ValueError: If image dimensions are required for scale conversion but not provided.
+        """
+        new_coordinates = list(coordinates)
+        from_coord_type, from_scale_type = from_fmt.to_coordinate_format(), from_fmt.to_scale_format()
+        to_coord_type, to_scale_type = to_fmt.to_coordinate_format(), to_fmt.to_scale_format()
         
         # Convert format
-        if current_coord_format == CoordinateFormat.CORNERS:
-            if target_coord_format == CoordinateFormat.CENTER:
-                coordinates = BBox.corners_to_center_format(coordinates)
-            elif target_coord_format == CoordinateFormat.TOPLEFT:
-                coordinates = BBox.corners_to_topleft_format(coordinates)
-        elif current_coord_format == CoordinateFormat.CENTER:
-            if target_coord_format == CoordinateFormat.CORNERS:
-                coordinates = BBox.center_to_corners_format(coordinates)
-            elif target_coord_format == CoordinateFormat.TOPLEFT:
-                coordinates = BBox.center_to_topleft_format(coordinates)
-        elif current_coord_format == CoordinateFormat.TOPLEFT:
-            if target_coord_format == CoordinateFormat.CORNERS:
-                coordinates = BBox.topleft_to_corners_format(coordinates)
-            elif target_coord_format == CoordinateFormat.CENTER:
-                coordinates = BBox.topleft_to_center_format(coordinates)
+        if from_coord_type == CoordinateFormat.CORNERS:
+            if to_coord_type == CoordinateFormat.CENTER:
+                new_coordinates = BBox.corners_to_center_format(coordinates)
+            elif to_coord_type == CoordinateFormat.TOPLEFT:
+                new_coordinates = BBox.corners_to_topleft_format(coordinates)
+        elif from_coord_type == CoordinateFormat.CENTER:
+            if to_coord_type == CoordinateFormat.CORNERS:
+                new_coordinates = BBox.center_to_corners_format(coordinates)
+            elif to_coord_type == CoordinateFormat.TOPLEFT:
+                new_coordinates = BBox.center_to_topleft_format(coordinates)
+        elif from_coord_type == CoordinateFormat.TOPLEFT:
+            if to_coord_type == CoordinateFormat.CORNERS:
+                new_coordinates = BBox.topleft_to_corners_format(coordinates)
+            elif to_coord_type == CoordinateFormat.CENTER:
+                new_coordinates = BBox.topleft_to_center_format(coordinates)
         else:
-            raise ValueError(f"Unsupported format: {current_coord_format}")
+            raise ValueError(f"Unsupported format: {from_coord_type}")
         
         # Convert scale if necessary
-        if target_scale != current_scale:
+        if to_scale_type != from_scale_type:
             if img_shape is not None:
                 img_height, img_width = img_shape
-            elif self.img_height is not None and self.img_width is not None:
-                img_height, img_width = self.img_height, self.img_width
             else:
                 raise ValueError("Image dimensions are required for scale conversion")
             
             # Create a format that represents the current coordinate format but with the current scale
             current_format = None
-            if target_coord_format == CoordinateFormat.CORNERS:
-                current_format = BBoxFormat.CORNERS_ABSOLUTE if current_scale == ScaleFormat.ABSOLUTE else BBoxFormat.CORNERS_NORMALIZED
-            elif target_coord_format == CoordinateFormat.CENTER:
-                current_format = BBoxFormat.CENTER_ABSOLUTE if current_scale == ScaleFormat.ABSOLUTE else BBoxFormat.CENTER_NORMALIZED
-            elif target_coord_format == CoordinateFormat.TOPLEFT:
-                current_format = BBoxFormat.TOPLEFT_ABSOLUTE if current_scale == ScaleFormat.ABSOLUTE else BBoxFormat.TOPLEFT_NORMALIZED
+            if to_coord_type == CoordinateFormat.CORNERS:
+                current_format = BBoxFormat.CORNERS_ABSOLUTE if from_scale_type == ScaleFormat.ABSOLUTE else BBoxFormat.CORNERS_NORMALIZED
+            elif to_coord_type == CoordinateFormat.CENTER:
+                current_format = BBoxFormat.CENTER_ABSOLUTE if from_scale_type == ScaleFormat.ABSOLUTE else BBoxFormat.CENTER_NORMALIZED
+            elif to_coord_type == CoordinateFormat.TOPLEFT:
+                current_format = BBoxFormat.TOPLEFT_ABSOLUTE if from_scale_type == ScaleFormat.ABSOLUTE else BBoxFormat.TOPLEFT_NORMALIZED
             
-            if target_scale == ScaleFormat.NORMALIZED:
-                coordinates = BBox.normalize(coordinates, img_width, img_height, current_format)
+            if to_scale_type == ScaleFormat.NORMALIZED:
+                new_coordinates = BBox.normalize(new_coordinates, img_width, img_height, current_format)
             else:
-                coordinates = BBox.absolute(coordinates, img_width, img_height, current_format)
+                new_coordinates = BBox.absolute(new_coordinates, img_width, img_height, current_format)
         
-        return tuple(coordinates)
+        return tuple(new_coordinates)
+
+    def get_coordinates(self, fmt: BBoxFormat = None) -> Tuple[float, float, float, float]:
+        f"""
+        Get the bounding box coordinates in the specified format.
+
+        Args:
+            fmt (BBoxFormat, optional): The desired format for the bounding box 
+                coordinates. If None, the coordinates are returned in the internal format.
+            img_shape (tuple, optional): A tuple representing the shape of the image 
+                as (height, width). Required for certain format conversions. Defaults to None.
+
+        Returns:
+            Tuple of coordinates in the specified format.
+        
+        Raises:
+            ValueError: If the specified format is not supported 
+            ValueError: if required parameters for the conversion are missing.
+            
+        Note:
+            Internally, the BBox class always stores coordinates in CORNERS_ABSOLUTE format.
+        """
+        if fmt is None or fmt == BBOX_INNER_FORMAT:
+            return tuple(self.__coordinates)
+        
+        return BBox.converter(
+            self.__coordinates,
+            from_fmt = BBOX_INNER_FORMAT,
+            to_fmt = fmt,
+            img_shape = (self.img_height, self.img_width)
+        )
         
     def set_coordinates(
         self,
@@ -917,8 +960,7 @@ class BBox:
             if not BBox.is_normalized(coordinates):
                 raise ValueError("Coordinates must be normalized for the specified format")
 
-        self.__internal_coordinates = coordinates
-        self.__internal_fmt = fmt
+        self.__coordinates = coordinates
         self.img_width = img_width
         self.img_height = img_height
 
@@ -953,34 +995,9 @@ class BBox:
         # Both BBox objects should independently handle conversion to absolute coordinates
         # using their own internal image dimensions
         return BBox._compute_iou(self, other, BBoxFormat.CORNERS_ABSOLUTE, None, iou_type)
-
-    @property
-    def fmt(self) -> BBoxFormat:
-        """
-        Get the internal format of the bounding box.
-        
-        Returns:
-            BBoxFormat: The internal format of the bounding box.
-        """
-        return self.__internal_fmt
-        
-    @fmt.setter
-    def fmt(self, value: BBoxFormat):
-        """
-        Set the internal format of the bounding box.
-        
-        Args:
-            value (BBoxFormat): The new format to set.
-            
-        Raises:
-            TypeError: If value is not a BBoxFormat.
-        """
-        if not isinstance(value, BBoxFormat):
-            raise TypeError("Format must be a BBoxFormat")
-        self.__internal_fmt = value
     
     def __repr__(self):
-        return f"BBox(coordinates={self.get_coordinates()}, fmt={self.fmt}, img_height={self.img_height}, img_width={self.img_width})"
+        return f"BBox(coordinates={self.get_coordinates()}, fmt={BBOX_INNER_FORMAT.to_string()}, img_height={self.img_height}, img_width={self.img_width})"
 
 
 class BBoxClassId(BBox):
@@ -1270,17 +1287,7 @@ def draw_boxes_on_image(image: Image, bboxes: List[BBox], color: Tuple[int, int,
             raise TypeError(f"Expected an instance of BBox, but got {type(bbox)}")
 
         # Convert the bounding box to corners format (x1, y1, x2, y2)
-        corners = bbox.get_coordinates()
-
-        x1, y1, x2, y2 = corners
-
-        img_width = image.get_width()
-        img_height = image.get_height()
-        # Convert normalized coordinates to absolute pixel values
-        x1 = int(x1 * img_width)
-        y1 = int(y1 * img_height)
-        x2 = int(x2 * img_width)
-        y2 = int(y2 * img_height)
+        x1, y1, x2, y2 = bbox.get_coordinates(fmt=BBoxFormat.CORNERS_ABSOLUTE)
 
         # Draw the bounding box on the image
         cv2.rectangle(image_with_boxes, (x1, y1), (x2, y2), color, thickness)

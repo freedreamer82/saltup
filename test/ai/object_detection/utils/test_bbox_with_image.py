@@ -11,12 +11,20 @@ class TestDrawBoxesOnImage(unittest.TestCase):
         Test for the `draw_boxes_on_image` function.
         Verifies that bounding boxes are drawn correctly on the image.
         """
-         # Create an empty image using the Image class (480x640, 3 color channels)
+        # Create an empty image using the Image class (480x640, 3 color channels)
         image = Image(np.zeros((480, 640, 3), dtype=np.uint8))
 
         # Create some bounding boxes (in normalized format)
-        bbox1 = BBox(img_height=480, img_width=640, coordinates=[0.2, 0.3, 0.4, 0.5])
-        bbox2 = BBox(img_height=480, img_width=640,coordinates=[0.6, 0.5, 0.3, 0.4])
+        bbox1 = BBox( 
+            coordinates=[0.2, 0.3, 0.4, 0.5], 
+            fmt=BBoxFormat.YOLO,
+            img_height=480, img_width=640
+        )
+        bbox2 = BBox( 
+            coordinates=[0.6, 0.5, 0.3, 0.4], 
+            fmt=BBoxFormat.YOLO,
+            img_height=480, img_width=640
+        )
 
         # List of bounding boxes
         bboxes = [bbox1, bbox2]
@@ -25,7 +33,7 @@ class TestDrawBoxesOnImage(unittest.TestCase):
         image_with_boxes = draw_boxes_on_image(image, bboxes, color=(0, 255, 0), thickness=2)
 
         # Verify that the image is not empty
-        self.assertFalse(np.array_equal(image, image_with_boxes))
+        self.assertFalse(np.array_equal(image.get_data(), image_with_boxes.get_data()))
 
         # Verify that there are green pixels (color of the bounding boxes)
         green_pixels = np.where(
