@@ -6,7 +6,7 @@ from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
 from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, NotationFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_format, compute_anchor_iou
 from saltup.utils.configure_logging import get_logger
 
@@ -116,7 +116,7 @@ class AnchorsBasedDatagen(BasedDatagenerator):
                     # Check type and extract data
                     if isinstance(annotation_data[0], BBoxClassId):
                         boxes, class_labels = map(np.array, zip(*[
-                            [item.get_coordinates(notation=NotationFormat.YOLO), item.class_id]
+                            [item.get_coordinates(fmt=BBoxFormat.YOLO), item.class_id]
                             for item in annotation_data
                         ]))
                     elif isinstance(annotation_data[0], np.ndarray):
@@ -219,7 +219,7 @@ class AnchorsBasedDatagen(BasedDatagenerator):
                 # Check type and extract data
                 if isinstance(annotation_data[0], BBoxClassId):
                     boxes, class_labels = map(np.array, zip(*[
-                        [item.get_coordinates(notation=NotationFormat.YOLO), item.class_id]
+                        [item.get_coordinates(fmt=BBoxFormat.YOLO), item.class_id]
                         for item in annotation_data
                     ]))
                 elif isinstance(annotation_data[0], np.ndarray):
