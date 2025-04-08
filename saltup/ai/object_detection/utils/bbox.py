@@ -206,7 +206,7 @@ class BBox:
     def __init__(
         self,
         coordinates: Union[List, Tuple, np.ndarray] = None,
-        format: BBoxFormat = None,
+        fmt: BBoxFormat = BBoxFormat.YOLO,
         img_height: int = None,
         img_width: int = None
     ):
@@ -215,7 +215,7 @@ class BBox:
 
         Args:
             coordinates: The bounding box coordinates.
-            format: The format of the coordinates (BBoxFormat enum).
+            fmt: The format of the coordinates (BBoxFormat enum). Defaults to BBoxFormat.YOLO.
             img_width: The width of the image (required for normalization).
             img_height: The height of the image (required for normalization).
 
@@ -225,9 +225,9 @@ class BBox:
         """
         if coordinates is None:
             self.__internal_coordinates = []
-            self.__internal_format = None
+            self.__internal_fmt = None
         else:
-            self.set_coordinates(coordinates, format, img_height, img_width)
+            self.set_coordinates(coordinates, fmt, img_height, img_width)
 
     def copy(self):
         """Create a deep copy of the BoundingBox object."""
@@ -403,7 +403,7 @@ class BBox:
         bbox: Union[List, Tuple],
         img_width: int,
         img_height: int,
-        format: BBoxFormat
+        fmt: BBoxFormat
     ) -> Tuple[float, float, float, float]:
         """
         Normalize bounding box coordinates relative to image dimensions.
@@ -412,7 +412,7 @@ class BBox:
             bbox: Bounding box coordinates in one of the absolute formats
             img_width: Width of the image in pixels
             img_height: Height of the image in pixels
-            format: Format of input bbox (one of the absolute formats)
+            fmt: Format of input bbox (one of the absolute formats)
 
         Returns:
             Tuple of normalized coordinates in corresponding normalized format
@@ -429,18 +429,18 @@ class BBox:
             raise TypeError("Image dimensions must be integers")
         if img_width <= 0 or img_height <= 0:
             raise ValueError("Image dimensions must be positive")
-        if not isinstance(format, BBoxFormat):
+        if not isinstance(fmt, BBoxFormat):
             raise TypeError("Format must be a BBoxFormat")
 
         # Convert to float for calculations
         bbox = [float(x) for x in bbox]
 
         # Check if format is already normalized
-        if format in [BBoxFormat.CORNERS_NORMALIZED, BBoxFormat.CENTER_NORMALIZED,
+        if fmt in [BBoxFormat.CORNERS_NORMALIZED, BBoxFormat.CENTER_NORMALIZED,
                      BBoxFormat.TOPLEFT_NORMALIZED, BBoxFormat.YOLO]:
             return bbox
 
-        if format == BBoxFormat.CORNERS_ABSOLUTE or format == BBoxFormat.PASCALVOC:
+        if fmt == BBoxFormat.CORNERS_ABSOLUTE or fmt == BBoxFormat.PASCALVOC:
             x1, y1, x2, y2 = bbox
 
             # Validate coordinates
@@ -463,7 +463,7 @@ class BBox:
                 y2 / img_height
             )
 
-        elif format == BBoxFormat.TOPLEFT_ABSOLUTE or format == BBoxFormat.COCO:
+        elif fmt == BBoxFormat.TOPLEFT_ABSOLUTE or fmt == BBoxFormat.COCO:
             x1, y1, w, h = bbox
 
             # Validate coordinates and dimensions
@@ -486,7 +486,7 @@ class BBox:
                 h / img_height
             )
 
-        elif format == BBoxFormat.CENTER_ABSOLUTE:
+        elif fmt == BBoxFormat.CENTER_ABSOLUTE:
             xc, yc, w, h = bbox
 
             # Validate coordinates and dimensions
@@ -519,7 +519,7 @@ class BBox:
                 h / img_height
             )
 
-        raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(f"Unsupported format: {fmt}")
 
     @classmethod
     def absolute(
@@ -527,7 +527,7 @@ class BBox:
         bbox: Union[List, Tuple],
         img_width: int,
         img_height: int,
-        format: BBoxFormat
+        fmt: BBoxFormat
     ) -> Tuple[float, float, float, float]:
         """
         Convert normalized bounding box coordinates to absolute pixel coordinates.
@@ -536,7 +536,7 @@ class BBox:
             bbox: Normalized coordinates [0.0-1.0] in specified format
             img_width: Image width in pixels
             img_height: Image height in pixels
-            format: Box format (one of the normalized formats)
+            fmt: Box format (one of the normalized formats)
 
         Returns:
             Tuple of absolute coordinates in corresponding absolute format
@@ -549,17 +549,17 @@ class BBox:
             raise ValueError("Image dimensions must be positive")
         if not all(0 <= x <= 1 for x in bbox):
             raise ValueError("Normalized coordinates must be in range [0,1]")
-        if not isinstance(format, BBoxFormat):
+        if not isinstance(fmt, BBoxFormat):
             raise TypeError("Format must be a BBoxFormat")
 
         # Check if format is already absolute
-        if format in [BBoxFormat.CORNERS_ABSOLUTE, BBoxFormat.CENTER_ABSOLUTE,
+        if fmt in [BBoxFormat.CORNERS_ABSOLUTE, BBoxFormat.CENTER_ABSOLUTE,
                      BBoxFormat.TOPLEFT_ABSOLUTE, BBoxFormat.COCO, BBoxFormat.PASCALVOC]:
             return bbox
 
         bbox = [float(x) for x in bbox]
 
-        if format == BBoxFormat.CORNERS_NORMALIZED:
+        if fmt == BBoxFormat.CORNERS_NORMALIZED:
             x1, y1, x2, y2 = bbox
             if x1 > x2 or y1 > y2:
                 raise ValueError("Invalid box: x1/y1 must be less than x2/y2")
@@ -570,7 +570,7 @@ class BBox:
                 y2 * img_height
             )
 
-        elif format == BBoxFormat.TOPLEFT_NORMALIZED:
+        elif fmt == BBoxFormat.TOPLEFT_NORMALIZED:
             x, y, w, h = bbox
             if w <= 0 or h <= 0:
                 raise ValueError("Width and height must be positive")
@@ -581,7 +581,7 @@ class BBox:
                 h * img_height
             )
 
-        elif format == BBoxFormat.CENTER_NORMALIZED or format == BBoxFormat.YOLO:
+        elif fmt == BBoxFormat.CENTER_NORMALIZED or fmt == BBoxFormat.YOLO:
             xc, yc, w, h = bbox
             if w <= 0 or h <= 0:
                 raise ValueError("Width and height must be positive")
@@ -594,13 +594,13 @@ class BBox:
                 h * img_height
             )
 
-        raise ValueError(f"Unsupported format: {format}")
+        raise ValueError(f"Unsupported format: {fmt}")
 
     @staticmethod
-    def __compute_iou(
+    def _compute_iou(
         box1: Union[List, Tuple, 'BBox'],
         box2: Union[List, Tuple, 'BBox'],
-        format: BBoxFormat,
+        fmt: BBoxFormat = BBoxFormat.CORNERS_ABSOLUTE,
         img_shape: Tuple[int, int] = None,
         iou_type: IoUType = IoUType.IOU
     ) -> float:
@@ -610,7 +610,7 @@ class BBox:
         Args:
             box1: The first bounding box, either as a BBox object or a list/tuple of coordinates.
             box2: The second bounding box, either as a BBox object or a list/tuple of coordinates.
-            format: The format of the bounding boxes.
+            fmt: The format of the bounding boxes. Defaults to BBoxFormat.CORNERS_ABSOLUTE.
             img_shape: The shape of the image as (height, width). Defaults to None.
             iou_type: The type of IoU to compute. Defaults to IoUType.IOU.
 
@@ -622,22 +622,30 @@ class BBox:
             TypeError: If the boxes are not BBox objects or lists/tuples of coordinates.
             ValueError: If an invalid IoU type is provided.
         """
-        if not isinstance(format, BBoxFormat):
+        if not isinstance(fmt, BBoxFormat):
             raise TypeError("Format must be a BBoxFormat")
         if not isinstance(iou_type, IoUType):
             raise TypeError("IoU type must be an IoUType")
 
         if all(isinstance(b, BBox) for b in [box1, box2]):
-            box1 = box1.get_coordinates(BBoxFormat.CORNERS_ABSOLUTE, img_shape)
-            box2 = box2.get_coordinates(BBoxFormat.CORNERS_ABSOLUTE, img_shape)
-        elif all(isinstance(b, (list, tuple)) for b in [box1, box2]):
-            box1 = BBox(coordinates=box1, format=format, img_height=img_shape[0], img_width=img_shape[1])
-            box2 = BBox(coordinates=box2, format=format, img_height=img_shape[0], img_width=img_shape[1])
+            if box1.get_img_shape() != box2.get_img_shape():
+                raise ValueError("Bounding boxes must have the same image shape")
             
-            box1 = box1.get_coordinates(BBoxFormat.CORNERS_ABSOLUTE, img_shape)
-            box2 = box2.get_coordinates(BBoxFormat.CORNERS_ABSOLUTE, img_shape)
+            box1_coords = box1.get_coordinates(fmt=BBoxFormat.CORNERS_ABSOLUTE)
+            box2_coords = box2.get_coordinates(fmt=BBoxFormat.CORNERS_ABSOLUTE)
+            box1, box2 = box1_coords, box2_coords
+        elif all(isinstance(b, (list, tuple)) for b in [box1, box2]):
+            if fmt != BBoxFormat.CORNERS_ABSOLUTE:
+                img_height, img_width = img_shape if img_shape else (None, None)   
+                # Create BBox objects from the raw coordinates
+                bbox1 = BBox(coordinates=box1, fmt=fmt, img_height=img_height, img_width=img_width)
+                bbox2 = BBox(coordinates=box2, fmt=fmt, img_height=img_height, img_width=img_width)
+                
+                # Convert to absolute corners format
+                box1 = bbox1.get_coordinates(fmt=BBoxFormat.CORNERS_ABSOLUTE)
+                box2 = bbox2.get_coordinates(fmt=BBoxFormat.CORNERS_ABSOLUTE)
         else:
-            raise TypeError("Boxes must be BBox objects or lists/tuples of coordinates")
+            raise TypeError(f"Boxes must be BBox objects or lists/tuples of coordinates. Passed: {type(box1)}, {type(box2)}")
                 
         # Extract coordinates
         x1_1, y1_1, x2_1, y2_1 = box1
@@ -706,7 +714,7 @@ class BBox:
             raise ValueError("Invalid IoU type")
 
     @classmethod
-    def from_yolo_file(cls, file_path: str, img_height: int, img_width: int) -> Tuple[List['BBox'], List[int]]:
+    def from_yolo_file(cls, file_path: str, img_height: int = None, img_width: int = None) -> Tuple[List['BBox'], List[int]]:
         """
         Load bounding boxes from a YOLO format annotation file.
 
@@ -738,23 +746,26 @@ class BBox:
 
                 # Create a BBox object in CENTER format
                 bbox = cls(
-                    img_height=img_height,
-                    img_width=img_width,
                     coordinates=[x_center, y_center, width, height],
-                    format=BBoxFormat.YOLO
+                    fmt=BBoxFormat.YOLO,
+                    img_height=img_height,
+                    img_width=img_width
                 )
                 bboxes.append(bbox)
                 class_ids.append(class_id)
+
         return bboxes, class_ids
 
     @classmethod
-    def from_coco_file(cls, file_path: str, image_id: int) -> List['BBox']:
+    def from_coco_file(cls, file_path: str, image_id: int, img_height: int = None, img_width: int = None) -> List['BBox']:
         """
         Load bounding box from a COCO format annotation file.
 
         Args:
             file_path: Path to the COCO annotation file.
             image_id: ID of the image to load annotations for.
+            img_width: Width of the image.
+            img_height: Height of the image.
 
         Returns:
             A list of BBox objects (one for each annotation in the file).
@@ -768,13 +779,15 @@ class BBox:
                 x_min, y_min, width, height = annotation['bbox']
                 bbox = cls(
                     coordinates=[x_min, y_min, width, height],
-                    format=BBoxFormat.COCO
+                    fmt=BBoxFormat.COCO,
+                    img_height=img_height,
+                    img_width=img_width
                 )
                 bboxes.append(bbox)
         return bboxes
 
     @classmethod
-    def from_pascal_voc_file(cls, file_path: str):
+    def from_pascal_voc_file(cls, file_path: str, img_height: int = None, img_width: int = None):
         """
         Load bounding box from a Pascal VOC format annotation file.
 
@@ -796,7 +809,9 @@ class BBox:
             ymax = int(bndbox.find('ymax').text)
             bbox = cls(
                 coordinates=[xmin, ymin, xmax, ymax],
-                format=BBoxFormat.PASCALVOC
+                fmt=BBoxFormat.PASCALVOC,
+                img_height=img_height,
+                img_width=img_width
             )
             bboxes.append(bbox)
         return bboxes
@@ -804,12 +819,12 @@ class BBox:
     def get_img_shape(self) -> Tuple[int, int]:
         return self.img_height, self.img_width
 
-    def get_coordinates(self, format: BBoxFormat = None, img_shape: tuple = None) -> Tuple[float, float, float, float]:
+    def get_coordinates(self, fmt: BBoxFormat = None, img_shape: tuple = None) -> Tuple[float, float, float, float]:
         """
         Get the bounding box coordinates in the specified format.
 
         Args:
-            format: The desired format for the bounding box 
+            fmt: The desired format for the bounding box 
             coordinates. If None, returns the coordinates in the internal format.
             img_shape: A tuple representing the shape of the image as (height, width). Defaults to None.
 
@@ -819,12 +834,12 @@ class BBox:
         Raises:
             ValueError: If the specified format is not supported.
         """
-        if format is None or format == self.__internal_format:
-            return self.__internal_coordinates
+        if fmt is None or fmt == self.__internal_fmt:
+            return tuple(self.__internal_coordinates)
         
         coordinates = self.__internal_coordinates        
-        current_coord_format, current_scale = self.__internal_format.to_coordinate_format(), self.__internal_format.to_scale_format()
-        target_coord_format, target_scale = format.to_coordinate_format(), format.to_scale_format()
+        current_coord_format, current_scale = self.__internal_fmt.to_coordinate_format(), self.__internal_fmt.to_scale_format()
+        target_coord_format, target_scale = fmt.to_coordinate_format(), fmt.to_scale_format()
         
         # Convert format
         if current_coord_format == CoordinateFormat.CORNERS:
@@ -854,17 +869,26 @@ class BBox:
             else:
                 raise ValueError("Image dimensions are required for scale conversion")
             
+            # Create a format that represents the current coordinate format but with the current scale
+            current_format = None
+            if target_coord_format == CoordinateFormat.CORNERS:
+                current_format = BBoxFormat.CORNERS_ABSOLUTE if current_scale == ScaleFormat.ABSOLUTE else BBoxFormat.CORNERS_NORMALIZED
+            elif target_coord_format == CoordinateFormat.CENTER:
+                current_format = BBoxFormat.CENTER_ABSOLUTE if current_scale == ScaleFormat.ABSOLUTE else BBoxFormat.CENTER_NORMALIZED
+            elif target_coord_format == CoordinateFormat.TOPLEFT:
+                current_format = BBoxFormat.TOPLEFT_ABSOLUTE if current_scale == ScaleFormat.ABSOLUTE else BBoxFormat.TOPLEFT_NORMALIZED
+            
             if target_scale == ScaleFormat.NORMALIZED:
-                coordinates = BBox.normalize(coordinates, img_width, img_height, target_coord_format)
+                coordinates = BBox.normalize(coordinates, img_width, img_height, current_format)
             else:
-                coordinates = BBox.absolute(coordinates, img_width, img_height, target_coord_format)
+                coordinates = BBox.absolute(coordinates, img_width, img_height, current_format)
         
-        return coordinates
-
+        return tuple(coordinates)
+        
     def set_coordinates(
         self,
         coordinates: Union[List, Tuple, np.ndarray],
-        format: BBoxFormat,
+        fmt: BBoxFormat,
         img_height: int = None,
         img_width: int = None
     ):
@@ -873,7 +897,7 @@ class BBox:
 
         Args:
             coordinates: Input bounding box coordinates.
-            format: Input format of the coordinates (BBoxFormat enum).
+            fmt: Input format of the coordinates (BBoxFormat enum).
             img_height: The height of the image (required for normalization).
             img_width: The width of the image (required for normalization).
         """
@@ -886,7 +910,7 @@ class BBox:
             raise ValueError(f"coordinates must be a list or tuple of 4 elements. Passed {type(coordinates)}.")
 
         # Check if the format is normalized and image dimensions are provided
-        if format in [BBoxFormat.CORNERS_NORMALIZED, BBoxFormat.CENTER_NORMALIZED,
+        if fmt in [BBoxFormat.CORNERS_NORMALIZED, BBoxFormat.CENTER_NORMALIZED,
                   BBoxFormat.TOPLEFT_NORMALIZED, BBoxFormat.YOLO]:
             if img_height is None or img_width is None:
                 raise ValueError("Image dimensions (img_height and img_width) are required for normalized formats")
@@ -894,36 +918,69 @@ class BBox:
                 raise ValueError("Coordinates must be normalized for the specified format")
 
         self.__internal_coordinates = coordinates
-        self.__internal_format = format
+        self.__internal_fmt = fmt
         self.img_width = img_width
         self.img_height = img_height
 
     def compute_iou(
         self,
-        other: Union[List, Tuple, 'BBox'],
-        format: BBoxFormat,
-        img_shape: Tuple[int, int] = None,
+        other: 'BBox',
         iou_type: IoUType = IoUType.IOU
     ) -> float:
         """
         Compute the Intersection over Union (IoU) between two bounding boxes.
 
         Args:
-            box: The second bounding box. It can be a list, tuple, or BBox object.
-            format: The format of the bounding boxes. It can be BBoxFormat.CORNERS, BBoxFormat.CENTER, or BBoxFormat.TOPLEFT. Default is BBoxFormat.CORNERS.
-            iou_type: The type of IoU to compute. It can be IoUType.IOU, IoUType.DIOU, IoUType.CIOU, or IoUType.GIOU. Default is IoUType.IOU.
+            other: The second bounding box as a BBox object.
+            iou_type: The type of IoU to compute. It can be IoUType.IOU, IoUType.DIOU, IoUType.CIOU, 
+                     or IoUType.GIOU. Default is IoUType.IOU.
 
         Returns:
             float: The computed IoU value.
 
         Raises:
-            TypeError: If the format is not a BBoxFormat or if the iou_type is not an IoUType.
+            TypeError: If other is not a BBox object or if the iou_type is not an IoUType.
             ValueError: If the iou_type is invalid.
         """
-        return BBox.__compute_iou(self, other, format, img_shape, iou_type)
+        # Validate that other is a BBox instance
+        if not isinstance(other, BBox):
+            raise TypeError("other must be a BBox object")
+            
+        if not isinstance(iou_type, IoUType):
+            raise TypeError("iou_type must be an IoUType")
+            
+        # Call the internal computation method with BBoxFormat.CORNERS_ABSOLUTE 
+        # Both BBox objects should independently handle conversion to absolute coordinates
+        # using their own internal image dimensions
+        return BBox._compute_iou(self, other, BBoxFormat.CORNERS_ABSOLUTE, None, iou_type)
 
+    @property
+    def fmt(self) -> BBoxFormat:
+        """
+        Get the internal format of the bounding box.
+        
+        Returns:
+            BBoxFormat: The internal format of the bounding box.
+        """
+        return self.__internal_fmt
+        
+    @fmt.setter
+    def fmt(self, value: BBoxFormat):
+        """
+        Set the internal format of the bounding box.
+        
+        Args:
+            value (BBoxFormat): The new format to set.
+            
+        Raises:
+            TypeError: If value is not a BBoxFormat.
+        """
+        if not isinstance(value, BBoxFormat):
+            raise TypeError("Format must be a BBoxFormat")
+        self.__internal_fmt = value
+    
     def __repr__(self):
-        return f"BBox(coordinates={self.get_coordinates()}, format={self.__internal_format}, img_height={self.img_height}, img_width={self.img_width})"
+        return f"BBox(coordinates={self.get_coordinates()}, fmt={self.fmt}, img_height={self.img_height}, img_width={self.img_width})"
 
 
 class BBoxClassId(BBox):
@@ -940,7 +997,7 @@ class BBoxClassId(BBox):
         coordinates (Union[List, Tuple]): Bounding box coordinates in the specified format.
         class_id (int): Numeric identifier for the object class.
         class_name (Optional[str]): Human-readable name for the object class.
-        format (BBoxFormat): Format specification for the coordinates. Defaults to BBoxFormat.CORNERS.
+        fmt (BBoxFormat): Format specification for the coordinates. Defaults to BBoxFormat.YOLO.
     """
 
     def __init__(
@@ -948,7 +1005,7 @@ class BBoxClassId(BBox):
         coordinates: Union[List, Tuple],
         class_id: int,
         class_name: Optional[str] = None,
-        format: BBoxFormat = None,
+        fmt: BBoxFormat = BBoxFormat.YOLO,
         img_height: int = None,
         img_width: int = None
     ):
@@ -961,9 +1018,9 @@ class BBoxClassId(BBox):
             coordinates (Union[List, Tuple]): The coordinates of the bounding box.
             class_id (int): The ID of the class to which the bounding box belongs.
             class_name (Optional[str]): The name of the class to which the bounding box belongs.
-            format (BBoxFormat, optional): The format of the bounding box coordinates. Defaults to BBoxFormat.CORNERS.
+            fmt (BBoxFormat, optional): The format of the bounding box coordinates. Defaults to BBoxFormat.YOLO.
         """
-        super().__init__(coordinates, format, img_height, img_width)
+        super().__init__(coordinates, fmt, img_height, img_width)
         self._class_id = class_id
         self._class_name = class_name
 
@@ -983,19 +1040,19 @@ class BBoxClassId(BBox):
     def class_name(self, value: Optional[str]):
         self._class_name = value
 
-    def get_data(self, format: Optional[BBoxFormat] = None, img_shape: tuple = None) -> Tuple[Union[List, Tuple], Union[int, str]]:
+    def get_data(self, fmt: Optional[BBoxFormat] = None, img_shape: tuple = None) -> Tuple[Union[List, Tuple], Union[int, str]]:
         """
         Retrieve the bounding box data including coordinates and class information.
 
         Args:
-            notation (Optional[NotationFormat]): The format in which to return the coordinates.
-                                                 If None, the default format is used.
+            fmt (Optional[BBoxFormat]): The format in which to return the coordinates.
+                                        If None, the default format is used.
 
         Returns:
             tuple: A tuple containing the coordinates of the bounding box
                    and the class information (either class ID or class name).
         """
-        return (self.get_coordinates(format, img_shape), self.class_id if not self.class_name else self.class_name)
+        return (self.get_coordinates(fmt, img_shape), self.class_id if not self.class_name else self.class_name)
 
     def __getitem__(self, idx):
         """
@@ -1059,34 +1116,34 @@ class BBoxClassIdScore(BBoxClassId):
         class_id (int): The class ID of the object.
         class_name (Optional[str]): The class name of the object.
         score (float): The confidence score of the detection.
-        format (BBoxFormat): The format of the bounding box coordinates. Default is BBoxFormat.CORNERS.
+        fmt (BBoxFormat): The format of the bounding box coordinates.
     Methods:
         score: Getter and setter for the confidence score of the detection.
     """
 
     def __init__(
         self,
-        img_height: int,
-        img_width: int,
         coordinates: Union[List, Tuple],
         class_id: int,
         class_name: Optional[str],
         score: float,
-        format: BBoxFormat = BBoxFormat.CORNERS
+        fmt: BBoxFormat = BBoxFormat.YOLO,
+        img_height: int = None,
+        img_width: int = None
     ):
         """
         Initializes a bounding box object with the given parameters.
 
         Args:
-            img_height (int): The height of the image.
-            img_width (int): The width of the image.
             coordinates (Union[List, Tuple]): The coordinates of the bounding box.
             class_id (int): The ID of the class.
             class_name (Optional[str]): The name of the class.
             score (float): The confidence score of the bounding box.
-            format (BBoxFormat, optional): The format of the bounding box coordinates. Defaults to BBoxFormat.CORNERS.
+            fmt (BBoxFormat, optional): The format of the bounding box coordinates. Defaults to BBoxFormat.YOLO.
+            img_height (int, optional): The height of the image.
+            img_width (int, optional): The width of the image.
         """
-        super().__init__(img_height, img_width, coordinates, class_id, class_name, format)
+        super().__init__(coordinates, class_id, class_name, fmt, img_height, img_width)
         self._score = score
 
     @property
@@ -1097,18 +1154,18 @@ class BBoxClassIdScore(BBoxClassId):
     def score(self, value: float):
         self._score = value
 
-    def get_data(self, format: Optional[BBoxFormat] = None, img_shape: tuple = None) -> Tuple[Tuple[Union[List, Tuple], Union[int, str]], float]:
+    def get_data(self, fmt: Optional[BBoxFormat] = None, img_shape: tuple = None) -> Tuple[Tuple[Union[List, Tuple], Union[int, str]], float]:
         """
         Retrieve the data of the bounding box along with its score.
 
         Args:
-            notation (Optional[NotationFormat]): The notation format for the bounding box data.
-                                 If None, the default notation will be used.
+            fmt (Optional[BBoxFormat]): The format for the bounding box data.
+                                 If None, the default format will be used.
 
         Returns:
             tuple: A tuple containing the bounding box data and the score.
         """
-        return super().get_data(format, img_shape), self.score
+        return super().get_data(fmt, img_shape), self.score
 
     def __repr__(self):
         """
@@ -1253,7 +1310,7 @@ def print_bbox_info(boxes: List[BBox], class_ids: List[int], scores: List[float]
         class_name = class_labels_dict.get(class_id, f"class_{class_id}")
 
         # Get the coordinate format as a string
-        coordinate_format = bbox.get_format().to_string()
+        coordinate_format = bbox.fmt.to_string()
 
         # Print information
         print(f"Box {i + 1}:")
