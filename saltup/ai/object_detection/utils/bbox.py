@@ -898,23 +898,22 @@ class BBox:
         
         return tuple(new_coordinates)
 
-    def get_coordinates(self, fmt: BBoxFormat = None) -> Tuple[float, float, float, float]:
-        f"""
+    def get_coordinates(self, fmt: BBoxFormat = BBOX_INNER_FORMAT) -> Tuple[float, float, float, float]:
+        """
         Get the bounding box coordinates in the specified format.
 
         Args:
             fmt (BBoxFormat, optional): The desired format for the bounding box 
-                coordinates. If None, the coordinates are returned in the internal format.
-            img_shape (tuple, optional): A tuple representing the shape of the image 
-                as (height, width). Required for certain format conversions. Defaults to None.
+                coordinates. If None, the coordinates are returned in the 
+                internal format (BBOX_INNER_FORMAT).
 
         Returns:
-            Tuple of coordinates in the specified format.
-        
+            Tuple[float, float, float, float]: The bounding box coordinates in the specified format.
+
         Raises:
-            ValueError: If the specified format is not supported 
-            ValueError: if required parameters for the conversion are missing.
-            
+            ValueError: If the specified format is not supported.
+            ValueError: If required parameters for the conversion are missing.
+
         Note:
             Internally, the BBox class always stores coordinates in CORNERS_ABSOLUTE format.
         """
