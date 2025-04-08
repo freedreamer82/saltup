@@ -10,7 +10,7 @@ from collections import defaultdict, Counter
 from typing import Iterable, Union, List, Dict, Optional, Tuple, Set
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat, NotationFormat
+from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode, Dataset
 from saltup.utils import configure_logging
 
@@ -113,11 +113,12 @@ class YoloDarknetLoader(BaseDataloader):
         
         annotations = [BBoxClassId(
             # (class_id, xc, yc, w, h)
-            class_id=lbl[0],
             coordinates=lbl[1:],
+            class_id=lbl[0],
+            class_name=None,
+            fmt=BBoxFormat.YOLO,
             img_width=image_width,
-            img_height=image_height,
-            format=BBoxFormat.CENTER
+            img_height=image_height
         ) for lbl in read_label(label_path)]
         
         return image, annotations        
@@ -324,11 +325,12 @@ class YoloDataset(Dataset):
         for annotation in read_label(label_path):
             class_id, x_center, y_center, width, height = annotation
             annotations.append(BBoxClassId(
-                class_id=int(class_id),
                 coordinates=[x_center, y_center, width, height],
+                class_id=int(class_id),
+                class_name=None,
+                fmt=BBoxFormat.YOLO,
                 img_width=image_width,
-                img_height=image_height,
-                format=BBoxFormat.CENTER
+                img_height=image_height
             ))
 
         return annotations
@@ -357,7 +359,7 @@ class YoloDataset(Dataset):
         """
         label_dest_filepath = self._labels_dir / f"{image_id}.txt"
         if isinstance(annotations, BBoxClassId):
-            annotations = annotations.get_coordinates(NotationFormat.YOLO)
+            annotations = annotations.get_coordinates(BBoxFormat.YOLO)
         elif isinstance(annotations, List) or isinstance(annotations, Tuple):
             pass
         else:

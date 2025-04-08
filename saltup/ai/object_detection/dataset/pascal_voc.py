@@ -331,7 +331,7 @@ def read_annotation(annotation_file: str) -> List[BBoxClassId]:
             class_id=None,
             img_height=height,
             img_width=width,
-            format=BBoxFormat.CORNERS
+            fmt=BBoxFormat.CORNERS_ABSOLUTE
         ))
 
     return annotations
