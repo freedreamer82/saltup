@@ -1,8 +1,5 @@
-import os
 import json
 import argparse
-from collections import Counter
-from tqdm import tqdm
 
 def get_agrs():
     parser = argparse.ArgumentParser(description="Count occurrences of each class in dataset annotations.")

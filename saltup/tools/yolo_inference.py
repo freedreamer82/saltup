@@ -5,6 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logging
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable OneDNN optimizations
 import time
 import argparse
+from argparse import Namespace
 import numpy as np
 from typing import List, Tuple, Dict
 from tqdm import tqdm
@@ -32,7 +33,7 @@ def robust_mean(times):
     times_sorted = sorted(times)
     return np.mean(times_sorted[1:-1])
 
-def process_image(yolo, image_path, args):
+def process_image(yolo: BaseYolo, image_path: str, args: Namespace):
     """
     Process an image using the YOLO model.
     
@@ -234,10 +235,12 @@ def main(args=None):
 
             if args.gui:               
                 # Draw bounding boxes on the image
-                image_with_boxes = draw_boxes_on_image_with_labels_score(image, 
-                                                                        yoloOut.get_boxes(),
-                                                                        class_colors_bgr=class_colors_dict,
-                                                                        class_labels=class_labels_dict)
+                image_with_boxes = draw_boxes_on_image_with_labels_score(
+                    image, 
+                    yoloOut.get_boxes(),
+                    class_colors_bgr=class_colors_dict,
+                    class_labels=class_labels_dict
+                )
                 
                 image_with_boxes.show()
      

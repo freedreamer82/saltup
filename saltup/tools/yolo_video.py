@@ -13,10 +13,9 @@ import signal
 import sys
 import json
 
-from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloOutput
 from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
-from saltup.ai.object_detection.utils.bbox import draw_boxes_on_image_with_labels_score, NotationFormat
+from saltup.ai.object_detection.utils.bbox import draw_boxes_on_image_with_labels_score, BBoxFormat
 from saltup.utils.data.image.image_utils import Image, generate_random_bgr_colors
 from saltup.utils.data.video.video_utils import process_video, get_video_properties
 from saltup.ai.object_detection.dataset.yolo_darknet import YoloDataset
@@ -128,7 +127,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
                 
                 if args.output_dataset and process_for_dataset:
                     annotations = [
-                        (box_data[1], *box_data[0].get_coordinates(NotationFormat.YOLO))
+                        (box_data[1], *box_data[0].get_coordinates(BBoxFormat.YOLO))
                         for box_data in yolo_output.get_boxes()
                     ]
             

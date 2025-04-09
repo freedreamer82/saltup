@@ -158,7 +158,7 @@ class BBoxFormat(IntEnum):
         else:
             raise ValueError(f"Unknown BBoxFormat: {self}")
         
-BBOX_INNER_FORMAT = BBoxFormat.CORNERS_ABSOLUTE
+BBOX_INNER_FORMAT = BBoxFormat.CORNERS_NORMALIZED
 
 class IoUType(IntEnum):
     IOU = auto()
@@ -228,14 +228,12 @@ class BBox:
         if coordinates is None:
             self.__coordinates = []
         else:
-            self.__coordinates = BBox.converter(
-                coordinates, 
-                from_fmt = fmt, 
-                to_fmt = BBOX_INNER_FORMAT,
-                img_shape = (img_height, img_width)
+            self.set_coordinates(
+                coordinates=coordinates,
+                fmt=fmt,
+                img_height=img_height,
+                img_width=img_width
             )
-            self.img_width = img_width
-            self.img_height = img_height
 
     def copy(self):
         """Create a deep copy of the BoundingBox object."""
@@ -434,7 +432,7 @@ class BBox:
         if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
             raise TypeError(f"bbox must be a list or tuple of 4 elements. Passed {type(bbox)}.")
         if not isinstance(img_width, (int, np.integer)) or not isinstance(img_height, (int, np.integer)):
-            raise TypeError("Image dimensions must be integers")
+            raise TypeError(f"Image dimensions (width, height) must be integers. Passed {type(img_width)}, {type(img_height)}.")
         if img_width <= 0 or img_height <= 0:
             raise ValueError("Image dimensions must be positive")
         if not isinstance(fmt, BBoxFormat):
@@ -958,8 +956,13 @@ class BBox:
                 raise ValueError("Image dimensions (img_height and img_width) are required for normalized formats")
             if not BBox.is_normalized(coordinates):
                 raise ValueError("Coordinates must be normalized for the specified format")
-
-        self.__coordinates = coordinates
+        
+        self.__coordinates = BBox.converter(
+            coordinates, 
+            from_fmt = fmt, 
+            to_fmt = BBOX_INNER_FORMAT, 
+            img_shape = (img_height, img_width)
+        )
         self.img_width = img_width
         self.img_height = img_height
 
@@ -1409,19 +1412,19 @@ def draw_boxes_on_image_with_labels_score(
         text = f"{label} - {score_text}"
 
         # Get the bounding box corners in absolute coordinates
-        corners = bbox.get_coordinates()
+        corners = bbox.get_coordinates(fmt=BBoxFormat.CORNERS_ABSOLUTE)
         x1, y1, x2, y2 = corners
 
         # Calculate text size and position
         (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, font_thickness)
-        text_x = int(x1 * img_width)
-        text_y = int(y1 * img_height) - 10 if int(y1 * img_height) - \
-            10 > 10 else int(y1 * img_height) + 20
+        text_x = x1
+        text_y = y1 - 10 if y1 - \
+            10 > 10 else y1 + 20
 
         # Ensure text is within image bounds
         if text_y - text_height < 0:
             # Move text below the box if it goes above the image
-            text_y = int(y1 * img_height) + 20
+            text_y = y1 + 20
         if text_x + text_width > img_width:
             text_x = img_width - text_width  # Move text left if it goes beyond the image width
 

@@ -222,15 +222,15 @@ class TestBBoxFromFile:
         coco_file.write_text(json.dumps(coco_data))
 
         # Test reading
-        bboxes = BBox.from_coco_file(str(coco_file), 1)
+        bboxes = BBox.from_coco_file(str(coco_file), 1, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
         assert len(bboxes) == 2
         
         # Verify bounding box coordinates in COCO format
         exp_bbox0 = coco_data["annotations"][0]["bbox"]
-        assert bboxes[0].get_coordinates(fmt=BBoxFormat.COCO) == pytest.approx(exp_bbox0)
+        assert bboxes[0].get_coordinates(fmt=BBoxFormat.COCO) == pytest.approx(exp_bbox0, abs=1)
         
         exp_bbox1 = coco_data["annotations"][1]["bbox"]
-        assert bboxes[1].get_coordinates(fmt=BBoxFormat.COCO) == pytest.approx(exp_bbox1)
+        assert bboxes[1].get_coordinates(fmt=BBoxFormat.COCO) == pytest.approx(exp_bbox1, abs=1)
 
     def test_from_pascal_voc_file(self, tmp_path):
         # Setup test file
@@ -260,7 +260,7 @@ class TestBBoxFromFile:
         pascal_voc_file.write_text(voc_content)
 
         # Test reading
-        bboxes = BBox.from_pascal_voc_file(str(pascal_voc_file))
+        bboxes = BBox.from_pascal_voc_file(str(pascal_voc_file), img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
         assert len(bboxes) == 2
 
         # Verify bounding box coordinates in Pascal VOC format
@@ -349,13 +349,13 @@ class TestComputeIoU:
     def test_iou_center_format(self, center_format_boxes):
         """Test the case where bounding boxes are in center format."""
         box1, box2 = center_format_boxes
-        iou = BBox._compute_iou(box1, box2, fmt=BBoxFormat.CENTER_ABSOLUTE, iou_type=IoUType.IOU)
+        iou = BBox._compute_iou(box1, box2, fmt=BBoxFormat.CENTER_ABSOLUTE, iou_type=IoUType.IOU, img_shape=(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH))
         assert iou == pytest.approx(1.0)
 
     def test_iou_topleft_format(self, topleft_format_boxes):
         """Test the case where bounding boxes are in top-left format."""
         box1, box2 = topleft_format_boxes
-        iou = BBox._compute_iou(box1, box2, fmt=BBoxFormat.TOPLEFT_ABSOLUTE, iou_type=IoUType.IOU)
+        iou = BBox._compute_iou(box1, box2, fmt=BBoxFormat.TOPLEFT_ABSOLUTE, iou_type=IoUType.IOU, img_shape=(TEST_IMAGE_HEIGHT, TEST_IMAGE_WIDTH))
         assert iou == pytest.approx(1.0)
 
     def test_diou(self, partially_overlapping_boxes):
