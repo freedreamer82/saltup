@@ -159,6 +159,7 @@ class BBoxFormat(IntEnum):
             raise ValueError(f"Unknown BBoxFormat: {self}")
         
 BBOX_INNER_FORMAT = BBoxFormat.CORNERS_NORMALIZED
+FLOAT_PRECISION = 4
 
 class IoUType(IntEnum):
     IOU = auto()
@@ -376,6 +377,7 @@ class BBox:
         
         xc = x1 + w / 2
         yc = y1 + h / 2
+        
         return xc, yc, w, h
 
     @classmethod
@@ -463,10 +465,10 @@ class BBox:
 
             # Normalize
             return (
-                x1 / img_width,
-                y1 / img_height,
-                x2 / img_width,
-                y2 / img_height
+                round(x1 / img_width, FLOAT_PRECISION),
+                round(y1 / img_height, FLOAT_PRECISION),
+                round(x2 / img_width, FLOAT_PRECISION),
+                round(y2 / img_height, FLOAT_PRECISION)
             )
 
         elif fmt == BBoxFormat.TOPLEFT_ABSOLUTE or fmt == BBoxFormat.COCO:
@@ -486,10 +488,10 @@ class BBox:
 
             # Normalize
             return (
-                x1 / img_width,
-                y1 / img_height,
-                w / img_width,
-                h / img_height
+                round(x1 / img_width, FLOAT_PRECISION),
+                round(y1 / img_height, FLOAT_PRECISION),
+                round(w / img_width, FLOAT_PRECISION),
+                round(h / img_height, FLOAT_PRECISION)
             )
 
         elif fmt == BBoxFormat.CENTER_ABSOLUTE:
@@ -519,10 +521,10 @@ class BBox:
 
             # Normalize
             return (
-                xc / img_width,
-                yc / img_height,
-                w / img_width,
-                h / img_height
+                round(xc / img_width, FLOAT_PRECISION),
+                round(yc / img_height, FLOAT_PRECISION),
+                round(w / img_width, FLOAT_PRECISION),
+                round(h / img_height, FLOAT_PRECISION)
             )
 
         raise ValueError(f"Unsupported format: {fmt}")
