@@ -11,6 +11,7 @@ class Metric:
         """
         self.tp = 0  # True Positives
         self.fp = 0  # False Positives
+        self.tn = 0  # True Negatives
         self.fn = 0  # False Negatives
 
     def addTP(self, count=1):
@@ -24,6 +25,10 @@ class Metric:
     def addFN(self, count=1):
         """Add a specified number of False Negatives (FN)."""
         self.fn += count
+        
+    def addTN(self, count=1):
+        """Add a specified number of True Negatives (TN)."""
+        self.tn += count
 
     def getTP(self):
         """Returns the number of True Positives (TP)."""
@@ -32,11 +37,20 @@ class Metric:
     def getFP(self):
         """Returns the number of False Positives (FP)."""
         return self.fp
-
+    
+    def getTN(self):
+        """Returns the number of True Negatives (TN)."""
+        return self.tn
+    
     def getFN(self):
         """Returns the number of False Negatives (FN)."""
         return self.fn
-
+    
+    def accuracy(self):
+        """Calculate the accuracy."""
+        total_samples = self.tp + self.fp + self.fn + self.tn
+        return (self.tp + self.tn) / total_samples if total_samples != 0 else 0
+    
     def precision(self):
         """Calculate the precision."""
         denom = self.tp + self.fp
@@ -53,7 +67,11 @@ class Metric:
         r = self.recall()
         denom = p + r
         return 2 * (p * r) / denom if denom != 0 else 0
-
+    
+    def getAccuracy(self):
+        """Return the accuracy."""
+        return self.accuracy()
+    
     def getPrecision(self):
         """Return the precision."""
         return self.precision()
@@ -71,6 +89,7 @@ class Metric:
         return {
             'tp': self.getTP(),
             'fp': self.getFP(),
+            'tn': self.getTN(),
             'fn': self.getFN(),
             'precision': self.getPrecision(),
             'recall': self.getRecall(),
