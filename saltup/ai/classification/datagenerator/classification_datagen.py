@@ -13,7 +13,7 @@ from saltup.utils.configure_logging import get_logger
 
 
 class ClassificationDataloader(BaseDataloader):
-    def __init__(self, root_dir, img_size=(224, 224, 3), extensions=('jpg', 'jpeg', 'png')):
+    def __init__(self, root_dir:str, classes_dict:dict={}, img_size:Tuple=(224, 224, 3), extensions=('jpg', 'jpeg', 'png')):
         """
         Args:
             root_dir (str): Root directory containing subfolders per class
@@ -26,15 +26,22 @@ class ClassificationDataloader(BaseDataloader):
         
         self.image_paths = []
         self.labels = []
-        self.class_to_idx = {}
-        self.idx_to_class = {}
+        if classes_dict:
+            self.class_to_idx = classes_dict
+            self.idx_to_class = {idx: class_name for class_name, idx in classes_dict.items()}
+        else:
+            self.class_to_idx = {}
+            self.idx_to_class = {}
         
         self._load_dataset()
 
     def _load_dataset(self):
-        classes = sorted(os.listdir(self.root_dir))
-        self.class_to_idx = {class_name: idx for idx, class_name in enumerate(classes)}
-        self.idx_to_class = {idx: class_name for class_name, idx in self.class_to_idx.items()}
+        if self.class_to_idx:
+            classes = list(self.class_to_idx.keys())
+        else:
+            classes = sorted(os.listdir(self.root_dir))
+            self.class_to_idx = {class_name: idx for idx, class_name in enumerate(classes)}
+            self.idx_to_class = {idx: class_name for class_name, idx in self.class_to_idx.items()}
         
         for class_name in classes:
             class_dir = os.path.join(self.root_dir, class_name)
@@ -137,105 +144,6 @@ class keras_ClassificationDataGenerator(BasedDatagenerator, Sequence):
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 import torch
-# class pytorch_ClassificationDataGenerator(BasedDatagenerator, Dataset):
-#     def __init__(
-#         self,
-#         dataloader,
-#         target_size,
-#         num_classes,
-#         batch_size=1,
-#         preprocess=None,
-#         transform=None,
-#         seed=None
-#     ):
-#         super().__init__(dataloader, target_size, num_classes, batch_size, preprocess, transform, seed)
-#     def __len__(self):
-#         # Number of batches per epoch
-#         return int(len(self.dataloader))
-    
-#     def __iter__(self):
-#         self.current_idx = 0
-#         return self
-    
-#     def __next__(self):
-#         if self.current_idx >= len(self):
-#             self.on_epoch_end()
-#             raise StopIteration
-#         batch = self.__getitem__(self.current_idx)
-#         self.current_idx += 1
-#         return batch
-        
-#     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-#         """
-#         Get a single sample as PyTorch tensors.
-        
-#         Args:
-#             idx: Sample index
-            
-#         Returns:
-#             Tuple of (image, labels) as PyTorch tensors:
-#             - image: tensor of shape (H,W,C)
-#             - labels: tensor of shape labels
-#         """
-#         # Get batch indexes
-#         batch_indexes = self._indexes[idx * self.batch_size: (idx + 1) * self.batch_size]
-        
-#         images = []
-#         labels = []
-        
-#         for i in batch_indexes:
-#             img, label = self.dataloader[i]
-            
-#             # Apply preprocessing
-#             if self.preprocess:
-#                 img = self.preprocess(img, target_size=self.target_size)
-            
-#             # Apply augmentations
-#             if self.do_augment and self.transform:
-#                 augmented = self.transform(image=img)
-#                 img = augmented['image']
-                
-#             label = F.one_hot(torch.tensor(label), num_classes=self.num_classes).float()
-
-#             images.append(img)
-#             labels.append(label)
-        
-#         # Convert numpy arrays to PyTorch tensors
-        
-#         images = torch.from_numpy(np.array(images)).float()  # Remove batch dimension
-#         labels = torch.from_numpy(np.array(labels))  # Remove batch dimension
-        
-#         images = images.permute(0, 3, 1, 2)     
-        
-#         return images, labels
-    
-#     def on_epoch_end(self):
-#         # Shuffle indexes at the end of each epoch
-#         self._rng.shuffle(self._indexes)        
-#     @staticmethod
-#     def collate_fn(batch):
-#         """
-#         Custom collate function for PyTorch DataLoader.
-        
-#         Handles batching of samples into a single tensor.
-        
-#         Args:
-#             batch: List of (image, label) tuples from __getitem__
-            
-#         Returns:
-#             Tuple of:
-#             - images tensor of shape (batch_size, C, H, W)
-#             - labels tensor of shape (batch_size, 1)
-#         """
-#         images, labels = zip(*batch)
-        
-#         # Stack images and labels
-#         images = torch.stack(images)
-#         labels = torch.stack(labels)
-        
-#         return images, labels
-    
-    
     
 class pytorch_ClassificationDataGenerator(BasedDatagenerator, Dataset):
     def __init__(
@@ -248,7 +156,24 @@ class pytorch_ClassificationDataGenerator(BasedDatagenerator, Dataset):
         transform=None,
         seed=None
     ):
-        super().__init__(dataloader, target_size, num_classes, batch_size, preprocess, transform, seed)
+        self.dataloader = dataloader
+        self.target_size = target_size
+        self.num_classes = num_classes
+        self.batch_size = batch_size
+        self.preprocess = preprocess
+        self.transform = transform
+        #self.do_augment = True if transform else False
+        
+        # Set random seed for reproducibility
+        self._rng = np.random.RandomState(seed if seed is not None else 42)
+        
+        # Create indexes for all samples
+        self._indexes = np.arange(len(self.dataloader))
+        self._rng.shuffle(self._indexes)
+    
+    def on_epoch_end(self):
+        # Shuffle indexes at the end of each epoch
+        self._rng.shuffle(self._indexes)
         
     def __len__(self):
         # Number of batches per epoch
@@ -265,8 +190,8 @@ class pytorch_ClassificationDataGenerator(BasedDatagenerator, Dataset):
         batch = self.__getitem__(self.current_idx)
         self.current_idx += 1
         return batch
-        
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    def __getitem__(self, idx):
         """
         Get a single sample as PyTorch tensors.
         
@@ -274,43 +199,31 @@ class pytorch_ClassificationDataGenerator(BasedDatagenerator, Dataset):
             idx: Sample index
             
         Returns:
-            Tuple of (image, labels) as PyTorch tensors:
-            - image: tensor of shape (H,W,C)
-            - labels: tensor of shape labels
+            Tuple of (image, label) as PyTorch tensors
         """
-        # Get batch indexes
-        #batch_indexes = self._indexes[idx * self.batch_size: (idx + 1) * self.batch_size]
+        # Use the shuffled index
+        actual_idx = self._indexes[idx]
         
-        images = []
-        labels = []
+        # Get the image and label
+        img, label = self.dataloader[actual_idx]
         
-        for i in range(self.__len__()):
-            img, label = self.dataloader[i]
-            
-            # Apply preprocessing
-            if self.preprocess:
-                img = self.preprocess(img, target_size=self.target_size)
-            
-            # Apply augmentations
-            if self.do_augment and self.transform:
-                augmented = self.transform(image=img)
-                img = augmented['image']
-                
-            label = F.one_hot(torch.tensor(label), num_classes=self.num_classes).float()
-            img = np.transpose(img, (2, 0, 1))  # Change to (C, H, W)
-            
-            images.append(img)
-            labels.append(label)
+        # Apply preprocessing
+        if self.preprocess:
+            img = self.preprocess(img, target_size=self.target_size)
         
-        # Convert numpy arrays to PyTorch tensors
+        # Apply augmentations
+        if self.transform:
+            augmented = self.transform(image=img)
+            img = augmented['image']
         
-        images = np.array(images)
-        labels = np.array(labels)
-        #images = np.transpose(images, (0, 3, 1, 2))  # Change to (N, C, H, W)
-        #images = images.permute(0, 3, 1, 2)     
+        # Convert label to one-hot encoding
+        label_tensor = F.one_hot(torch.tensor(label), num_classes=self.num_classes).float()
         
-        return torch.tensor(images[idx]), torch.tensor(labels[idx])
-        #return images, labels
+        # Convert image to torch tensor with proper channel ordering (C, H, W)
+        img = np.transpose(img, (2, 0, 1))
+        img_tensor = torch.tensor(img, dtype=torch.float32)
+        
+        return img_tensor, label_tensor
     
     def on_epoch_end(self):
         # Shuffle indexes at the end of each epoch

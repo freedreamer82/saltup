@@ -49,7 +49,7 @@ class Metric:
     def accuracy(self):
         """Calculate the accuracy."""
         total_samples = self.tp + self.fp + self.fn + self.tn
-        return (self.tp + self.tn) / total_samples if total_samples != 0 else 0
+        return self.tp / total_samples if total_samples != 0 else 0
     
     def precision(self):
         """Calculate the precision."""
