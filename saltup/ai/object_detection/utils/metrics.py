@@ -7,70 +7,89 @@ from typing import List, Tuple, Union
 class Metric:
     def __init__(self):
         """
-        Inizializza la classe Metric.
+        Initialize the class Metric.
         """
         self.tp = 0  # True Positives
         self.fp = 0  # False Positives
+        self.tn = 0  # True Negatives
         self.fn = 0  # False Negatives
 
     def addTP(self, count=1):
-        """Aggiunge un numero specificato di True Positives (TP)."""
+        """Add a specified number of True Positives (TP)."""
         self.tp += count
 
     def addFP(self, count=1):
-        """Aggiunge un numero specificato di False Positives (FP)."""
+        """Add a specified number of False Positives (FP)."""
         self.fp += count
 
     def addFN(self, count=1):
-        """Aggiunge un numero specificato di False Negatives (FN)."""
+        """Add a specified number of False Negatives (FN)."""
         self.fn += count
+        
+    def addTN(self, count=1):
+        """Add a specified number of True Negatives (TN)."""
+        self.tn += count
 
     def getTP(self):
-        """Restituisce il numero di True Positives (TP)."""
+        """Returns the number of True Positives (TP)."""
         return self.tp
 
     def getFP(self):
-        """Restituisce il numero di False Positives (FP)."""
+        """Returns the number of False Positives (FP)."""
         return self.fp
-
+    
+    def getTN(self):
+        """Returns the number of True Negatives (TN)."""
+        return self.tn
+    
     def getFN(self):
-        """Restituisce il numero di False Negatives (FN)."""
+        """Returns the number of False Negatives (FN)."""
         return self.fn
-
+    
+    def accuracy(self):
+        """Calculate the accuracy."""
+        total_samples = self.tp + self.fp + self.fn + self.tn
+        return self.tp / total_samples if total_samples != 0 else 0
+    
     def precision(self):
-        """Calcola la precision."""
+        """Calculate the precision."""
         denom = self.tp + self.fp
         return self.tp / denom if denom != 0 else 0
 
     def recall(self):
-        """Calcola il recall."""
+        """Calculate the recall."""
         denom = self.tp + self.fn
         return self.tp / denom if denom != 0 else 0
 
     def f1_score(self):
-        """Calcola l'F1-score."""
+        """Calculate the F1-score."""
         p = self.precision()
         r = self.recall()
         denom = p + r
         return 2 * (p * r) / denom if denom != 0 else 0
-
+    
+    def getAccuracy(self):
+        """Return the accuracy."""
+        return self.accuracy()
+    
     def getPrecision(self):
-        """Restituisce la precision."""
+        """Return the precision."""
         return self.precision()
 
     def getRecall(self):
-        """Restituisce il recall."""
+        """Return the recall."""
         return self.recall()
 
     def getF1Score(self):
-        """Restituisce l'F1-score."""
+        """Return the F1-score."""
         return self.f1_score()
 
     def get_metrics(self):
-        """Restituisce un dizionario con tutte le metriche calcolate."""
+        """Returns a dictionary with all calculated metrics."""
         return {
             'tp': self.getTP(),
             'fp': self.getFP(),
+            'tn': self.getTN(),
             'fn': self.getFN(),
             'precision': self.getPrecision(),
             'recall': self.getRecall(),

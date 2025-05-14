@@ -7,7 +7,8 @@ import time
 import argparse
 from argparse import Namespace
 import numpy as np
-from typing import List, Tuple, Dict
+from collections import defaultdict
+from typing import List, Tuple, Dict, Union
 from tqdm import tqdm
 
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloOutput
@@ -61,8 +62,71 @@ def process_image(yolo: BaseYolo, image_path: str, args: Namespace):
     
     return boxes, class_ids
 
-def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], iou_thres: float) -> Dict[str, float]:
-    """Evaluate predictions against ground truth and compute metrics.
+# def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], iou_thres: float) -> Dict[str, float]:
+#     """Evaluate predictions against ground truth and compute metrics.
+    
+#     Args:
+#         predictions: YOLO model predictions.
+#         ground_truth: Ground truth bounding boxes and class IDs.
+#         iou_thres: IoU threshold for matching predictions to ground truth.
+    
+#     Returns:
+#         Dictionary containing evaluation metrics (TP, FP, FN, precision, recall, F1-score).
+#     """
+#     # Extract predicted boxes, class IDs, and scores
+#     pred_boxes_with_info = predictions.get_boxes()
+#     pred_boxes = [bbox for bbox, _, _ in pred_boxes_with_info]
+#     pred_classes = [class_id for _, class_id, _ in pred_boxes_with_info]
+
+#     # Initialize counters
+#     tp = 0  # True Positives
+#     fp = 0  # False Positives
+#     fn = 0  # False Negatives
+
+#     # Match predictions to ground truth
+#     matched_gt = [False] * len(ground_truth)  # Track which ground truth boxes have been matched
+
+#     for pred_box, pred_class in zip(pred_boxes, pred_classes):
+#         best_iou = 0
+#         best_match_idx = -1
+
+#         # Find the best matching ground truth box
+#         for j, (gt_box, gt_class) in enumerate(ground_truth):
+#             if matched_gt[j]:
+#                 continue  # Skip already matched ground truth boxes
+
+#             iou = pred_box.compute_iou(gt_box)
+#             if iou > best_iou:
+#                 best_iou = iou
+#                 best_match_idx = j
+
+#         # Determine if the prediction is a TP or FP
+#         if best_iou >= iou_thres and pred_class == ground_truth[best_match_idx][1]:
+#             tp += 1  # True Positive
+#             matched_gt[best_match_idx] = True
+#         else:
+#             fp += 1  # False Positive
+
+#     # Count False Negatives (unmatched ground truth boxes)
+#     fn = sum(not matched for matched in matched_gt)
+
+#     # Calculate precision, recall, and F1-score
+#     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+#     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+#     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+#     return {
+#         "tp": tp,
+#         "fp": fp,
+#         "fn": fn,
+#         "precision": precision,
+#         "recall": recall,
+#         "f1_score": f1_score,
+#     }
+    
+
+def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], iou_thres: float) -> Dict[str, Union[float, int, Dict[int, Dict[str, float]]]]:
+    """Evaluate predictions against ground truth and compute overall and per-class metrics.
     
     Args:
         predictions: YOLO model predictions.
@@ -70,49 +134,73 @@ def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox,
         iou_thres: IoU threshold for matching predictions to ground truth.
     
     Returns:
-        Dictionary containing evaluation metrics (TP, FP, FN, precision, recall, F1-score).
+        Dictionary containing overall metrics and a nested dictionary with per-class metrics.
     """
-    # Extract predicted boxes, class IDs, and scores
     pred_boxes_with_info = predictions.get_boxes()
     pred_boxes = [bbox for bbox, _, _ in pred_boxes_with_info]
     pred_classes = [class_id for _, class_id, _ in pred_boxes_with_info]
 
     # Initialize counters
-    tp = 0  # True Positives
-    fp = 0  # False Positives
-    fn = 0  # False Negatives
+    tp = 0
+    fp = 0
+    fn = 0
 
-    # Match predictions to ground truth
-    matched_gt = [False] * len(ground_truth)  # Track which ground truth boxes have been matched
+    matched_gt = [False] * len(ground_truth)
+
+    # Initialize per-class stats
+    per_class_stats = defaultdict(lambda: {'tp': 0, 'fp': 0, 'fn': 0})
 
     for pred_box, pred_class in zip(pred_boxes, pred_classes):
         best_iou = 0
         best_match_idx = -1
 
-        # Find the best matching ground truth box
         for j, (gt_box, gt_class) in enumerate(ground_truth):
             if matched_gt[j]:
-                continue  # Skip already matched ground truth boxes
+                continue
 
             iou = pred_box.compute_iou(gt_box)
             if iou > best_iou:
                 best_iou = iou
                 best_match_idx = j
 
-        # Determine if the prediction is a TP or FP
         if best_iou >= iou_thres and pred_class == ground_truth[best_match_idx][1]:
-            tp += 1  # True Positive
+            tp += 1
             matched_gt[best_match_idx] = True
+            per_class_stats[pred_class]['tp'] += 1
         else:
-            fp += 1  # False Positive
+            fp += 1
+            per_class_stats[pred_class]['fp'] += 1
 
-    # Count False Negatives (unmatched ground truth boxes)
-    fn = sum(not matched for matched in matched_gt)
+    # Count False Negatives
+    for (gt_box, gt_class), matched in zip(ground_truth, matched_gt):
+        if not matched:
+            fn += 1
+            per_class_stats[gt_class]['fn'] += 1
 
-    # Calculate precision, recall, and F1-score
+    # Calculate overall metrics
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    # Calculate per-class precision, recall, F1
+    per_class_metrics = {}
+    for class_id, stats in per_class_stats.items():
+        c_tp = stats['tp']
+        c_fp = stats['fp']
+        c_fn = stats['fn']
+
+        c_precision = c_tp / (c_tp + c_fp) if (c_tp + c_fp) > 0 else 0.0
+        c_recall = c_tp / (c_tp + c_fn) if (c_tp + c_fn) > 0 else 0.0
+        c_f1 = 2 * (c_precision * c_recall) / (c_precision + c_recall) if (c_precision + c_recall) > 0 else 0.0
+
+        per_class_metrics[class_id] = {
+            "tp": c_tp,
+            "fp": c_fp,
+            "fn": c_fn,
+            "precision": c_precision,
+            "recall": c_recall,
+            "f1_score": c_f1
+        }
 
     return {
         "tp": tp,
@@ -121,7 +209,9 @@ def evaluate_predictions(predictions: YoloOutput, ground_truth: List[Tuple[BBox,
         "precision": precision,
         "recall": recall,
         "f1_score": f1_score,
+        "per_class": per_class_metrics
     }
+
 
 def main(args=None):
     if args is None:
@@ -174,6 +264,13 @@ def main(args=None):
     all_labels = []
     metric = Metric()
     
+    if args.cls_name:
+        dict_class_metric = {}
+        for i, class_label in enumerate(class_labels):
+            dict_class_metric[i] = Metric()
+    else:
+        dict_class_metric = {i: Metric() for i in range(args.num_class)}
+    
     start_time = time.time()
     num_images = len(image_paths)
 
@@ -223,6 +320,12 @@ def main(args=None):
                     # Evaluate predictions for the current image
                     metrics = evaluate_predictions(yoloOut, list(zip(yolo_bboxes, yolo_class_ids)), args.iou_thres)
                     
+                    for class_id in metrics['per_class'].keys():
+                        
+                        dict_class_metric[class_id].addTP(metrics['per_class'][class_id]['tp'])
+                        dict_class_metric[class_id].addFP(metrics['per_class'][class_id]['fp'])
+                        dict_class_metric[class_id].addFN(metrics['per_class'][class_id]['fn'])
+                    
                     # Update cumulative metrics
                     metric.addTP(metrics['tp'])
                     metric.addFP(metrics['fp'])
@@ -256,25 +359,51 @@ def main(args=None):
     avg_inference_time = robust_mean(inference_times)
     avg_postprocess_time = robust_mean(postprocess_times)
  
-    print("\n--- Summary ---")
+    print("\n")
+    print("="*80)
+    print(f"{'INFERENCE SUMMARY':^80}")
+    print("="*80)
+    print("\n")
     print(f"Model path: {args.model}")
     print(f"Total execution time: {total_time:.2f} seconds")
     print(f"Average time per image: {avg_time_per_image:.2f} seconds")
 
     print("Timings (per image, robust mean):")
-    print(f"  - Pre-processing: {avg_preprocess_time:.2f} ms")
-    print(f"  - Inference: {avg_inference_time:.2f} ms")
-    print(f"  - Post-processing: {avg_postprocess_time:.2f} ms")
-
-    print("Metrics:")
-    print(f"  - Images processed: {num_images}")
-    print(f"  - TP: {metric.getTP()}")
-    print(f"  - FP: {metric.getFP()}")
-    print(f"  - FN: {metric.getFN()}")
-    print(f"  - Precision: {metric.getPrecision():.4f}")
-    print(f"  - Recall: {metric.getRecall():.4f}")
-    print(f"  - F1 Score: {metric.getF1Score():.4f}")
+    print(f"  - {'Pre-processing:':<25} {avg_preprocess_time:.2f} ms")
+    print(f"  - {'Inference:':<25} {avg_inference_time:.2f} ms")
+    print(f"  - {'Post-processing:':<25} {avg_postprocess_time:.2f} ms")
     
-
+    print("\n")
+    print("="*80)
+    print(f"{'METRICS SUMMARY':^80}")
+    print("="*80)
+    print("\n")
+    print(f"{'Images processed:':<20} {num_images}")
+    print(f"\nPer class:")
+    print("+"*80)
+    if args.cls_name:
+        for class_id, class_label in enumerate(class_labels):
+            if class_id == 0:
+                print(f"     {'label':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
+                print("+"*80)
+            print(f"  o {class_label:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f} {'':<12}")
+            print("-"*80)
+    else:
+        for class_id in range(args.num_class):
+            if class_id == 0:
+                print(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
+                print("+"*80)
+            print(f"  o {class_id:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f}")
+            print("-"*80)
+    
+    print("\nOverall:")
+    print(f"  - {'True Positives (TP):':<25} {metric.getTP()}")
+    print(f"  - {'False Positives (FP):':<25} {metric.getFP()}")
+    print(f"  - {'False Negatives (FN):':<25} {metric.getFN()}")
+    print(f"  - {'Overall Precision:':<25} {metric.getPrecision():.4f}")
+    print(f"  - {'Overall Recall:':<25} {metric.getRecall():.4f}")
+    print(f"  - {'Overall F1 Score:':<25} {metric.getF1Score():.4f}")
+    print("="*80)
+    
 if __name__ == "__main__":
     main()

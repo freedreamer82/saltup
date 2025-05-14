@@ -377,6 +377,7 @@ class BBox:
         
         xc = x1 + w / 2
         yc = y1 + h / 2
+        
         return xc, yc, w, h
 
     @classmethod
