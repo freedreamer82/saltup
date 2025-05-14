@@ -1,6 +1,7 @@
 from saltup.ai.classification.datagenerator.classification_datagen import keras_ClassificationDataGenerator, ClassificationDataloader, pytorch_ClassificationDataGenerator
 from saltup.utils.data.image.image_utils import Image, ColorMode
 from saltup.ai.keras_utils.keras_to_tflite_quantization import *
+from saltup.ai.keras_utils.keras_to_onnx import *
 from saltup.ai.classification.training.training_callbacks import *
 from typing import Iterator, Tuple, Any, List, Tuple, Union
 import os
@@ -16,15 +17,14 @@ import albumentations as A
 from saltup.ai.object_detection.utils.metrics import Metric
 import copy
 import gc
-from datetime import datetime
 import torch
 from torch.utils.data import DataLoader
 import tensorflow as tf
 
 
 def evaluate_model(model_path:str, 
-                   test_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator], 
-                   test_data_dir:str, 
+                   test_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
+                   output_dir:str=None,
                    loss_function:callable=None) -> float:
     """function to evaluate the model on the test set.
 
@@ -44,7 +44,8 @@ def evaluate_model(model_path:str,
     # Evaluate the model on the test set
 
     global_metric = Metric()
-    class_names = sorted(os.listdir(test_data_dir))
+    class_names = test_gen.dataloader.get_classes().keys()
+    
     print("The class names are:", class_names)
     metric_per_class = {i: Metric() for i in range(len(class_names))}
 
@@ -68,9 +69,7 @@ def evaluate_model(model_path:str,
     elif model_path.endswith('.tflite'):
         print("\n--- Evaluate TFLite model ---")
         tflite_interpreter = tf.lite.Interpreter(model_path=model_path)
-        tflite_interpreter.allocate_tensors()
-        input_details = tflite_interpreter.get_input_details()
-        output_details = tflite_interpreter.get_output_details()
+
 
     else:
         raise ValueError("Unsupported model type. Please use a Keras, PyTorch or TFLite model.")
@@ -96,6 +95,12 @@ def evaluate_model(model_path:str,
                 labels = true_labels.cpu().numpy()
 
         elif model_path.endswith('.tflite'):
+            input_details = tflite_interpreter.get_input_details()
+            output_details = tflite_interpreter.get_output_details()  
+            tflite_interpreter.resize_tensor_input(input_details[0]['index'], (images.shape[0], images.shape[1],images.shape[2],images.shape[3]))
+            tflite_interpreter.resize_tensor_input(output_details[0]['index'], (1, 4))
+            tflite_interpreter.allocate_tensors()
+
             input_index = input_details[0]['index']
             output_index = output_details[0]['index']
 
@@ -111,8 +116,8 @@ def evaluate_model(model_path:str,
 
         # === Evaluation loop ===
         for i, pred in enumerate(predictions):
-            pred_class = np.argmax(pred)
-            true_class = np.argmax(labels[i]) if isinstance(labels[i], (np.ndarray, list)) else labels[i]
+            pred_class = int(np.argmax(pred))
+            true_class = int(np.argmax(labels[i]) if isinstance(labels[i], (np.ndarray, list)) else labels[i])
 
             all_true_labels.append(true_class)
             all_pred_labels.append(pred_class)
@@ -133,13 +138,20 @@ def evaluate_model(model_path:str,
         pbar.set_postfix(**global_metric.get_metrics())
 
     # ==== Confusion Matrix ====
+    model_extension = os.path.splitext(model_path)[1].replace('.', '')
     cm = confusion_matrix(all_true_labels, all_pred_labels)
     plt.figure(figsize=(10, 7))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=class_names, yticklabels=class_names)
     plt.xlabel("Predicted Labels")
     plt.ylabel("True Labels")
     plt.title("Confusion Matrix")
-    plt.show()
+    
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        cm_path = os.path.join(output_dir, f"_{model_extension}_confusion_matrix.png")
+        plt.savefig(cm_path, bbox_inches="tight")
+        print(f"Confusion matrix saved at {cm_path}")
+        plt.show()
 
     # ==== Final Report ====
     print("\n" + "="*80)
@@ -158,7 +170,6 @@ def evaluate_model(model_path:str,
     print("\nOverall:")
     print(f"{'True Positives (TP):':<25} {global_metric.getTP()}")
     print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
-    print(f"{'True Negatives (TN):':<25} {global_metric.getTN()}")
     print(f"{'False Negatives (FN):':<25} {global_metric.getFN()}")
     print(f"{'Overall Precision:':<25} {global_metric.getPrecision():.4f}")
     print(f"{'Overall Recall:':<25} {global_metric.getRecall():.4f}")
@@ -171,6 +182,13 @@ def evaluate_model(model_path:str,
 
     return global_metric.getAccuracy()
 
+class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
+    def __init__(self, custom_callback: BaseCallback):
+        super().__init__()
+        self.cb = custom_callback
+
+    def on_epoch_end(self, epoch, metrics=None):
+        self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
 
 def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
                 train_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
@@ -193,7 +211,7 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
                       loss=loss_function,
                       metrics=['accuracy'])
         
-        keras_callbacks = [KerasCallbackAdapter(cb) for cb in app_callbacks]
+        keras_callbacks = [_KerasCallbackAdapter(cb) for cb in app_callbacks]
         
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
@@ -296,11 +314,11 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
                   f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
 
             for cb in pytorch_callbacks:
-                cb.on_epoch_end(epoch, logs={
-                'train_loss': round(train_loss, 4),
+                cb.on_epoch_end(epoch, metrics={
+                'loss': round(train_loss, 4),
                 'val_loss': round(val_loss, 4),
-                'train_acc': round(train_acc, 4),
-                'val_acc': round(val_acc, 4)
+                'accuracy': round(train_acc, 4),
+                'val_accuracy': round(val_acc, 4)
             })
             # Save best models (JIT)
             if val_loss < best_val_loss:
@@ -354,7 +372,9 @@ def training(train_Dataloader:ClassificationDataloader,
              folds:int=None,
              validation_split:float=0.2,
              training_callback:list=[],
-             quantization:bool=False):
+             quantization:bool=False,
+             quantize_input:bool=True,
+             quantize_output:bool=True) -> str:
     """Classification training function.
     
     Args:
@@ -483,10 +503,11 @@ def training(train_Dataloader:ClassificationDataloader,
                                               app_callbacks=training_callback)
             
             print("\n--- Model fold evaluation ---")
-            current_accuracy = evaluate_model(trained_model_path, val_gen, val_dataloader.root_dir, loss_function)
+            current_fold_folder = os.path.dirname(trained_model_path)
+            current_accuracy = evaluate_model(trained_model_path, val_gen, current_fold_folder, loss_function)
             acc_per_fold.append(current_accuracy)
             txt_performance_file_name = "performances.txt"
-            current_fold_folder = os.path.dirname(trained_model_path)
+            
             txt_performance_file_path = os.path.join(current_fold_folder, txt_performance_file_name)
             with open(txt_performance_file_path, mode='w') as f:
                 f.write("The accuracy of the test of the fold " + str(fold) + ": "+str(current_accuracy))
@@ -497,7 +518,21 @@ def training(train_Dataloader:ClassificationDataloader,
                 golden_model_path = trained_model_path
 
             golden_fold_folder = os.path.dirname(golden_model_path)
-            shutil.copytree(golden_fold_folder, golden_model_folder, dirs_exist_ok=True)        
+            shutil.copytree(golden_fold_folder, golden_model_folder, dirs_exist_ok=True)
+            
+            if isinstance(fold_model, tf.keras.Model):
+                golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
+                onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
+                onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path)
+                
+                example_samples = np.array([train_gen[i][0] for i in range(50)])
+                example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+                tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
+                tflite_model_path = tflite_quantization(golden_model_path, 
+                                                            tflite_golden_model_path,
+                                                            example_samples,
+                                                            False,
+                                                            False)
             
             if quantization and fold == folds-1:
                 if not golden_model_path.endswith('.keras'):
@@ -505,25 +540,35 @@ def training(train_Dataloader:ClassificationDataloader,
                 golden_fold_folder = os.path.dirname(golden_model_path)
                 shutil.copytree(golden_fold_folder, golden_model_folder)
                 
-                example_samples = np.array([test_gen[i][0] for i in range(50)])
-                example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+                #example_samples = np.array([test_gen[i][0] for i in range(50)])
+                #example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
                 print("calibration data shape",example_samples.shape)
-                tflite_model_path = tflite_quantization(golden_model_path, golden_model_folder,example_samples)
+                model_name = os.path.basename(golden_model_path)
+                model_name = model_name.split('.')[0]
+                quantized_model_path = os.path.join(golden_model_folder, 'quantization', f'quantized_{model_name}.tflite')
+                #tflite_golden_model_path = os.path.join(golden_model_folder, f'{model_name}.tflite')
+                tflite_model_path = tflite_quantization(golden_model_path, 
+                                                        quantized_model_path,
+                                                        example_samples,
+                                                        quantize_input,
+                                                        quantize_output)
                 
-                accuracy_of_the_keras_golden_model = evaluate_model(golden_model_path,test_gen, test_Dataloader.root_dir)
-                accuracy_of_the_tflite_golden_model = evaluate_model(tflite_model_path,test_gen, test_Dataloader.root_dir)
+            
+                accuracy_of_the_keras_golden_model = evaluate_model(golden_model_path,test_gen,golden_model_folder)
+                tflite_quantized_folder = os.path.dirname(tflite_model_path)
+                accuracy_of_the_tflite_golden_model = evaluate_model(tflite_model_path,test_gen, tflite_quantized_folder)
                 
                 golden_performance_file_path = os.path.join(golden_model_folder, txt_performance_file_name)
                 with open(golden_performance_file_path, mode='w') as f:
                     f.write("The golden model's path:{}".format(golden_model_path))
                     f.write("\nThe keras golden model is trained with the fold " + str(fold_number))
                     f.write("\nThe accuracy of the golden model: "+ str(best_accuracy))
-                    f.write("\nThe accuracy of the tflite golden model on test:{}".format(accuracy_of_the_tflite_golden_model))
+                    f.write("\nThe accuracy of the quantized tflite golden model on test:{}".format(accuracy_of_the_tflite_golden_model))
                 f.close()
             
             elif fold == folds-1:
                 print('\n\nEvaluation on Test set:',best_accuracy,'\n\n')
-                accuracy_of_the_golden_model = evaluate_model(golden_model_path,test_gen, test_Dataloader.root_dir, loss_function)
+                accuracy_of_the_golden_model = evaluate_model(golden_model_path,test_gen, loss_function)
                 
             if fold ==folds-1:
                 print('------------------------------------------------------------------------')
@@ -617,13 +662,27 @@ def training(train_Dataloader:ClassificationDataloader,
         model_path = _train_model(model=training_model, 
                                 train_gen=train_gen, 
                                 val_gen=val_gen, 
-                                output_dir=fold_path, 
-                                epochs=epochs,
-                                loss_function=loss_function,
-                                optimizer=optimizer,
+                                output_dir=output_dir, 
+                                     loss_function=loss_function,
+                         epochs=epochs,
+                                  optimizer=optimizer,
                                 scheduler=scheduler, 
                                 app_callbacks=training_callback)
-        
+        if isinstance(training_model, tf.keras.Model):
+            model_folder = os.path.dirname(model_path)
+            model_name = os.path.basename(model_path).replace('.keras', '')
+            onnx_model_path = os.path.join(model_folder, f'{model_name}.onnx')
+            model_proto, keras_model = convert_keras_to_onnx(model_path, onnx_model_path)
+            
+            example_samples = np.array([train_gen[i][0] for i in range(50)])
+            example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+                
+            tflite_model_path = os.path.join(model_folder, f'{model_name}.tflite')
+            tflite_model_path = tflite_quantization(model_path, 
+                                                    tflite_model_path,
+                                                    example_samples,
+                                                    False,
+                                                    False)
         txt_performance_file_name = "performances.txt"
         
         if quantization:
@@ -634,22 +693,29 @@ def training(train_Dataloader:ClassificationDataloader,
             example_samples = np.array([test_gen[i][0] for i in range(50)])
             example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
             print("calibration data shape",example_samples.shape)
+            model_name = os.path.basename(model_path)
+            model_name = model_name.split('.')[0]
+            tflite_model_path = os.path.join(model_folder, 'quantization', f'quantized_{model_name}.tflite')
+            tflite_model_path = tflite_quantization(model_path, 
+                                                    tflite_model_path,
+                                                    example_samples,
+                                                    quantize_input,
+                                                    quantize_output)
             
-            tflite_model_path = tflite_quantization(model_path, model_folder,example_samples)
+            accuracy_of_the_keras_model = evaluate_model(model_path,test_gen, model_folder)
             
-            accuracy_of_the_keras_model = evaluate_model(model_path,test_gen, test_Dataloader.root_dir)
-            accuracy_of_the_tflite_model = evaluate_model(tflite_model_path,test_gen, test_Dataloader.root_dir)
+            tflite_model_folder = os.path.dirname(tflite_model_path)
+            accuracy_of_the_tflite_model = evaluate_model(tflite_model_path,test_gen, tflite_model_folder)
             
             performance_file_path = os.path.join(model_folder, txt_performance_file_name)
             with open(performance_file_path, mode='w') as f:
                 f.write("The model's path:{}".format(model_path))
                 f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_keras_model))
-                f.write("\nThe accuracy of the tflite model on test:{}".format(accuracy_of_the_tflite_model))
+                f.write("\nThe accuracy of the quantized tflite model on test:{}".format(accuracy_of_the_tflite_model))
             f.close()
         else:
             model_folder = os.path.dirname(model_path)
-            
-            accuracy_of_the_model = evaluate_model(model_path,test_gen, test_Dataloader.root_dir, loss_function)
+            accuracy_of_the_model = evaluate_model(model_path,test_gen, loss_function, model_folder)
             print('\n\nEvaluation on Test set:',accuracy_of_the_model,'\n\n')
             performance_file_path = os.path.join(model_folder, txt_performance_file_name)
             with open(performance_file_path, mode='w') as f:

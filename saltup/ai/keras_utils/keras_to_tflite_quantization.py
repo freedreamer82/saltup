@@ -17,7 +17,7 @@ def tflite_quantization(golden_model_path, output_tflite_path, x_train, quantizi
     converter.optimizations = [tf.lite.Optimize.DEFAULT] # converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
     converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
     converter._experimental_lower_tensor_list_ops = False
-    
+    converter.allow_custom_ops = False
     converter.representative_dataset = representative_data_gen
 
     # Set the input and output tensors to uint8 (APIs added in r2.3)

@@ -1,9 +1,21 @@
 import tensorflow as tf
-from tf_keras.saving import load_model
+#from tf_keras.saving import load_model
+from tensorflow.keras.models import load_model
 import tf2onnx
 import onnx
 import numpy as np
+import sys
 import onnxruntime as ort
+
+# Monkey-patch for non-standard tf_keras imports
+# Some saved models reference 'tf_keras.src.models.functional'.
+# We alias it to the public TensorFlow Keras functional module.
+try:
+    import tensorflow.keras.models.functional as _functional_module
+    sys.modules['tf_keras.src.models.functional'] = _functional_module
+except ImportError:
+    # If aliasing fails, proceed; load_model may still work with custom_objects
+    pass
 
 def convert_keras_to_onnx(keras_model_path, onnx_path,opset = 16):
     """

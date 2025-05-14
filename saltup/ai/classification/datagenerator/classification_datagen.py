@@ -5,6 +5,7 @@ from typing import Tuple
 import numpy as np
 import os
 from glob import glob
+from tensorflow.keras.utils import to_categorical, Sequence
 
 from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
 from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
@@ -62,6 +63,9 @@ class ClassificationDataloader(BaseDataloader):
     
     def get_num_classes(self):
         return len(set(self.labels))
+    
+    def get_classes(self):
+        return self.class_to_idx
     def __len__(self):
         return len(self.image_paths)
     
@@ -76,7 +80,6 @@ class ClassificationDataloader(BaseDataloader):
         self._iter_idx += 1
         return item
 
-from tensorflow.keras.utils import to_categorical, Sequence
 class keras_ClassificationDataGenerator(BasedDatagenerator, Sequence):
     def __init__(
         self,
