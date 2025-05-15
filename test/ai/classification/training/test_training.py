@@ -2,7 +2,9 @@ import pytest
 import numpy as np
 import os
 import torch
+from torch import nn
 import tensorflow as tf
+from torch.utils.data import DataLoader
 from unittest.mock import MagicMock
 from saltup.ai.classification.training.training import evaluate_model
 from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
@@ -34,29 +36,36 @@ def mock_keras_model(tmp_path):
     model.save(model_path)
     return model_path
 
+class MockModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+ 
+        self.fc = torch.nn.Linear(224 * 224, 2)
+
+    def forward(self, x):
+        x = x.view(x.size(0), 224 * 224)  # Flatten the batch of inputs
+        return self.fc(x)
+
 @pytest.fixture
 def mock_pytorch_model(tmp_path):
     # Create a mock PyTorch model and save it
-    class MockModel(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.fc = torch.nn.Linear(10, 2)
-
-        def forward(self, x):
-            return self.fc(x)
-
     model = MockModel()
     model_path = str(tmp_path / "mock_model.pt")
-    torch.save(model, model_path)
+    scripted = torch.jit.script(model.cpu())
+    scripted.save(model_path)
     return model_path
 
 @pytest.fixture
 def mock_tflite_model(tmp_path):
     # Create a mock TFLite model and save it
     model = tf.keras.Sequential([tf.keras.layers.Dense(2, activation="softmax")])
-    model._set_save_spec(None)  # Explicitly set the save spec to avoid AttributeError
+    model.build(input_shape=(224, 224, 3))  # Build the model with an input shape
+
+    # Convert the Keras model to TFLite format
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     tflite_model = converter.convert()
+
+    # Save the TFLite model to a temporary path
     model_path = str(tmp_path / "mock_model.tflite")
     with open(model_path, "wb") as f:
         f.write(tflite_model)
@@ -80,23 +89,46 @@ def test_evaluate_model_keras(mock_keras_model, mock_test_gen):
     accuracy = evaluate_model(mock_keras_model, mock_test_gen)
     assert isinstance(accuracy, float)
 
-def test_evaluate_model_pytorch(mock_pytorch_model, mock_test_gen):
-    def mock_loss_function(outputs, labels):
-        return torch.tensor(0.5)
+
+@pytest.fixture
+def mock_test_pytorch_gen(mock_test_data_dir):
+    # Create a mock ClassificationDataloader and DataGenerator
     class_dict = {"class_0": 0, "class_1": 1}
     dataloader = ClassificationDataloader(root_dir=mock_test_data_dir, classes_dict=class_dict, img_size=(224, 224, 3))
+
     pytorch_gen = pytorch_ClassificationDataGenerator(
         dataloader=dataloader,
         target_size=(224, 224),
         num_classes=2,
         batch_size=4
     )
-    accuracy = evaluate_model(mock_pytorch_model, pytorch_gen, loss_function=mock_loss_function)
-    assert isinstance(accuracy, float)
+    pytorch_gen = DataLoader(pytorch_gen, batch_size=4)
+    return pytorch_gen
 
-def test_evaluate_model_tflite(mock_tflite_model, mock_test_gen):
-    accuracy = evaluate_model(mock_tflite_model, mock_test_gen)
+def mock_loss_function(outputs, labels):
+    # Mock loss value using outputs and labels
+    return torch.mean((outputs - labels.float()) ** 2)
+
+def test_evaluate_model_pytorch_with_output_dir(mock_pytorch_model, mock_test_pytorch_gen, tmp_path):
+    output_dir = str(tmp_path / "output")
+    # Example outputs and labels for testing
+    outputs = torch.tensor([[0.8, 0.2], [0.4, 0.6]])
+    labels = torch.tensor([[1, 0], [0, 1]])
+    loss_function = lambda outputs, labels: mock_loss_function(outputs, labels)
+    #loss_function = nn.CrossEntropyLoss()
+    accuracy = evaluate_model(mock_pytorch_model, mock_test_pytorch_gen, output_dir=output_dir, loss_function=loss_function)
+
     assert isinstance(accuracy, float)
+    assert os.path.exists(output_dir)
+    assert any(fname.endswith("_pt_confusion_matrix.png") for fname in os.listdir(output_dir))
+
+def test_evaluate_model_tflite_with_output_dir(mock_tflite_model, mock_test_gen, tmp_path):
+    output_dir = str(tmp_path / "output")
+    accuracy = evaluate_model(mock_tflite_model, mock_test_gen, output_dir=output_dir)
+
+    assert isinstance(accuracy, float)
+    assert os.path.exists(output_dir)
+    assert any(fname.endswith("_tflite_confusion_matrix.png") for fname in os.listdir(output_dir))
 
 def test_evaluate_model_invalid_model_type(mock_test_gen):
     with pytest.raises(ValueError, match="Unsupported model type"):
