@@ -214,8 +214,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
 
 def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
-                train_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
-                val_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
+                train_gen:Union[keras_ClassificationDataGenerator, DataLoader],
+                val_gen:Union[keras_ClassificationDataGenerator, DataLoader],
                 output_dir:str,
                 epochs:int, 
                 loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
@@ -224,7 +224,19 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
                 model_output_name:str=None,
                 app_callbacks=[]) -> str:
 
-
+    """Train the model.
+    Args:
+        model (Union[tf.keras.models.Sequential, torch.nn.Module]): model to be trained.
+        train_gen (Union[keras_ClassificationDataGenerator, DataLoader]): training data generator
+        val_gen (Union[keras_ClassificationDataGenerator, DataLoader]): validation data generator
+        output_dir (str): folder to save the model
+        epochs (int): number of epochs for training
+        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module]): loss function for training
+        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]): optimizer for training
+        scheduler (Union[torch.optim.lr_scheduler._LRScheduler, None]): scheduler for the optimizer
+        model_output_name (str, optional): name of the model. Defaults to None.
+        app_callbacks (list, optional): list of callbacks for training. Defaults to [].
+    """
     pytorch_callbacks = [cb for cb in app_callbacks if isinstance(cb, BaseCallback)]
     if model_output_name is None:
         model_output_name = 'model'
@@ -267,7 +279,7 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         plot_history(history.history['loss'], 'history_loss', 'Loss')
         plot_history(history.history['accuracy'], 'history_accuracy', 'Accuracy')
 
-        model.save(b_v_model_path)
+        model.save(b_model_path)
         print('Saved trained model at {} '.format(b_v_model_path))
         return b_v_model_path
 
@@ -277,9 +289,9 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
 
-        b_v_model_path = os.path.join(saved_models_folder_path, '{model_output_name}_best_v_.pt')
-        b_t_model_path = os.path.join(saved_models_folder_path, '{model_output_name}_best_t_.pt')
-        b_model_path = os.path.join(saved_models_folder_path, '{model_output_name}_last_epoch_.pt')
+        b_v_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
+        b_t_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
+        b_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
 
         best_val_loss = float('inf')
         best_train_loss = float('inf')
@@ -759,7 +771,7 @@ def training(train_Dataloader:ClassificationDataloader,
             f.close()
         else:
             model_folder = os.path.dirname(model_path)
-            accuracy_of_the_model = evaluate_model(model_path,test_gen, loss_function, model_folder)
+            accuracy_of_the_model = evaluate_model(model_path,test_gen, model_folder, loss_function)
             print('\n\nEvaluation on Test set:',accuracy_of_the_model,'\n\n')
             performance_file_path = os.path.join(model_folder, txt_performance_file_name)
             with open(performance_file_path, mode='w') as f:
