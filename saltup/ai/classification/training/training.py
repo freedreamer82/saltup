@@ -106,13 +106,10 @@ def evaluate_model(model_path:str,
         elif model_path.endswith('.tflite'):
             input_details = tflite_interpreter.get_input_details()
             output_details = tflite_interpreter.get_output_details()  
-            #tflite_interpreter.resize_tensor_input(input_details[0]['index'], (images.shape[0], images.shape[1],images.shape[2],images.shape[3]))
-            #tflite_interpreter.resize_tensor_input(output_details[0]['index'], (1, 4))
             tflite_interpreter.allocate_tensors()
 
             input_index = input_details[0]['index']
             output_index = output_details[0]['index']
-            print(input_index)
             
             # Ensure the input tensor is of type FLOAT32
             if input_details[0]['dtype'] == np.float32:
@@ -131,8 +128,6 @@ def evaluate_model(model_path:str,
             tflite_interpreter.invoke()
 
             predictions = tflite_interpreter.get_tensor(output_index)
-            #scale, zero_point = output_details[0]['quantization']
-            #predictions = (output.astype(np.float32) - zero_point) * scale
             # Ensure predictions and labels are aligned
             if len(predictions) != len(labels):
                 raise ValueError(f"Mismatch between predictions ({len(predictions)}) and labels ({len(labels)})")
