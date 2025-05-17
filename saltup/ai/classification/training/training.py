@@ -23,7 +23,7 @@ import tensorflow as tf
 
 
 def evaluate_model(model_path:str, 
-                   test_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
+                   test_gen:Union[keras_ClassificationDataGenerator, DataLoader],
                    output_dir:str=None,
                    loss_function:callable=None) -> float:
     """function to evaluate the model on the test set.
@@ -44,7 +44,10 @@ def evaluate_model(model_path:str,
     # Evaluate the model on the test set
 
     global_metric = Metric()
-    class_names = test_gen.dataloader.get_classes().keys()
+    if isinstance(test_gen, keras_ClassificationDataGenerator):
+        class_names = test_gen.dataloader.get_classes().keys()
+    elif isinstance(test_gen, DataLoader):
+        class_names = test_gen.dataset.dataloader.get_classes().keys()
     
     print("The class names are:", class_names)
     metric_per_class = {i: Metric() for i in range(len(class_names))}
@@ -87,7 +90,13 @@ def evaluate_model(model_path:str,
             with torch.no_grad():
                 X_batch = images.to(device)
                 y_batch = labels.to(device)
-                true_labels = torch.argmax(y_batch, dim=1)
+                # Handle both one-hot encoded and non-one-hot encoded labels
+                if y_batch.ndim == 1:  # If labels are not one-hot encoded
+                    true_labels = y_batch
+                elif y_batch.ndim == 2:  # If labels are one-hot encoded
+                    true_labels = torch.argmax(y_batch, dim=1)
+                else:
+                    raise ValueError(f"Unexpected label shape: {y_batch.shape}")
 
                 outputs = model(X_batch)
                 loss = loss_function(outputs, true_labels)
@@ -97,22 +106,31 @@ def evaluate_model(model_path:str,
         elif model_path.endswith('.tflite'):
             input_details = tflite_interpreter.get_input_details()
             output_details = tflite_interpreter.get_output_details()  
-            tflite_interpreter.resize_tensor_input(input_details[0]['index'], (images.shape[0], images.shape[1],images.shape[2],images.shape[3]))
-            tflite_interpreter.resize_tensor_input(output_details[0]['index'], (1, 4))
             tflite_interpreter.allocate_tensors()
 
             input_index = input_details[0]['index']
             output_index = output_details[0]['index']
-
-            scale, zero_point = input_details[0]["quantization"]
-            x_test_lite = np.uint8(images / scale + zero_point)
-
+            
+            # Ensure the input tensor is of type FLOAT32
+            if input_details[0]['dtype'] == np.float32:
+                x_test_lite = images.astype(np.float32)
+            else:
+                scale, zero_point = input_details[0]["quantization"]
+                x_test_lite = np.uint8(images / scale + zero_point)
+            
+            # Resize the input tensor only if necessary
+            if x_test_lite.shape != tuple(input_details[0]['shape']):
+                print('Resizing input tensor to:', x_test_lite.shape)
+                tflite_interpreter.resize_tensor_input(input_index, x_test_lite.shape)
+                tflite_interpreter.allocate_tensors()
+            
             tflite_interpreter.set_tensor(input_index, x_test_lite)
             tflite_interpreter.invoke()
 
-            output = tflite_interpreter.get_tensor(output_index)
-            scale, zero_point = output_details[0]['quantization']
-            predictions = (output.astype(np.float32) - zero_point) * scale
+            predictions = tflite_interpreter.get_tensor(output_index)
+            # Ensure predictions and labels are aligned
+            if len(predictions) != len(labels):
+                raise ValueError(f"Mismatch between predictions ({len(predictions)}) and labels ({len(labels)})")
 
         # === Evaluation loop ===
         for i, pred in enumerate(predictions):
@@ -191,17 +209,32 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
 
 def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
-                train_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
-                val_gen:Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator],
+                train_gen:Union[keras_ClassificationDataGenerator, DataLoader],
+                val_gen:Union[keras_ClassificationDataGenerator, DataLoader],
                 output_dir:str,
                 epochs:int, 
                 loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
                 optimizer:Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer],
                 scheduler:Union[torch.optim.lr_scheduler._LRScheduler, None],
+                model_output_name:str=None,
                 app_callbacks=[]) -> str:
 
-
+    """Train the model.
+    Args:
+        model (Union[tf.keras.models.Sequential, torch.nn.Module]): model to be trained.
+        train_gen (Union[keras_ClassificationDataGenerator, DataLoader]): training data generator
+        val_gen (Union[keras_ClassificationDataGenerator, DataLoader]): validation data generator
+        output_dir (str): folder to save the model
+        epochs (int): number of epochs for training
+        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module]): loss function for training
+        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]): optimizer for training
+        scheduler (Union[torch.optim.lr_scheduler._LRScheduler, None]): scheduler for the optimizer
+        model_output_name (str, optional): name of the model. Defaults to None.
+        app_callbacks (list, optional): list of callbacks for training. Defaults to [].
+    """
     pytorch_callbacks = [cb for cb in app_callbacks if isinstance(cb, BaseCallback)]
+    if model_output_name is None:
+        model_output_name = 'model'
     if isinstance(model, tf.keras.Model):
         # === Keras model ===
         if optimizer is None or loss_function is None:
@@ -215,10 +248,10 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
-
-        b_v_model_path = os.path.join(saved_models_folder_path, '_keras_best_v_.keras')
-        b_t_model_path = os.path.join(saved_models_folder_path, '_keras_best_t_.keras')
-        b_model_path = os.path.join(saved_models_folder_path, '_keras_last_epoch_.keras')
+        
+        b_v_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.keras')
+        b_t_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.keras')
+        b_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.keras')
 
         b_v = tf.keras.callbacks.ModelCheckpoint(filepath=b_v_model_path, save_best_only=True)
         b_t = tf.keras.callbacks.ModelCheckpoint(filepath=b_t_model_path, monitor='loss', save_best_only=True)
@@ -241,7 +274,7 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         plot_history(history.history['loss'], 'history_loss', 'Loss')
         plot_history(history.history['accuracy'], 'history_accuracy', 'Accuracy')
 
-        model.save(b_v_model_path)
+        model.save(b_model_path)
         print('Saved trained model at {} '.format(b_v_model_path))
         return b_v_model_path
 
@@ -251,9 +284,9 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
 
-        b_v_model_path = os.path.join(saved_models_folder_path, '_pytorch_best_v_.pt')
-        b_t_model_path = os.path.join(saved_models_folder_path, '_pytorch_best_t_.pt')
-        b_model_path = os.path.join(saved_models_folder_path, '_pytorch_last_epoch_.pt')
+        b_v_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
+        b_t_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
+        b_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
 
         best_val_loss = float('inf')
         best_train_loss = float('inf')
@@ -273,7 +306,14 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
             running_loss, correct, total = 0, 0, 0
             for x_batch, y_batch in train_gen:
                 x_batch, y_batch = x_batch.to(device).float(), y_batch.to(device)
-                labels = torch.argmax(y_batch, dim=1)
+                
+                # Handle both one-hot encoded and non-one-hot encoded labels
+                if y_batch.ndim == 1:  # If labels are not one-hot encoded
+                    labels = y_batch
+                elif y_batch.ndim == 2:  # If labels are one-hot encoded
+                    labels = torch.argmax(y_batch, dim=1)
+                else:
+                    raise ValueError(f"Unexpected label shape: {y_batch.shape}")
 
                 optimizer.zero_grad()
                 outputs = model(x_batch)
@@ -295,7 +335,15 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
             with torch.no_grad():
                 for x_batch, y_batch in val_gen:
                     x_batch, y_batch = x_batch.to(device).float(), y_batch.to(device)
-                    labels = torch.argmax(y_batch, dim=1)
+                    
+                    # Handle both one-hot encoded and non-one-hot encoded labels
+                    if y_batch.ndim == 1:  # If labels are not one-hot encoded
+                        labels = y_batch
+                    elif y_batch.ndim == 2:  # If labels are one-hot encoded
+                        labels = torch.argmax(y_batch, dim=1)
+                    else:
+                        raise ValueError(f"Unexpected label shape: {y_batch.shape}")
+
                     outputs = model(x_batch)
                     loss = loss_function(outputs, labels)
                     val_loss += loss.item()
@@ -369,6 +417,7 @@ def training(train_Dataloader:ClassificationDataloader,
              scheduler:callable=None,
              preprocess:callable=None,
              transform:A.Compose=None,
+             model_output_name:str=None,
              folds:int=None,
              validation_split:float=0.2,
              training_callback:list=[],
@@ -500,6 +549,7 @@ def training(train_Dataloader:ClassificationDataloader,
                                               loss_function=loss_function,
                                               optimizer=optimizer,
                                               scheduler=scheduler, 
+                                              model_output_name=model_output_name,
                                               app_callbacks=training_callback)
             
             print("\n--- Model fold evaluation ---")
@@ -663,10 +713,11 @@ def training(train_Dataloader:ClassificationDataloader,
                                 train_gen=train_gen, 
                                 val_gen=val_gen, 
                                 output_dir=output_dir, 
-                                     loss_function=loss_function,
-                         epochs=epochs,
-                                  optimizer=optimizer,
+                                loss_function=loss_function,
+                                epochs=epochs,
+                                optimizer=optimizer,
                                 scheduler=scheduler, 
+                                model_output_name=model_output_name,
                                 app_callbacks=training_callback)
         if isinstance(training_model, tf.keras.Model):
             model_folder = os.path.dirname(model_path)
@@ -715,7 +766,7 @@ def training(train_Dataloader:ClassificationDataloader,
             f.close()
         else:
             model_folder = os.path.dirname(model_path)
-            accuracy_of_the_model = evaluate_model(model_path,test_gen, loss_function, model_folder)
+            accuracy_of_the_model = evaluate_model(model_path,test_gen, model_folder, loss_function)
             print('\n\nEvaluation on Test set:',accuracy_of_the_model,'\n\n')
             performance_file_path = os.path.join(model_folder, txt_performance_file_name)
             with open(performance_file_path, mode='w') as f:
