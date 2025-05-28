@@ -18,12 +18,12 @@ from saltup.ai.object_detection.utils.metrics import Metric
 import copy
 import gc
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader as pytorch_DataGenerator
 import tensorflow as tf
 
 
 def evaluate_model(model_path:str, 
-                   test_gen:Union[keras_ClassificationDataGenerator, DataLoader],
+                   test_gen:Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
                    output_dir:str=None,
                    loss_function:callable=None) -> float:
     """function to evaluate the model on the test set.
@@ -46,7 +46,7 @@ def evaluate_model(model_path:str,
     global_metric = Metric()
     if isinstance(test_gen, keras_ClassificationDataGenerator):
         class_names = test_gen.dataloader.get_classes().keys()
-    elif isinstance(test_gen, DataLoader):
+    elif isinstance(test_gen, pytorch_DataGenerator):
         class_names = test_gen.dataset.dataloader.get_classes().keys()
     
     print("The class names are:", class_names)
@@ -209,8 +209,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
 
 def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
-                train_gen:Union[keras_ClassificationDataGenerator, DataLoader],
-                val_gen:Union[keras_ClassificationDataGenerator, DataLoader],
+                train_gen:Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
+                val_gen:Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
                 output_dir:str,
                 epochs:int, 
                 loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
@@ -255,11 +255,12 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
 
         b_v = tf.keras.callbacks.ModelCheckpoint(filepath=b_v_model_path, save_best_only=True)
         b_t = tf.keras.callbacks.ModelCheckpoint(filepath=b_t_model_path, monitor='loss', save_best_only=True)
-
+        class_weight = {0:0.6, 1:0.4}
         history = model.fit(train_gen,
                             validation_data=val_gen,
                             epochs=epochs,
                             callbacks=[keras_callbacks, b_v, b_t],
+                            class_weight=class_weight,
                             shuffle=True)
 
         # Plotting
@@ -405,7 +406,7 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         print(f"Saved scripted model at {b_model_path}")
         return b_model_path
     
-def training(train_Dataloader:ClassificationDataloader,
+def training_old(train_Dataloader:ClassificationDataloader,
              test_Dataloader:ClassificationDataloader,
              model_fn:callable,
              loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
@@ -445,6 +446,7 @@ def training(train_Dataloader:ClassificationDataloader,
         quantization (bool, optional): quantization for the model. Defaults to False.
     """
     images_paths = train_Dataloader.image_paths
+    labels = train_Dataloader.labels
     parameters_name = "options.txt"
     parameters_path = os.path.join(output_dir, parameters_name)
     with open(parameters_path, mode='w') as f:
@@ -464,12 +466,9 @@ def training(train_Dataloader:ClassificationDataloader,
         golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
         for fold, (train_idx, val_idx) in enumerate(kfold.split(images_paths)):
             print(f"\n--- Fold {fold + 1} ---")
+            train_dataloader = train_Dataloader.split(indices_subset=train_idx)
+            val_dataloader = train_Dataloader.split(indices_subset=val_idx)
             
-            train_dataloader = copy.deepcopy(train_Dataloader)
-            val_dataloader = copy.deepcopy(train_Dataloader)
-            
-            train_dataloader.image_paths = [images_paths[i] for i in train_idx]
-            val_dataloader.image_paths = [images_paths[i] for i in val_idx]
             print("Number of training samples:", len(train_dataloader))
             print("Number of validation samples:", len(val_dataloader))
             
@@ -514,7 +513,7 @@ def training(train_Dataloader:ClassificationDataloader,
                     preprocess=preprocess,
                     transform=transform
                 )
-                train_gen = DataLoader(train_gen, batch_size=batch_size, shuffle=True)
+                train_gen = pytorch_DataGenerator(train_gen, batch_size=batch_size, shuffle=True)
                 val_gen = pytorch_ClassificationDataGenerator(
                     dataloader=val_dataloader,
                     target_size=target_size,
@@ -523,7 +522,7 @@ def training(train_Dataloader:ClassificationDataloader,
                     preprocess=preprocess,
                     transform=None  # no augmentation
                 )
-                val_gen = DataLoader(val_gen, batch_size=batch_size, shuffle=True)
+                val_gen = pytorch_DataGenerator(val_gen, batch_size=batch_size, shuffle=True)
                 test_gen = pytorch_ClassificationDataGenerator(
                     dataloader=test_Dataloader,
                     target_size=target_size,
@@ -532,7 +531,7 @@ def training(train_Dataloader:ClassificationDataloader,
                     preprocess=preprocess,
                     transform=None  # no augmentation
                 )
-                test_gen = DataLoader(test_gen, batch_size=batch_size, shuffle=True)
+                test_gen = pytorch_DataGenerator(test_gen, batch_size=batch_size, shuffle=True)
             else:
                 raise TypeError("Unsupported model type. Expected Keras or PyTorch model.")
             
@@ -637,11 +636,9 @@ def training(train_Dataloader:ClassificationDataloader,
                     f.write("The average accuracy for all folds:{}".format(np.mean(acc_per_fold)))
                     f.write("\nThe variance of the accuracies for all folds:{}".format(np.std(acc_per_fold)))
     else:
-        val_split = int(validation_split * len(train_Dataloader))
-        train_dataloader = copy.deepcopy(train_Dataloader)
-        val_dataloader = copy.deepcopy(train_Dataloader)
-        train_dataloader.image_paths = images_paths[val_split:]
-        val_dataloader.image_paths = images_paths[:val_split]
+        
+        val_dataloader, train_dataloader = train_Dataloader.split(split_ratio=validation_split)
+        
         print("Number of training samples:", len(train_dataloader))
         print("Number of validation samples:", len(val_dataloader))
         
@@ -686,7 +683,7 @@ def training(train_Dataloader:ClassificationDataloader,
                 preprocess=preprocess,
                 transform=transform
             )
-            train_gen = DataLoader(train_gen, batch_size=batch_size, shuffle=True)
+            train_gen = pytorch_DataGenerator(train_gen, batch_size=batch_size, shuffle=True)
             val_gen = pytorch_ClassificationDataGenerator(
                 dataloader=val_dataloader,
                 target_size=target_size,
@@ -695,7 +692,7 @@ def training(train_Dataloader:ClassificationDataloader,
                 preprocess=preprocess,
                 transform=None  # no augmentation
             )
-            val_gen = DataLoader(val_gen, batch_size=batch_size, shuffle=True)
+            val_gen = pytorch_DataGenerator(val_gen, batch_size=batch_size, shuffle=True)
             test_gen = pytorch_ClassificationDataGenerator(
                 dataloader=test_Dataloader,
                 target_size=target_size,
@@ -704,7 +701,368 @@ def training(train_Dataloader:ClassificationDataloader,
                 preprocess=preprocess,
                 transform=None  # no augmentation
             )
-            test_gen = DataLoader(test_gen, batch_size=batch_size, shuffle=True)
+            test_gen = pytorch_DataGenerator(test_gen, batch_size=batch_size, shuffle=True)
+        else:
+            raise TypeError("Unsupported model type. Expected Keras or PyTorch model.")
+
+        print("\n--- Model training ---")
+        model_path = _train_model(model=training_model, 
+                                train_gen=train_gen, 
+                                val_gen=val_gen, 
+                                output_dir=output_dir, 
+                                loss_function=loss_function,
+                                epochs=epochs,
+                                optimizer=optimizer,
+                                scheduler=scheduler, 
+                                model_output_name=model_output_name,
+                                app_callbacks=training_callback)
+        if isinstance(training_model, tf.keras.Model):
+            model_folder = os.path.dirname(model_path)
+            model_name = os.path.basename(model_path).replace('.keras', '')
+            onnx_model_path = os.path.join(model_folder, f'{model_name}.onnx')
+            model_proto, keras_model = convert_keras_to_onnx(model_path, onnx_model_path)
+            
+            example_samples = np.array([train_gen[i][0] for i in range(50)])
+            example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+                
+            tflite_model_path = os.path.join(model_folder, f'{model_name}.tflite')
+            tflite_model_path = tflite_quantization(model_path, 
+                                                    tflite_model_path,
+                                                    example_samples,
+                                                    False,
+                                                    False)
+        txt_performance_file_name = "performances.txt"
+        
+        if quantization:
+            if not model_path.endswith('.keras'):
+                raise ValueError("The model is not a keras model. Only keras model is supported for quantization.")
+            model_folder = os.path.dirname(model_path)
+            
+            example_samples = np.array([test_gen[i][0] for i in range(50)])
+            example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+            print("calibration data shape",example_samples.shape)
+            model_name = os.path.basename(model_path)
+            model_name = model_name.split('.')[0]
+            tflite_model_path = os.path.join(model_folder, 'quantization', f'quantized_{model_name}.tflite')
+            tflite_model_path = tflite_quantization(model_path, 
+                                                    tflite_model_path,
+                                                    example_samples,
+                                                    quantize_input,
+                                                    quantize_output)
+            
+            accuracy_of_the_keras_model = evaluate_model(model_path,test_gen, model_folder)
+            
+            tflite_model_folder = os.path.dirname(tflite_model_path)
+            accuracy_of_the_tflite_model = evaluate_model(tflite_model_path,test_gen, tflite_model_folder)
+            
+            performance_file_path = os.path.join(model_folder, txt_performance_file_name)
+            with open(performance_file_path, mode='w') as f:
+                f.write("The model's path:{}".format(model_path))
+                f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_keras_model))
+                f.write("\nThe accuracy of the quantized tflite model on test:{}".format(accuracy_of_the_tflite_model))
+            f.close()
+        else:
+            model_folder = os.path.dirname(model_path)
+            accuracy_of_the_model = evaluate_model(model_path,test_gen, model_folder, loss_function)
+            print('\n\nEvaluation on Test set:',accuracy_of_the_model,'\n\n')
+            performance_file_path = os.path.join(model_folder, txt_performance_file_name)
+            with open(performance_file_path, mode='w') as f:
+                f.write("The model's path:{}".format(model_path))
+                f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_model))
+            f.close()
+            
+            
+            
+def training(train_Dataloader:ClassificationDataloader,
+             model_fn:callable,
+             loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
+             optimizer:Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer],
+             epochs:int,
+             target_size:tuple,
+             batch_size:int,           
+             output_dir:str,
+             folds:int=None,
+             scheduler:callable=None,
+             model_output_name:str=None,
+             validation_split:float=0.2,
+             training_callback:list=[]) -> str:
+    """Classification training function.
+    
+    Args:
+        Dataloader (ClassificationDataloader): Dataloader object.
+        model_fn(calable): model name to be trained.
+        folds (int): number of folds for cross-validation.
+        epochs (int): number of epochs for training.
+        training_callback (_type_, optional): callback function for training. Defaults to train_model.
+        output_dir (str, optional): _description_. Defaults to None.
+        validation_split (float, optional): _description_. Defaults to 0.2.
+        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module], optional): loss function for training
+        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer], optional): optimizer for training
+        target_size (tuple, optional): target size for the model. Defaults to None.
+        batch_size (int, optional): batch size for training. Defaults to None.
+        scheduler (callable, optional): scheduler for the optimizer. Defaults to None.
+        preprocess (callable, optional): preprocessing function for the model. Defaults to None.
+        transform (A.Compose, optional): augmentation function for the model. Defaults to None.
+        test_Dataloader (ClassificationDataloader): Dataloader object for test data.
+        quantization (bool, optional): quantization for the model. Defaults to False.
+    """
+    images_paths = train_Dataloader.image_paths
+    labels = train_Dataloader.labels
+    parameters_name = "options.txt"
+    parameters_path = os.path.join(output_dir, parameters_name)
+    with open(parameters_path, mode='w') as f:
+        if folds:
+            f.write("The number of folds: {}".format(folds))
+        f.write("\nThe training samples location: {}".format(train_Dataloader.root_dir))
+        f.write("\nThe test samples location: {}".format(test_Dataloader.root_dir))
+        f.write("\nThe model name: {}".format(model_fn.__name__))
+        f.write("\nThe number of epochs: {}".format(epochs))
+        f.write("\nThe batch size: {}".format(batch_size))
+        f.write("\nThe target size: {}".format(target_size))
+    f.close()
+    if folds:
+        kfold = KFold(n_splits=folds, shuffle=True)
+        acc_per_fold = []
+        best_accuracy = -1
+        golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
+        for fold, (train_idx, val_idx) in enumerate(kfold.split(images_paths)):
+            print(f"\n--- Fold {fold + 1} ---")
+            train_dataloader = train_Dataloader.split(indices_subset=train_idx)
+            val_dataloader = train_Dataloader.split(indices_subset=val_idx)
+            
+            print("Number of training samples:", len(train_dataloader))
+            print("Number of validation samples:", len(val_dataloader))
+            
+            fold_model = model_fn()
+            if isinstance(fold_model, tf.keras.Model):
+                print("Keras model detected.")
+                train_gen = keras_ClassificationDataGenerator(
+                    dataloader=train_dataloader,
+                    target_size=target_size,
+                    num_classes=train_dataloader.get_num_classes(),
+                    batch_size=batch_size,
+                    preprocess=preprocess,
+                    transform=transform
+                )
+
+                val_gen = keras_ClassificationDataGenerator(
+                    dataloader=val_dataloader,
+                    target_size=target_size,
+                    num_classes=val_dataloader.get_num_classes(),
+                    batch_size=batch_size,
+                    preprocess=preprocess,
+                    transform=None  # no augmentation
+                )
+                test_gen = keras_ClassificationDataGenerator(
+                        dataloader=test_Dataloader,
+                        target_size=target_size,
+                        num_classes=test_Dataloader.get_num_classes(),
+                        batch_size=batch_size,
+                        preprocess=preprocess,
+                        transform=None  # no augmentation
+                )                
+            elif isinstance(fold_model, torch.nn.Module):
+                print("PyTorch model detected.")
+                if loss_function is None or optimizer is None:
+                    raise ValueError("For PyTorch models, both `loss_function` and `optimizer` must be provided.")
+
+                train_gen = pytorch_ClassificationDataGenerator(
+                    dataloader=train_dataloader,
+                    target_size=target_size,
+                    num_classes=train_dataloader.get_num_classes(),
+                    batch_size=1,
+                    preprocess=preprocess,
+                    transform=transform
+                )
+                train_gen = pytorch_DataGenerator(train_gen, batch_size=batch_size, shuffle=True)
+                val_gen = pytorch_ClassificationDataGenerator(
+                    dataloader=val_dataloader,
+                    target_size=target_size,
+                    num_classes=val_dataloader.get_num_classes(),
+                    batch_size=1,
+                    preprocess=preprocess,
+                    transform=None  # no augmentation
+                )
+                val_gen = pytorch_DataGenerator(val_gen, batch_size=batch_size, shuffle=True)
+                test_gen = pytorch_ClassificationDataGenerator(
+                    dataloader=test_Dataloader,
+                    target_size=target_size,
+                    num_classes=test_Dataloader.get_num_classes(),
+                    batch_size=batch_size,
+                    preprocess=preprocess,
+                    transform=None  # no augmentation
+                )
+                test_gen = pytorch_DataGenerator(test_gen, batch_size=batch_size, shuffle=True)
+            else:
+                raise TypeError("Unsupported model type. Expected Keras or PyTorch model.")
+            
+                
+            fold_path = os.path.join(output_dir,'k_'+str(fold))
+            os.mkdir(fold_path)
+            print("\n--- Model training ---")
+            trained_model_path = _train_model(model=fold_model, 
+                                              train_gen=train_gen, 
+                                              val_gen=val_gen, 
+                                              output_dir=fold_path, 
+                                              epochs=epochs,
+                                              
+                                              loss_function=loss_function,
+                                              optimizer=optimizer,
+                                              scheduler=scheduler, 
+                                              model_output_name=model_output_name,
+                                              app_callbacks=training_callback)
+            
+            print("\n--- Model fold evaluation ---")
+            current_fold_folder = os.path.dirname(trained_model_path)
+            current_accuracy = evaluate_model(trained_model_path, val_gen, current_fold_folder, loss_function)
+            acc_per_fold.append(current_accuracy)
+            txt_performance_file_name = "performances.txt"
+            
+            txt_performance_file_path = os.path.join(current_fold_folder, txt_performance_file_name)
+            with open(txt_performance_file_path, mode='w') as f:
+                f.write("The accuracy of the test of the fold " + str(fold) + ": "+str(current_accuracy))
+            f.close()
+            if  current_accuracy > best_accuracy:
+                best_accuracy = current_accuracy
+                fold_number = fold
+                golden_model_path = trained_model_path
+
+            golden_fold_folder = os.path.dirname(golden_model_path)
+            shutil.copytree(golden_fold_folder, golden_model_folder, dirs_exist_ok=True)
+            
+            if isinstance(fold_model, tf.keras.Model):
+                golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
+                onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
+                onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path)
+                
+                example_samples = np.array([train_gen[i][0] for i in range(50)])
+                example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+                tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
+                tflite_model_path = tflite_quantization(golden_model_path, 
+                                                            tflite_golden_model_path,
+                                                            example_samples,
+                                                            False,
+                                                            False)
+            
+            if quantization and fold == folds-1:
+                if not golden_model_path.endswith('.keras'):
+                    raise ValueError("The model is not a keras model.")
+                golden_fold_folder = os.path.dirname(golden_model_path)
+                shutil.copytree(golden_fold_folder, golden_model_folder)
+                
+                #example_samples = np.array([test_gen[i][0] for i in range(50)])
+                #example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
+                print("calibration data shape",example_samples.shape)
+                model_name = os.path.basename(golden_model_path)
+                model_name = model_name.split('.')[0]
+                quantized_model_path = os.path.join(golden_model_folder, 'quantization', f'quantized_{model_name}.tflite')
+                #tflite_golden_model_path = os.path.join(golden_model_folder, f'{model_name}.tflite')
+                tflite_model_path = tflite_quantization(golden_model_path, 
+                                                        quantized_model_path,
+                                                        example_samples,
+                                                        quantize_input,
+                                                        quantize_output)
+                
+            
+                accuracy_of_the_keras_golden_model = evaluate_model(golden_model_path,test_gen,golden_model_folder)
+                tflite_quantized_folder = os.path.dirname(tflite_model_path)
+                accuracy_of_the_tflite_golden_model = evaluate_model(tflite_model_path,test_gen, tflite_quantized_folder)
+                
+                golden_performance_file_path = os.path.join(golden_model_folder, txt_performance_file_name)
+                with open(golden_performance_file_path, mode='w') as f:
+                    f.write("The golden model's path:{}".format(golden_model_path))
+                    f.write("\nThe keras golden model is trained with the fold " + str(fold_number))
+                    f.write("\nThe accuracy of the golden model: "+ str(best_accuracy))
+                    f.write("\nThe accuracy of the quantized tflite golden model on test:{}".format(accuracy_of_the_tflite_golden_model))
+                f.close()
+            
+            elif fold == folds-1:
+                print('\n\nEvaluation on Test set:',best_accuracy,'\n\n')
+                accuracy_of_the_golden_model = evaluate_model(golden_model_path,test_gen, loss_function)
+                
+            if fold ==folds-1:
+                print('------------------------------------------------------------------------')
+                print('Score per fold')
+                for i in range(0, len(acc_per_fold)):
+                    print('------------------------------------------------------------------------')
+                    print(f'> Fold {i} - Accuracy: {acc_per_fold[i]}%')
+                print('------------------------------------------------------------------------')
+                print('Average scores for all folds:')
+                print(f'> Accuracy: {np.mean(acc_per_fold)} (+- {np.std(acc_per_fold)})')
+
+                print('------------------------------------------------------------------------')
+                global_performance_file_name = "Global statistical info.txt.txt"
+                global_performance_file_path = os.path.join(output_dir, global_performance_file_name)
+                with open(global_performance_file_path, mode='w') as f:
+                    f.write("The average accuracy for all folds:{}".format(np.mean(acc_per_fold)))
+                    f.write("\nThe variance of the accuracies for all folds:{}".format(np.std(acc_per_fold)))
+    else:
+        
+        val_dataloader, train_dataloader = train_Dataloader.split(split_ratio=validation_split)
+        
+        print("Number of training samples:", len(train_dataloader))
+        print("Number of validation samples:", len(val_dataloader))
+        
+        training_model = model_fn()
+        if isinstance(training_model, tf.keras.Model):
+            print("Keras model detected.")
+            train_gen = keras_ClassificationDataGenerator(
+                dataloader=train_dataloader,
+                target_size=target_size,
+                num_classes=train_dataloader.get_num_classes(),
+                batch_size=batch_size,
+                preprocess=preprocess,
+                transform=transform
+            )
+
+            val_gen = keras_ClassificationDataGenerator(
+                dataloader=val_dataloader,
+                target_size=target_size,
+                num_classes=val_dataloader.get_num_classes(),
+                batch_size=batch_size,
+                preprocess=preprocess,
+                transform=None  # no augmentation
+            )
+            test_gen = keras_ClassificationDataGenerator(
+                dataloader=test_Dataloader,
+                target_size=target_size,
+                num_classes=test_Dataloader.get_num_classes(),
+                batch_size=batch_size,
+                preprocess=preprocess,
+                transform=None  # no augmentation
+            )
+        
+        elif isinstance(training_model, torch.nn.Module):
+            print("PyTorch model detected.")
+            if loss_function is None or optimizer is None:
+                    raise ValueError("For PyTorch models, both `loss_function` and `optimizer` must be provided.")
+            train_gen = pytorch_ClassificationDataGenerator(
+                dataloader=train_dataloader,
+                target_size=target_size,
+                num_classes=train_dataloader.get_num_classes(),
+                batch_size=1,
+                preprocess=preprocess,
+                transform=transform
+            )
+            train_gen = pytorch_DataGenerator(train_gen, batch_size=batch_size, shuffle=True)
+            val_gen = pytorch_ClassificationDataGenerator(
+                dataloader=val_dataloader,
+                target_size=target_size,
+                num_classes=val_dataloader.get_num_classes(),
+                batch_size=1,
+                preprocess=preprocess,
+                transform=None  # no augmentation
+            )
+            val_gen = pytorch_DataGenerator(val_gen, batch_size=batch_size, shuffle=True)
+            test_gen = pytorch_ClassificationDataGenerator(
+                dataloader=test_Dataloader,
+                target_size=target_size,
+                num_classes=test_Dataloader.get_num_classes(),
+                batch_size=1,
+                preprocess=preprocess,
+                transform=None  # no augmentation
+            )
+            test_gen = pytorch_DataGenerator(test_gen, batch_size=batch_size, shuffle=True)
         else:
             raise TypeError("Unsupported model type. Expected Keras or PyTorch model.")
 

@@ -55,6 +55,14 @@ class BasedDatagenerator(ABC):
     def __getitem__(self, idx):
         raise NotImplementedError
 
+    @abstractmethod
+    def split(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def merge(self):
+        raise NotImplementedError
+    
     @property
     def transform(self):
         return self._transform

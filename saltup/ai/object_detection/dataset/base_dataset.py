@@ -41,6 +41,15 @@ class BaseDataloader(ABC):
     def __len__(self) -> int:
         """Returns total number of samples in dataset."""
         raise NotImplementedError
+    @abstractmethod
+    def split(self, ratio: float = 0.8) -> Tuple['BaseDataloader', 'BaseDataloader']:
+        """Returns two dataloaders for training and validation sets."""
+        raise NotImplementedError
+    
+    @abstractmethod
+    def merge(self, other: 'BaseDataloader') -> 'BaseDataloader':
+        """Merges another dataloader into this one."""
+        raise NotImplementedError
     
     def __getitem__(self, idx: Union[int, slice]) -> Union[
         Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
@@ -310,4 +319,3 @@ class Dataset(ABC):
     def is_annotation_valid(self, annotation: List[BBoxClassId]) -> bool:
         """Checks if the given annotation is valid."""
         raise NotImplementedError
-
