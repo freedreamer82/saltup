@@ -9,7 +9,7 @@ from glob import glob
 from tensorflow.keras.utils import to_categorical, Sequence
 
 from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
-from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
+from saltup.ai.object_detection.datagenerator.base_datagen import BaseDatagenerator
 from saltup.utils.data.image.image_utils import Image
 from saltup.utils.configure_logging import get_logger
 
@@ -32,8 +32,8 @@ class ClassificationDataloader(BaseDataloader):
         
         if isinstance(source, list):
             # If source is a list, assume it contains image paths and labels
-            self.image_paths = [item[0] for item in source]
-            self.labels = [item[1] for item in source]
+            self.image_paths = source[0]
+            self.labels = source[1]
             self.root_dir = None
         else:
             self.image_paths = []
@@ -60,10 +60,9 @@ class ClassificationDataloader(BaseDataloader):
                 class_dir = os.path.join(self.root_dir, class_name)
                 if not os.path.isdir(class_dir):
                     continue
-                for ext in self.extensions:
-                    files = glob(os.path.join(class_dir, f'*.{ext}'))
-                    self.image_paths.extend(files)
-                    self.labels.extend([self.class_to_idx[class_name]] * len(files))
+                files = glob(os.path.join(class_dir, f'*.{self.extensions}'))
+                self.image_paths.extend(files)
+                self.labels.extend([self.class_to_idx[class_name]] * len(files))
         
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
@@ -95,6 +94,12 @@ class ClassificationDataloader(BaseDataloader):
         list_output = []
         list_image_paths = self.get_image_paths()
         list_labels = self.get_labels()
+        # Shuffle image paths and labels together
+        combined = list(zip(list_image_paths, list_labels))
+        random.shuffle(combined)
+        list_image_paths, list_labels = zip(*combined)
+        list_image_paths = list(list_image_paths)
+        list_labels = list(list_labels)
         
         total_samples = len(list_image_paths)
         start = 0
@@ -169,7 +174,7 @@ class ClassificationDataloader(BaseDataloader):
         self._iter_idx += 1
         return item
 
-class keras_ClassificationDataGenerator(BasedDatagenerator, Sequence):
+class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
     def __init__(
         self,
         dataloader,
@@ -266,7 +271,7 @@ from torch.utils.data import Dataset
 import torch.nn.functional as F
 import torch
     
-class pytorch_ClassificationDataGenerator(BasedDatagenerator, Dataset):
+class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
     def __init__(
         self,
         dataloader,

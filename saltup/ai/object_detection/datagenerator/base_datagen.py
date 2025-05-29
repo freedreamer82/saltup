@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Tuple, List
 import albumentations as A
 import numpy as np
 
 from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
 
-class BasedDatagenerator(ABC):
+class BaseDatagenerator(ABC):
     def __init__(
         self, 
         dataloader: BaseDataloader,
@@ -56,11 +56,11 @@ class BasedDatagenerator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def split(self):
+    def split(self, ratio):
         raise NotImplementedError
     
     @abstractmethod
-    def merge(self):
+    def merge(dg1:'BaseDatagenerator', dg2:'BaseDatagenerator') -> 'BaseDatagenerator':
         raise NotImplementedError
     
     @property
@@ -75,3 +75,47 @@ class BasedDatagenerator(ABC):
     @property
     def do_augment(self):
         return self._do_augment
+    
+class kfoldGenerator():
+    def __init__(self, list_of_datagenerator: List[BaseDatagenerator], idx: int):
+        """
+        Initialize the k-fold generator.
+
+        Args:
+            list_of_datagenerator (List[BaseDatagenerator]): List of datagenerators for each fold.
+            idx (int): Index of the fold to use for validation.
+        """
+        self.folds = list_of_datagenerator
+        self.val_idx = idx
+        self.train_generator = self._merge_folds(exclude_idx=idx)
+        self.val_generator = self.folds[idx]
+
+    def _merge_folds(self, exclude_idx: int) -> BaseDatagenerator:
+        """
+        Merge all folds except the one at exclude_idx using the provided static `merge` method.
+
+        Args:
+            exclude_idx (int): The index of the fold to exclude from the training set.
+
+        Returns:
+            BaseDatagenerator: A merged generator for training.
+        """
+        # Filter out the fold to be used for validation
+        train_folds = [fold for i, fold in enumerate(self.folds) if i != exclude_idx]
+        
+        # Merge iteratively using the provided static method
+        merged_data = train_folds[0]
+        datagen_cls = merged_data.__class__
+        for fold in train_folds[1:]:
+            merged_data = datagen_cls.merge(merged_data, fold)
+
+        return merged_data
+
+    def get_fold_generators(self):
+        """
+        Return the training and validation generators for the current fold.
+
+        Returns:
+            Tuple[BaseDatagenerator, BaseDatagenerator]: (train_generator, val_generator)
+        """
+        return self.train_generator, self.val_generator

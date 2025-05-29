@@ -42,12 +42,12 @@ class BaseDataloader(ABC):
         """Returns total number of samples in dataset."""
         raise NotImplementedError
     @abstractmethod
-    def split(self, ratio: float = 0.8) -> Tuple['BaseDataloader', 'BaseDataloader']:
+    def split(self, ratio) -> List['BaseDataloader']:
         """Returns two dataloaders for training and validation sets."""
         raise NotImplementedError
     
     @abstractmethod
-    def merge(self, other: 'BaseDataloader') -> 'BaseDataloader':
+    def merge(dl1:'BaseDataloader', dg2:'BaseDataloader') -> 'BaseDataloader':
         """Merges another dataloader into this one."""
         raise NotImplementedError
     
