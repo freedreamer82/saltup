@@ -8,8 +8,8 @@ import random
 from glob import glob
 from tensorflow.keras.utils import to_categorical, Sequence
 
-from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
-from saltup.ai.object_detection.datagenerator.base_datagen import BaseDatagenerator
+from saltup.ai.base_dataformat.base_dataset import BaseDataloader
+from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
 from saltup.utils.data.image.image_utils import Image
 from saltup.utils.configure_logging import get_logger
 
@@ -71,6 +71,19 @@ class ClassificationDataloader(BaseDataloader):
         img = image.get_data()
         
         return img, label
+    def get_num_samples_per_class(self):
+        """
+        Get the number of samples per class in the dataset.
+
+        Returns:
+            dict: Dictionary mapping class names to number of samples
+        """
+        num_samples = {class_name: 0 for class_name in self.class_to_idx.keys()}
+        for label in self.labels:
+            class_name = self.idx_to_class[label]
+            num_samples[class_name] += 1
+        return num_samples
+    
     def get_image_paths(self):
         return self.image_paths
     

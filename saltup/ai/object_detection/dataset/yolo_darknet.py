@@ -11,7 +11,7 @@ from typing import Iterable, Union, List, Dict, Optional, Tuple, Set
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode, Dataset
+from saltup.ai.base_dataformat.base_dataset import BaseDataloader, ColorMode, Dataset
 from saltup.utils import configure_logging
 
 
@@ -126,7 +126,19 @@ class YoloDarknetLoader(BaseDataloader):
     def __len__(self):
         """Return total number of samples in dataset."""
         return len(self.image_label_pairs)
-
+    
+    def split(self, ratio):
+        raise NotImplementedError("Not implemented yet")
+    
+    @staticmethod
+    def merge(YoloDarknetLoader1, YoloDarknetLoader2) -> 'YoloDarknetLoader':
+        """Merge two YoloDarknetLoader instances into one.
+        
+        Args:
+            YoloDarknetLoader1: First loader instance
+            YoloDarknetLoader2: Second loader instance
+        """
+        raise NotImplementedError("Merging not implemented yet")
     def _load_image_label_pairs(self) -> List[Tuple[str, str]]:
         """
         Load pairs from images and labels directories.

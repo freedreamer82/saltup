@@ -42,7 +42,7 @@ from typing import Dict, List, Tuple, Optional, Union
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode, StorageFormat
+from saltup.ai.base_dataformat.base_dataset import BaseDataloader, ColorMode, StorageFormat
 from saltup.utils import configure_logging
 
 
@@ -146,7 +146,21 @@ class PascalVOCLoader(BaseDataloader):
         annotations = read_annotation(annotation_path)
         
         return image, annotations
-
+    
+    def split(self, ratio):
+        """Split dataset into subsets based on given ratio."""
+        raise NotImplementedError("Split method not implemented for Pascal VOC format")
+    
+    @staticmethod
+    def merge(pascalVOC_ld1, pascalVOC_ld2) -> 'PascalVOCLoader':
+        """Merge two Pascal VOC loaders into one.
+        
+        Args:
+            pascalVOC_ld1: First Pascal VOC loader
+            pascalVOC_ld2: Second Pascal VOC loader
+            """
+        raise NotImplementedError("Merge method not implemented for Pascal VOC format")
+        
     def _load_image_annotation_pairs(self) -> List[Tuple[str, str]]:
         """
         Load pairs from images and annotations directories.

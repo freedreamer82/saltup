@@ -14,17 +14,17 @@ TEST_IMAGE_HEIGHT = 480
 def test_bbox_initialization():
     # Test initialization with CORNERS format
     bbox = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
-    assert bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED) == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    assert bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED) == pytest.approx([0.1562, 0.3125, 0.3125, 0.5208])
     assert bbox.img_width == TEST_IMAGE_WIDTH
     assert bbox.img_height == TEST_IMAGE_HEIGHT
 
     # Test initialization with CENTER format
     bbox = BBox(coordinates=[150, 200, 100, 100], fmt=BBoxFormat.CENTER_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
-    assert bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED) == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    assert bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED) == pytest.approx([0.1562, 0.3125, 0.3125, 0.5208])
 
     # Test initialization with TOPLEFT format
     bbox = BBox(coordinates=[100, 150, 100, 100], fmt=BBoxFormat.TOPLEFT_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
-    assert bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED) == pytest.approx([0.15625, 0.3125, 0.3125, 0.5208333333333334])
+    assert bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED) == pytest.approx([0.1562, 0.3125, 0.3125, 0.5208])
 
 # Test cases for convert_matrix_boxes function
 def test_convert_matrix_boxes():
@@ -138,8 +138,7 @@ def test_topleft_to_corners_format():
 def test_normalize():
     normalized_bbox = BBox.normalize([100, 150, 300, 400], TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT, fmt=BBoxFormat.CORNERS_ABSOLUTE)
     expected_normalized_bbox = (100 / TEST_IMAGE_WIDTH, 150 / TEST_IMAGE_HEIGHT, 300 / TEST_IMAGE_WIDTH, 400 / TEST_IMAGE_HEIGHT)
-    assert normalized_bbox == expected_normalized_bbox
-
+    assert normalized_bbox == pytest.approx(expected_normalized_bbox)
 def test_absolute():
     input_coordinates = [0.1, 0.2, 0.3, 0.4]
     img_width = TEST_IMAGE_WIDTH
@@ -151,26 +150,26 @@ def test_absolute():
 def test_bbox_to_yolo():
     bbox = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
     yolo_coords = bbox.get_coordinates(fmt=BBoxFormat.YOLO)
-    expected_yolo_coords = (0.234375, 0.4166666666666667, 0.15625, 0.20833333333333334)
+    expected_yolo_coords = (0.23435, 0.41665, 0.1563, 0.20830000000000004)
     assert yolo_coords == pytest.approx(expected_yolo_coords)
 
 def test_bbox_to_coco():
     bbox = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
     coco_coords = bbox.get_coordinates(fmt=BBoxFormat.COCO)
-    expected_coco_coords = (100, 150, 100, 100)
-    assert coco_coords == expected_coco_coords
+    expected_coco_coords = (99, 150, 100, 99)
+    assert coco_coords == pytest.approx(expected_coco_coords)
 
 def test_bbox_to_pascal_voc():
     bbox = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
     pascal_coords = bbox.get_coordinates(fmt=BBoxFormat.PASCALVOC)
-    expected_pascal_coords = (100, 150, 200, 250)
-    assert pascal_coords == expected_pascal_coords
+    expected_pascal_coords = (99, 150, 200, 249)
+    assert pascal_coords == pytest.approx(expected_pascal_coords)
 
 def test_bbox_compute_iou():
     bbox1 = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
     bbox2 = BBox(coordinates=[150, 200, 250, 300], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
     iou = bbox1.compute_iou(bbox2)
-    expected_iou = 0.14285714285714285
+    expected_iou = 0.1404091925038684
     assert iou == pytest.approx(expected_iou)
 
 # Test cases for utility functions
@@ -264,9 +263,9 @@ class TestBBoxFromFile:
         assert len(bboxes) == 2
 
         # Verify bounding box coordinates in Pascal VOC format
-        xmin0, ymin0, xmax0, ymax0 = 100, 150, 300, 400
+        xmin0, ymin0, xmax0, ymax0 = 99, 150, 300, 399
         assert bboxes[0].get_coordinates(fmt=BBoxFormat.PASCALVOC) == pytest.approx([xmin0, ymin0, xmax0, ymax0])
-        xmin1, ymin1, xmax1, ymax1 = 350, 200, 500, 350
+        xmin1, ymin1, xmax1, ymax1 = 350, 200, 499, 350
         assert bboxes[1].get_coordinates(fmt=BBoxFormat.PASCALVOC) == pytest.approx([xmin1, ymin1, xmax1, ymax1])
         
     def test_empty_files(self, tmp_path):

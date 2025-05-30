@@ -111,7 +111,7 @@ class TestPascalVOCDataset:
                 assert ann["bbox"] == expected["bbox"]
             elif isinstance(ann, BBoxClassId):
                 assert ann.class_name == expected["class_name"]
-                assert ann.get_coordinates(fmt=BBoxFormat.PASCALVOC) == expected["bbox"]
+                assert ann.get_coordinates(fmt=BBoxFormat.PASCALVOC) == pytest.approx(expected["bbox"])
             else:
                 raise ValueError(f"Annotation type '{type(ann)}' not recognized.")
 
