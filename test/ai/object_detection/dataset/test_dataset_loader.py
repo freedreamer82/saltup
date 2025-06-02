@@ -38,7 +38,18 @@ class MockDatasetLoader(BaseDataloader):
         item = self.data[self._current_index]
         self._current_index += 1
         return item
+    def split(self, ratio):
+        return super().split(ratio)
 
+    @staticmethod
+    def merge(dl1, dl2):
+        """Merge two dataset loaders."""
+        if not isinstance(dl1, MockDatasetLoader) or not isinstance(dl2, MockDatasetLoader):
+            raise TypeError("Both datasets must be instances of MockDatasetLoader.")
+        
+        merged_loader = MockDatasetLoader(num_samples=len(dl1) + len(dl2))
+        merged_loader.data = dl1.data + dl2.data
+        return merged_loader
     def __len__(self):
         return self.num_samples
 
