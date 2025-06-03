@@ -1,10 +1,16 @@
+# Python artifacts
 __pycache__
 build
 saltup.egg-info
 
-*.vscode
+# Editor settings
+.vscode
 *.code-workspace
-custom_yolo_fpn*
-test/tests_data/models/model_1.onnx
+
+# Custom files
 .tmp
 .aider*
+
+# Test and sample models
+test/ai/nn_manager/sample_models/*
+test/tests_data/models/*
