@@ -32,7 +32,7 @@ import random
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader, ColorMode
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
 from saltup.utils.configure_logging import logging
 
 

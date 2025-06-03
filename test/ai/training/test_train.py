@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from unittest.mock import MagicMock
 from saltup.ai.classification.evaluate import evaluate_model
 from saltup.ai.training.train import _train_model
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
 from saltup.ai.classification.datagenerator import ClassificationDataloader, keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator
 from PIL import Image

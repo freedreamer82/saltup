@@ -11,7 +11,8 @@ from typing import Iterable, Union, List, Dict, Optional, Tuple, Set
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader, ColorMode, Dataset
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
+from saltup.ai.base_dataformat.base_dataset import Dataset
 from saltup.utils import configure_logging
 
 
@@ -165,6 +166,7 @@ class YoloDarknetLoader(BaseDataloader):
             self.__logger.warning(f"Skipped {skipped_images} images due to missing labels")
             
         return image_label_pairs
+
 
 class YoloDataset(Dataset):
     def __init__(self, images_dir: str, labels_dir: str, refresh_each: int = -1):

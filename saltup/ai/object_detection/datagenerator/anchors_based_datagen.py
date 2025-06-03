@@ -2,8 +2,8 @@ from typing import Tuple
 import albumentations as A
 import numpy as np
 
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader
-from saltup.ai.base_dataformat.base_datagen import BasedDatagenerator
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
+from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
@@ -11,7 +11,7 @@ from saltup.ai.object_detection.utils.anchor_based_model import convert_to_grid_
 from saltup.utils.configure_logging import get_logger
 
 
-class AnchorsBasedDatagen(BasedDatagenerator):
+class AnchorsBasedDatagen(BaseDatagenerator):
     """
     Datagenerator for anchor-based object detection models.
 

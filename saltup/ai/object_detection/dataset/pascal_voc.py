@@ -42,7 +42,7 @@ from typing import Dict, List, Tuple, Optional, Union
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader, ColorMode, StorageFormat
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
 from saltup.utils import configure_logging
 
 

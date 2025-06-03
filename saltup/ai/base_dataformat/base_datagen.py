@@ -3,7 +3,7 @@ from typing import Tuple, List
 import albumentations as A
 import numpy as np
 
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 
 class BaseDatagenerator(ABC):
     def __init__(

@@ -6,7 +6,7 @@ from typing import List, Tuple, Union
 import cv2
 import numpy as np
 
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
 from saltup.utils.data.image.image_utils import Image
 

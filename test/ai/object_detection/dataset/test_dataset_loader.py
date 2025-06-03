@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 
 from saltup.utils.data.image.image_utils import Image, ColorMode
-from saltup.ai.base_dataformat.base_dataset import BaseDataloader, StorageFormat
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, StorageFormat
 
 
 class MockDatasetLoader(BaseDataloader):
