@@ -63,7 +63,6 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         model_output_name (str, optional): name of the model. Defaults to None.
         app_callbacks (list, optional): list of callbacks for training. Defaults to [].
     """
-    pytorch_callbacks = [cb for cb in app_callbacks if isinstance(cb, BaseCallback)]
     if model_output_name is None:
         model_output_name = 'model'
     if isinstance(model, tf.keras.Model):
@@ -243,7 +242,7 @@ def training(train_DataGenerator:BaseDatagenerator,
              epochs:int,
              batch_size:int,           
              output_dir:str,
-             validation_split:list[float]=[0.2, 0.8],
+             validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
              kfold_param:dict = {'enable':True, 'split':[0.2, 0.8]},
              scheduler:callable=None,
              model_output_name:str=None,
@@ -251,19 +250,28 @@ def training(train_DataGenerator:BaseDatagenerator,
              test_Datagenerator:BaseDatagenerator=None,
              quantization_param:dict={'enable':False, 'quantize_input':True, 'quantize_output':True},
              **kwargs) -> str:
-    """Classification training function.
-    
+    """
+    Classification training function.
+
     Args:
-        Dataloader (ClassificationDataloader): Dataloader object.
-        model_fn(calable): model name to be trained.
-        folds (int): number of folds for cross-validation.
-        epochs (int): number of epochs for training.
-        training_callback (_type_, optional): callback function for training. Defaults to train_model.
-        output_dir (str, optional): _description_. Defaults to None.
-        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module], optional): loss function for training
-        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer], optional): optimizer for training
-        batch_size (int, optional): batch size for training. Defaults to None.
-        scheduler (callable, optional): scheduler for the optimizer. Defaults to None..
+        train_DataGenerator (BaseDatagenerator): Training data generator.
+        model_fn (callable): Function that returns a new model instance.
+        loss_function (callable): Function that returns a loss function instance.
+        optimizer (callable): Function that returns an optimizer instance.
+        epochs (int): Number of epochs for training.
+        batch_size (int): Batch size for training.
+        output_dir (str): Directory to save outputs and models.
+        validation (Union[list[float], BaseDatagenerator], optional): Validation split or generator. Defaults to [0.2, 0.8].
+        kfold_param (dict, optional): K-fold parameters. Defaults to {'enable':True, 'split':[0.2, 0.8]}.
+        scheduler (callable, optional): Scheduler for the optimizer. Defaults to None.
+        model_output_name (str, optional): Name for the output model. Defaults to None.
+        training_callback (list, optional): List of callbacks for training. Defaults to [].
+        test_Datagenerator (BaseDatagenerator, optional): Test data generator. Defaults to None.
+        quantization_param (dict, optional): Quantization parameters. Defaults to {'enable':False, 'quantize_input':True, 'quantize_output':True}.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        str: Path to the trained model.
     """
     #images_paths = train_Dataloader.image_paths
     #labels = train_Dataloader.labels
@@ -398,14 +406,19 @@ def training(train_DataGenerator:BaseDatagenerator,
                     f.write("\nThe variance of the accuracies for all folds:{}".format(np.std(acc_per_fold)))
     else:
         
-        val_datagenerator, train_datagenerator  = train_DataGenerator.split(validation_split)
+        if isinstance(validation, list):
+            val_datagenerator, train_datagenerator  = train_DataGenerator.split(validation)
+        else:
+            val_datagenerator = validation
+            train_datagenerator = train_DataGenerator
         
-        print("Number of training samples:", train_datagenerator.dataloader.get_num_samples_per_class())
-        print("Number of validation samples:", val_datagenerator.dataloader.get_num_samples_per_class())
+        # print("Number of training samples:", train_datagenerator.dataloader.get_num_samples_per_class())
+        # print("Number of validation samples:", val_datagenerator.dataloader.get_num_samples_per_class())
         
         training_model = model_fn()
         optimizer = optimizer()
-        loss_function = loss_function()
+        # TODO
+        # loss_function = loss_function()
         if isinstance(training_model, torch.nn.Module):
             print("PyTorch model detected.")
             if loss_function is None or optimizer is None:
