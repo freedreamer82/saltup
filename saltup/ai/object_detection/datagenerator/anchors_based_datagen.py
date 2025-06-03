@@ -361,6 +361,12 @@ class AnchorsBasedDatagen(BaseDatagenerator):
             self._logger.error(f"Error visualizing sample: {e}")
             raise
 
+    def split(self, ratio):
+        raise NotImplementedError
+
+    def merge(dg1, dg2):
+        raise NotImplementedError
+
 
 from tensorflow.keras.utils import Sequence #type: ignore
 

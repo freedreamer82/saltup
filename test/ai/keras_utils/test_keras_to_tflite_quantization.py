@@ -24,7 +24,7 @@ def test_tflite_quantization(tmp_path):
 
     # Call the tflite_quantization function
     quantized_model_path = tflite_quantization(
-        golden_model_path=golden_model_path,
+        model_path=golden_model_path,
         output_tflite_path=output_tflite_path,
         x_train=x_train,
         quantizing_input=True,

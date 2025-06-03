@@ -82,6 +82,13 @@ class MockDatasetLoader(BaseDataloader):
     def __len__(self):
         return self.num_samples
 
+    def split(self, ratio):
+        raise NotImplementedError
+
+    def merge(dl1, dg2):
+        raise NotImplementedError
+
+
 # Simple PyTorch model for testing
 class SimplePyTorchModel(nn.Module):
     def __init__(self, num_classes: int, num_anchors: int):
