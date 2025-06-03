@@ -7,10 +7,11 @@ import torch.nn.functional as F
 import tensorflow as tf
 from torch.utils.data import DataLoader
 from unittest.mock import MagicMock
-from saltup.ai.classification.training.training import evaluate_model, _train_model
-from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader
-from saltup.ai.object_detection.datagenerator.base_datagen import BasedDatagenerator
-from saltup.ai.classification.datagenerator.classification_datagen import ClassificationDataloader, keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator
+from saltup.ai.classification.evaluate import evaluate_model
+from saltup.ai.training.train import _train_model
+from saltup.ai.base_dataformat.base_dataset import BaseDataloader
+from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
+from saltup.ai.classification.datagenerator import ClassificationDataloader, keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator
 from PIL import Image
 
 @pytest.fixture
@@ -77,7 +78,7 @@ def mock_tflite_model(tmp_path):
 def mock_test_gen(mock_test_data_dir):
     # Create a mock ClassificationDataloader and DataGenerator
     class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(root_dir=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
+    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
 
     keras_gen = keras_ClassificationDataGenerator(
         dataloader=dataloader,
@@ -96,7 +97,7 @@ def test_evaluate_model_keras(mock_keras_model, mock_test_gen):
 def mock_test_pytorch_gen(mock_test_data_dir):
     # Create a mock ClassificationDataloader and DataGenerator
     class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(root_dir=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
+    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
 
     pytorch_gen = pytorch_ClassificationDataGenerator(
         dataloader=dataloader,
@@ -148,7 +149,7 @@ def test_evaluate_model_missing_loss_function(mock_pytorch_model, mock_test_gen)
 def test_train_model_pytorch(mock_test_data_dir, tmp_path):
     # Setup mock data generator
     class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(root_dir=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
+    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
     train_gen = pytorch_ClassificationDataGenerator(
         dataloader=dataloader,
         target_size=(32, 32),
@@ -210,7 +211,7 @@ def test_train_model_pytorch(mock_test_data_dir, tmp_path):
 def test_train_model_keras(mock_test_data_dir, tmp_path):
     # Setup mock data generator
     class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(root_dir=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
+    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
     train_gen = keras_ClassificationDataGenerator(
         dataloader=dataloader,
         target_size=(32, 32),

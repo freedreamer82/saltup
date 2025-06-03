@@ -32,7 +32,7 @@ import random
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
-from saltup.ai.object_detection.dataset.base_dataset import BaseDataloader, ColorMode
+from saltup.ai.base_dataformat.base_dataset import BaseDataloader, ColorMode
 from saltup.utils.configure_logging import logging
 
 
@@ -161,7 +161,13 @@ class COCOLoader(BaseDataloader):
         except Exception as e:
             self.logger.error(f"Error loading annotations from {self.annotations_file}: {str(e)}")
             raise
-
+    def split(self, ratio):
+        raise NotImplementedError("Splitting COCO datasets is not implemented yet")
+    
+    @staticmethod
+    def merge(coco_dl1, coco_dl2) -> 'COCOLoader': 
+        """Merge multiple COCO datasets into one."""
+        raise NotImplementedError("Merging COCO datasets is not implemented yet")
     def _create_image_annotation_pairs(self) -> List[Tuple[str, List[Dict]]]:
         """
         Create pairs of image paths and their corresponding annotations.
