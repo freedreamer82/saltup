@@ -1,7 +1,7 @@
 import pytest
 from unittest import mock
-from saltup.ai.training.training_callbacks import *
-from saltup.ai.training.train import _KerasCallbackAdapter
+from saltup.ai.training.callbacks import *
+from saltup.ai.training.callbacks import _KerasCallbackAdapter
 
 
 def test_base_callback_filter_logs_all_keys():

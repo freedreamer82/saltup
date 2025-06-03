@@ -1,35 +1,42 @@
-from saltup.ai.classification.datagenerator import keras_ClassificationDataGenerator, ClassificationDataloader, pytorch_ClassificationDataGenerator
-from saltup.utils.data.image.image_utils import Image, ColorMode
-from saltup.ai.keras_utils.keras_to_tflite_quantization import *
-from saltup.ai.keras_utils.keras_to_onnx import *
-from saltup.ai.training.training_callbacks import *
-from saltup.ai.classification.evaluate import evaluate_model
-from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
-from typing import Iterator, Tuple, Any, List, Tuple, Union
 import os
 import shutil
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import seaborn as sns
-import numpy as np
-from tqdm import tqdm
-from glob import glob
-from sklearn.model_selection import KFold
-import matplotlib.pyplot as plt
-import albumentations as A
-from saltup.ai.object_detection.utils.metrics import Metric
 import copy
 import gc
+
+from typing import Iterator, Tuple, Any, List, Union
+
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from glob import glob
+from tqdm import tqdm
+
+from sklearn.model_selection import KFold
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+
+import albumentations as A
+
 import torch
 from torch.utils.data import DataLoader as pytorch_DataGenerator
+
 import tensorflow as tf
 
-class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
-    def __init__(self, custom_callback: BaseCallback):
-        super().__init__()
-        self.cb = custom_callback
+from saltup.ai.classification.datagenerator import (
+    keras_ClassificationDataGenerator,
+    ClassificationDataloader,
+    pytorch_ClassificationDataGenerator
+)
 
-    def on_epoch_end(self, epoch, metrics=None):
-        self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
+from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
+from saltup.ai.classification.evaluate import evaluate_model
+from saltup.ai.keras_utils.keras_to_tflite_quantization import *
+from saltup.ai.keras_utils.keras_to_onnx import *
+from saltup.ai.training.callbacks import *
+from saltup.utils.data.image.image_utils import Image, ColorMode
+from saltup.ai.object_detection.utils.metrics import Metric
+from saltup.ai.training.callbacks import _KerasCallbackAdapter
+
 
 def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
                 train_gen:BaseDatagenerator,
