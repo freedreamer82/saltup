@@ -13,16 +13,16 @@ from saltup.utils.configure_logging import get_logger
 
 class AnchorsBasedDatagen(BasedDatagenerator):
     """
-    Dataloader for anchor-based object detection models.
-    
-    Handles loading and preprocessing of images and annotations, with support for:
-    - Batch generation
-    - Data augmentation
-    - Grid-based label generation for anchor boxes
-    - Visualization utilities
-    
-    The dataloader converts YOLO format annotations into grid cell format suitable
-    for training anchor-based detectors like YOLOv2/v3.
+    Datagenerator for anchor-based object detection models.
+
+    This class handles:
+    - Loading and preprocessing images and annotations
+    - Batch generation for training
+    - Data augmentation using albumentations
+    - Conversion of YOLO-format bounding boxes to grid/anchor format
+    - Visualization of samples, grid, and anchor assignments
+
+    Suitable for anchor-based detectors (e.g., YOLOv2/v3).
     """
     
     def __init__(
@@ -366,12 +366,12 @@ from tensorflow.keras.utils import Sequence #type: ignore
 
 class KerasAnchorBasedDatagen(AnchorsBasedDatagen, Sequence):
     """
-    Keras-specific wrapper for AnchorsBasedDataloader.
-    
-    Extends AnchorsBasedDataloader to make it compatible with Keras' Sequence interface,
+    Keras-specific wrapper for AnchorsBasedDatagen.
+
+    Extends AnchorsBasedDatagen to make it compatible with Keras' Sequence interface,
     allowing it to be used directly with model.fit() and model.predict().
-    
-    Inherits all functionality from AnchorsBasedDataloader while ensuring compliance
+
+    Inherits all functionality from AnchorsBasedDatagen while ensuring compliance
     with Keras' data loading requirements.
     """
     
@@ -422,13 +422,13 @@ import torch
 
 class PyTorchAnchorBasedDatagen(AnchorsBasedDatagen, Dataset):
     """
-    PyTorch-specific wrapper for AnchorsBasedDataloader.
-    
-    Extends AnchorsBasedDataloader to make it compatible with PyTorch's Dataset interface.
+    PyTorch-specific wrapper for AnchorsBasedDatagen.
+
+    Extends AnchorsBasedDatagen to make it compatible with PyTorch's Dataset interface.
     Key differences from base class:
     - Uses batch_size=1 since PyTorch handles batching separately
     - Returns torch.Tensor instead of numpy.ndarray
-    - Handles channel dimension ordering for PyTorch (B,C,H,W)
+    - Handles channel dimension ordering for PyTorch (C,H,W)
     - Provides custom collate function for batching
     """
     

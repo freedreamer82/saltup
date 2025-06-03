@@ -1,17 +1,14 @@
-import numpy as np
-import cv2
-
-from typing import Tuple, Union,List
-import numpy as np
 import os
 import random
 from glob import glob
-from tensorflow.keras.utils import to_categorical, Sequence
+from typing import List, Tuple, Union
+
+import cv2
+import numpy as np
 
 from saltup.ai.base_dataformat.base_dataset import BaseDataloader
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
 from saltup.utils.data.image.image_utils import Image
-from saltup.utils.configure_logging import get_logger
 
 
 class ClassificationDataloader(BaseDataloader):
@@ -71,6 +68,7 @@ class ClassificationDataloader(BaseDataloader):
         img = image.get_data()
         
         return img, label
+    
     def get_num_samples_per_class(self):
         """
         Get the number of samples per class in the dataset.
@@ -130,6 +128,7 @@ class ClassificationDataloader(BaseDataloader):
             list_output.append(current_dataloader)
             
         return list_output
+    
     @staticmethod
     def merge(dl1, dl2) -> 'ClassificationDataloader':
         """
@@ -186,6 +185,9 @@ class ClassificationDataloader(BaseDataloader):
         item = self.__getitem__(self._iter_idx)
         self._iter_idx += 1
         return item
+
+
+from tensorflow.keras.utils import Sequence, to_categorical #type: ignore
 
 class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
     def __init__(
@@ -245,7 +247,6 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
         )
         return current_datagen
     
-    
     def __getitem__(self, idx):
         # Get batch indexes
         batch_indexes = self._indexes[idx * self.batch_size: (idx + 1) * self.batch_size]
@@ -280,10 +281,11 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
         # Shuffle indexes at the end of each epoch
         self._rng.shuffle(self._indexes)
 
+
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 import torch
-    
+
 class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
     def __init__(
         self,
@@ -394,7 +396,8 @@ class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
     
     def on_epoch_end(self):
         # Shuffle indexes at the end of each epoch
-        self._rng.shuffle(self._indexes)        
+        self._rng.shuffle(self._indexes)
+    
     @staticmethod
     def collate_fn(batch):
         """

@@ -1,32 +1,28 @@
-from saltup.ai.classification.datagenerator import keras_ClassificationDataGenerator, ClassificationDataloader, pytorch_ClassificationDataGenerator
-from saltup.utils.data.image.image_utils import Image, ColorMode
-from saltup.ai.keras_utils.keras_to_tflite_quantization import *
-from saltup.ai.keras_utils.keras_to_onnx import *
-from saltup.ai.training.training_callbacks import *
-from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
-from typing import Iterator, Tuple, Any, List, Tuple, Union
 import os
-import shutil
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import seaborn as sns
-import numpy as np
-from tqdm import tqdm
-from glob import glob
-from sklearn.model_selection import KFold
-import matplotlib.pyplot as plt
-import albumentations as A
-from saltup.ai.object_detection.utils.metrics import Metric
-import copy
 import gc
-import torch
-from torch.utils.data import DataLoader as pytorch_DataGenerator
+from typing import Union
+
+import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
+import torch
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from tqdm import tqdm
+from torch.utils.data import DataLoader as pytorch_DataGenerator
+
+from saltup.ai.classification.datagenerator import (
+    keras_ClassificationDataGenerator,
+    pytorch_ClassificationDataGenerator,
+)
+from saltup.ai.object_detection.utils.metrics import Metric
 
 
-def evaluate_model(model_path:str, 
-                   test_gen:Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
-                   output_dir:str=None,
-                   loss_function:callable=None) -> float:
+def evaluate_model(
+    model_path: str,
+    test_gen: Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
+    output_dir: str = None,
+    loss_function: callable = None
+) -> float:
     """function to evaluate the model on the test set.
 
     Args:
