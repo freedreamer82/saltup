@@ -42,7 +42,7 @@ class BaseDatagenerator(ABC):
         self._transform = transform
         self._do_augment = True if transform else False
         
-        self.preprocess = preprocess
+        self._preprocess = preprocess
     
     @abstractmethod
     def __len__(self):
@@ -62,6 +62,10 @@ class BaseDatagenerator(ABC):
     @abstractmethod
     def merge(dg1:'BaseDatagenerator', dg2:'BaseDatagenerator') -> 'BaseDatagenerator':
         raise NotImplementedError
+    
+    @property
+    def preprocess(self):
+        return self._preprocess
     
     @property
     def transform(self):

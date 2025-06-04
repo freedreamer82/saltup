@@ -66,9 +66,9 @@ class AnchorsBasedDatagen(BaseDatagenerator):
         self._num_anchors = len(anchors)
         self.grid_size = grid_size
                 
-        self.preprocess = preprocess
-        if not self.preprocess:
-            self.preprocess = YoloAnchorsBased.preprocess
+        self._preprocess = preprocess
+        if not self._preprocess:
+            self._preprocess = YoloAnchorsBased.preprocess
             
         self._logger = get_logger(__name__)
         self._logger.info("Initializing AnchorsBasedDataloader")
@@ -132,7 +132,7 @@ class AnchorsBasedDatagen(BaseDatagenerator):
                     class_labels = np.empty(0, dtype=np.int32)
         
                 # Preprocess image
-                image = self.preprocess(image, self.target_height, self.target_width, apply_padding=False)
+                image = self._preprocess(image, self.target_height, self.target_width, apply_padding=False)
                 
                 # Apply augmentations
                 if len(boxes) > 0 and self.do_augment:
@@ -243,7 +243,7 @@ class AnchorsBasedDatagen(BaseDatagenerator):
                 img_height, img_width = image.shape[:2]
 
             # Preprocess image
-            processed_image = self.preprocess(
+            processed_image = self._preprocess(
                 image, self.target_height, self.target_width, apply_padding=False
             )
             

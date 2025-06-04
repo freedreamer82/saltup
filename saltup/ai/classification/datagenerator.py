@@ -228,7 +228,7 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
                 target_size=self.target_size,
                 num_classes=self.num_classes,
                 batch_size=self.batch_size,
-                preprocess=self.preprocess,
+                preprocess=self._preprocess,
                 transform=self.transform
             )
             list_output.append(current_datagen)
@@ -242,7 +242,7 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
             target_size=dg1.target_size,
             num_classes=dg1.num_classes,
             batch_size=dg1.batch_size,
-            preprocess=dg1.preprocess,
+            preprocess=dg1._preprocess,
             transform=dg1.transform
         )
         return current_datagen
@@ -258,8 +258,8 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
             img, label = self.dataloader[i]
             
             # Apply preprocessing
-            if self.preprocess:
-                img = self.preprocess(img, target_size=self.target_size)
+            if self._preprocess:
+                img = self._preprocess(img, target_size=self.target_size)
             
             # Apply augmentations
             if self.do_augment and self.transform:
@@ -301,7 +301,7 @@ class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
         self.target_size = target_size
         self.num_classes = num_classes
         self.batch_size = batch_size
-        self.preprocess = preprocess
+        self._preprocess = preprocess
         self.transform = transform
         #self.do_augment = True if transform else False
         
@@ -341,7 +341,7 @@ class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
                 target_size=self.target_size,
                 num_classes=self.num_classes,
                 batch_size=self.batch_size,
-                preprocess=self.preprocess,
+                preprocess=self._preprocess,
                 transform=self.transform
             )
             list_output.append(current_datagen)
@@ -355,7 +355,7 @@ class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
             target_size=dg1.target_size,
             num_classes=dg1.num_classes,
             batch_size=dg1.batch_size,
-            preprocess=dg1.preprocess,
+            preprocess=dg1._preprocess,
             transform=dg1.transform
         )
         return current_datagen
@@ -377,8 +377,8 @@ class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
         img, label = self.dataloader[actual_idx]
         
         # Apply preprocessing
-        if self.preprocess:
-            img = self.preprocess(img, target_size=self.target_size)
+        if self._preprocess:
+            img = self._preprocess(img, target_size=self.target_size)
         
         # Apply augmentations
         if self.transform:
