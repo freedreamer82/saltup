@@ -88,6 +88,7 @@ from copy import deepcopy
 from enum import auto, IntEnum
 from typing import List, Tuple, Dict, Optional, Union
 
+from saltup.saltup_env import SaltupEnv
 from saltup.utils.data.image.image_utils import ColorMode
 from saltup.utils.data.image.image_utils import Image
 
@@ -158,8 +159,8 @@ class BBoxFormat(IntEnum):
         else:
             raise ValueError(f"Unknown BBoxFormat: {self}")
         
-BBOX_INNER_FORMAT = BBoxFormat.CORNERS_NORMALIZED
-FLOAT_PRECISION = 4
+BBOX_INNER_FORMAT = BBoxFormat(SaltupEnv.SALTUP_BBOX_INNER_FORMAT)
+FLOAT_PRECISION = SaltupEnv.SALTUP_BBOX_FLOAT_PRECISION
 
 class IoUType(IntEnum):
     IOU = auto()

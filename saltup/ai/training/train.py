@@ -28,6 +28,7 @@ from saltup.ai.classification.datagenerator import (
     pytorch_ClassificationDataGenerator
 )
 
+from saltup.saltup_env import SaltupEnv
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
 from saltup.ai.classification.evaluate import evaluate_model
 from saltup.ai.keras_utils.keras_to_tflite_quantization import *
@@ -96,7 +97,8 @@ def _train_model(
             epochs=epochs,
             callbacks=keras_callbacks + [b_v, b_t],
             class_weight=class_weight,
-            shuffle=True
+            shuffle=SaltupEnv.SALTUP_KERAS_TRAIN_SHUFFLE,
+            verbose=SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE
         )
 
         # Plotting

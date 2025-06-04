@@ -3,11 +3,12 @@ import torch
 import os
 import onnxruntime as ort
 
-from saltup.utils.misc import suppress_stdout
-
 import tensorflow as tf
 from tf_keras.saving import load_model
 import time
+
+from saltup.utils.misc import suppress_stdout
+from saltup.saltup_env import SaltupEnv
 
 
 class NeuralNetworkManager:
@@ -73,7 +74,7 @@ class NeuralNetworkManager:
 
             
             elif model_path.endswith(".onnx"):
-                use_gpu = os.getenv("SALTUP_ENV_USE_GPU", "1") == "1"
+                use_gpu = SaltupEnv.SALTUP_NN_MNG_USE_GPU
                 providers = ort.get_available_providers()
                 
                 if use_gpu and "CUDAExecutionProvider" in providers:
