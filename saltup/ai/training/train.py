@@ -38,19 +38,21 @@ from saltup.ai.object_detection.utils.metrics import Metric
 from saltup.ai.training.callbacks import _KerasCallbackAdapter
 
 
-def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
-                train_gen:BaseDatagenerator,
-                val_gen:BaseDatagenerator,
-                output_dir:str,
-                epochs:int,
-                loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
-                optimizer:Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer],
-                scheduler:Union[torch.optim.lr_scheduler._LRScheduler, None],
-                model_output_name:str=None,
-                class_weight:dict=None,
-                app_callbacks=[]) -> str:
-
-    """Train the model.
+def _train_model(
+    model:Union[tf.keras.models.Sequential, torch.nn.Module],
+    train_gen:BaseDatagenerator,
+    val_gen:BaseDatagenerator,
+    output_dir:str,
+    epochs:int,
+    loss_function:Union[tf.keras.losses.Loss, torch.nn.Module],
+    optimizer:Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer],
+    scheduler:Union[torch.optim.lr_scheduler._LRScheduler, None],
+    model_output_name:str=None,
+    class_weight:dict=None,
+    app_callbacks=[]
+) -> str:
+    """
+    Train the model.
     Args:
         model (Union[tf.keras.models.Sequential, torch.nn.Module]): model to be trained.
         train_gen (Union[keras_ClassificationDataGenerator, DataLoader]): training data generator
@@ -235,27 +237,29 @@ def _train_model(model:Union[tf.keras.models.Sequential, torch.nn.Module],
         print(f"Saved scripted model at {b_model_path}")
         return b_model_path         
             
-def training(train_DataGenerator:BaseDatagenerator,
-             model_fn:callable,
-             loss_function:callable,
-             optimizer:callable,
-             epochs:int,
-             batch_size:int,           
-             output_dir:str,
-             validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
-             kfold_param:dict = {'enable':True, 'split':[0.2, 0.8]},
-             scheduler:callable=None,
-             model_output_name:str=None,
-             training_callback:list=[],
-             test_Datagenerator:BaseDatagenerator=None,
-             quantization_param:dict={'enable':False, 'quantize_input':True, 'quantize_output':True},
-             **kwargs) -> str:
+def training(
+    train_DataGenerator:BaseDatagenerator,
+    model:Union[tf.keras.Model, torch.nn.Module],
+    loss_function:callable,
+    optimizer:callable,
+    epochs:int,
+    batch_size:int,           
+    output_dir:str,
+    validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
+    kfold_param:dict = {'enable':True, 'split':[0.2, 0.8]},
+    scheduler:callable=None,
+    model_output_name:str=None,
+    training_callback:list=[],
+    test_Datagenerator:BaseDatagenerator=None,
+    quantization_param:dict={'enable':False, 'quantize_input':True, 'quantize_output':True},
+    **kwargs
+) -> str:
     """
     Classification training function.
 
     Args:
         train_DataGenerator (BaseDatagenerator): Training data generator.
-        model_fn (callable): Function that returns a new model instance.
+        model (Union[tf.keras.Model, torch.nn.Module]): Model instance (Keras or PyTorch).
         loss_function (callable): Function that returns a loss function instance.
         optimizer (callable): Function that returns an optimizer instance.
         epochs (int): Number of epochs for training.
@@ -273,19 +277,13 @@ def training(train_DataGenerator:BaseDatagenerator,
     Returns:
         str: Path to the trained model.
     """
-    #images_paths = train_Dataloader.image_paths
-    #labels = train_Dataloader.labels
-    parameters_name = "options.txt"
-    parameters_path = os.path.join(output_dir, parameters_name)
+    parameters_path = os.path.join(output_dir, "options.txt")
     with open(parameters_path, mode='w') as f:
         if kfold_param['enable']:
             f.write("The number of folds: {}".format(len(kfold_param['split'])))
-        f.write("\nThe model name: {}".format(model_fn.__name__))
         f.write("\nThe number of epochs: {}".format(epochs))
         f.write("\nThe batch size: {}".format(batch_size))
-    f.close()
     if kfold_param['enable']:
-        #kfold = KFold(n_splits=folds, shuffle=True)
         kfolds = train_DataGenerator.split(kfold_param['split'])
         acc_per_fold = []
         best_accuracy = -1
@@ -297,9 +295,9 @@ def training(train_DataGenerator:BaseDatagenerator,
             print("Number of training samples:", train_generator.dataloader.get_num_samples_per_class())
             print("Number of validation samples:", val_generator.dataloader.get_num_samples_per_class())
             
-            fold_model = model_fn()
-            fold_model_optimizer = optimizer()
-            fold_model_loss = loss_function()
+            fold_model = model
+            fold_model_optimizer = optimizer
+            fold_model_loss = loss_function
             if isinstance(fold_model, torch.nn.Module):
                 train_generator = pytorch_DataGenerator(train_generator, batch_size=train_generator.batch_size, shuffle=True)
                 val_generator = pytorch_DataGenerator(val_generator, batch_size=val_generator.batch_size, shuffle=True)
@@ -309,18 +307,19 @@ def training(train_DataGenerator:BaseDatagenerator,
             os.mkdir(fold_path)
             print("\n--- Model training ---")
             classification_class_weight = kwargs.get('classification_class_weight', None)
-            trained_model_path = _train_model(model=fold_model, 
-                                              train_gen=train_generator, 
-                                              val_gen=val_generator, 
-                                              output_dir=fold_path, 
-                                              epochs=epochs,
-                                              loss_function=fold_model_loss,
-                                              optimizer=fold_model_optimizer,
-                                              scheduler=scheduler, 
-                                              model_output_name=model_output_name,
-                                              class_weight=classification_class_weight,
-                                              app_callbacks=training_callback)
-            
+            trained_model_path = _train_model(
+                model=fold_model,
+                train_gen=train_generator,
+                val_gen=val_generator,
+                output_dir=fold_path,
+                epochs=epochs,
+                loss_function=fold_model_loss,
+                optimizer=fold_model_optimizer,
+                scheduler=scheduler,
+                model_output_name=model_output_name,
+                class_weight=classification_class_weight,
+                app_callbacks=training_callback
+            )
             print("\n--- Model fold evaluation ---")
             current_fold_folder = os.path.dirname(trained_model_path)
             current_accuracy = evaluate_model(trained_model_path, val_generator, current_fold_folder, loss_function)
@@ -347,28 +346,31 @@ def training(train_DataGenerator:BaseDatagenerator,
                 example_samples = np.array([train_generator[i][0] for i in range(50)])
                 example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
                 tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
-                tflite_model_path = tflite_quantization(golden_model_path, 
-                                                            tflite_golden_model_path,
-                                                            example_samples,
-                                                            False,
-                                                            False)
+                tflite_model_path = tflite_quantization(
+                    golden_model_path, 
+                    tflite_golden_model_path,
+                    example_samples,
+                    False,
+                    False
+                )
             
             if quantization_param['enable'] and fold == len(kfold_param['split'])-1:
                 if not golden_model_path.endswith('.keras'):
                     raise ValueError("The model is not a keras model.")
                 golden_fold_folder = os.path.dirname(golden_model_path)
-                #shutil.copytree(golden_fold_folder, golden_model_folder)
                 
                 print("calibration data shape",example_samples.shape)
                 model_name = os.path.basename(golden_model_path)
                 model_name = model_name.split('.')[0]
                 quantized_model_path = os.path.join(golden_model_folder, 'quantization', f'quantized_{model_name}.tflite')
                 
-                tflite_model_path = tflite_quantization(golden_model_path, 
-                                                        quantized_model_path,
-                                                        example_samples,
-                                                        quantization_param['quantize_input'],
-                                                        quantization_param['quantize_output'])
+                tflite_model_path = tflite_quantization(
+                    golden_model_path, 
+                    quantized_model_path,
+                    example_samples,
+                    quantization_param['quantize_input'],
+                    quantization_param['quantize_output']
+                )
                 
                 if test_Datagenerator is not None:  
                     accuracy_of_the_keras_golden_model = evaluate_model(golden_model_path,test_Datagenerator,golden_model_folder)
@@ -412,13 +414,7 @@ def training(train_DataGenerator:BaseDatagenerator,
             val_datagenerator = validation
             train_datagenerator = train_DataGenerator
         
-        # print("Number of training samples:", train_datagenerator.dataloader.get_num_samples_per_class())
-        # print("Number of validation samples:", val_datagenerator.dataloader.get_num_samples_per_class())
-        
-        training_model = model_fn()
-        optimizer = optimizer()
-        # TODO
-        # loss_function = loss_function()
+        training_model = model
         if isinstance(training_model, torch.nn.Module):
             print("PyTorch model detected.")
             if loss_function is None or optimizer is None:
@@ -430,17 +426,19 @@ def training(train_DataGenerator:BaseDatagenerator,
 
         print("\n--- Model training ---")
         classification_class_weight = kwargs.get('classification_class_weight', None)
-        model_path = _train_model(model=training_model, 
-                                train_gen=train_datagenerator, 
-                                val_gen=val_datagenerator, 
-                                output_dir=output_dir, 
-                                loss_function=loss_function,
-                                epochs=epochs,
-                                optimizer=optimizer,
-                                scheduler=scheduler, 
-                                model_output_name=model_output_name,
-                                class_weight=classification_class_weight,
-                                app_callbacks=training_callback)
+        model_path = _train_model(
+            model=training_model, 
+            train_gen=train_datagenerator, 
+            val_gen=val_datagenerator, 
+            output_dir=output_dir, 
+            loss_function=loss_function,
+            epochs=epochs,
+            optimizer=optimizer,
+            scheduler=scheduler, 
+            model_output_name=model_output_name,
+            class_weight=classification_class_weight,
+            app_callbacks=training_callback
+        )
         if isinstance(training_model, tf.keras.Model):
             model_folder = os.path.dirname(model_path)
             model_name = os.path.basename(model_path).replace('.keras', '')
@@ -451,11 +449,13 @@ def training(train_DataGenerator:BaseDatagenerator,
             example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
                 
             tflite_model_path = os.path.join(model_folder, f'{model_name}.tflite')
-            tflite_model_path = tflite_quantization(model_path, 
-                                                    tflite_model_path,
-                                                    example_samples,
-                                                    False,
-                                                    False)
+            tflite_model_path = tflite_quantization(
+                model_path, 
+                tflite_model_path,
+                example_samples,
+                False,
+                False
+            )
         txt_performance_file_name = "performances.txt"
         
         if quantization_param['enable']:
