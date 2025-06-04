@@ -251,7 +251,7 @@ class AnchorsBasedDatagen(BaseDatagenerator):
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
             
             # Plot original image
-            ax1.imshow(image_data, cmap='gray' if len(image_data.shape) == 2 else None)
+            ax1.imshow(image_data, cmap='gray' if image_data.shape[-1] == 1 else None)
             ax1.set_title(f'Original Image ({img_width}x{img_height})')
             
             # Draw original boxes
@@ -284,7 +284,7 @@ class AnchorsBasedDatagen(BaseDatagenerator):
                     )
             
             # Plot preprocessed image
-            ax2.imshow(processed_image.squeeze(), cmap='gray' if len(processed_image.shape) == 3 else None)
+            ax2.imshow(processed_image.squeeze(), cmap='gray' if processed_image.shape[-1] == 1 else None)
             ax2.set_title(f'Preprocessed Image ({self.target_size[1]}x{self.target_size[0]})')
         
             # Show YOLO grid
