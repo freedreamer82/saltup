@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 import os
 import tensorflow as tf
-from saltup.ai.keras_utils.keras_to_onnx import (
+from saltup.ai.utils.keras.to_onnx import (
     convert_keras_to_onnx, verify_onnx_model
 )
 

@@ -31,8 +31,8 @@ from saltup.ai.classification.datagenerator import (
 from saltup.saltup_env import SaltupEnv
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
 from saltup.ai.classification.evaluate import evaluate_model
-from saltup.ai.keras_utils.keras_to_tflite_quantization import *
-from saltup.ai.keras_utils.keras_to_onnx import *
+from saltup.ai.utils.keras.to_tflite_quantization import *
+from saltup.ai.utils.keras.to_onnx import *
 from saltup.ai.training.callbacks import *
 from saltup.utils.data.image.image_utils import Image, ColorMode
 from saltup.ai.object_detection.utils.metrics import Metric

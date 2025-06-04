@@ -11,7 +11,7 @@ from onnx import helper, TensorProto
 from saltup.utils.misc import suppress_stdout
 
 from saltup.ai.nn_manager import NeuralNetworkManager
-from saltup.ai.keras_utils.keras_to_onnx import convert_keras_to_onnx
+from saltup.ai.utils.keras.to_onnx import convert_keras_to_onnx
 from onnx import helper, TensorProto
 from saltup.utils.misc import suppress_stdout
 
