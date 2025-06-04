@@ -72,9 +72,12 @@ def _train_model(
         if optimizer is None or loss_function is None:
             raise ValueError("For Keras models, both `optimizer` and `loss_function` must be provided.")
         
-        model.compile(optimizer=optimizer,
-                      loss=loss_function,
-                      metrics=['accuracy'])
+        model.compile(
+            optimizer=optimizer,
+            loss=loss_function,
+            # metrics=['accuracy'],
+            jit_compile=False
+        )
         
         keras_callbacks = [_KerasCallbackAdapter(cb) for cb in app_callbacks]
         
@@ -87,12 +90,14 @@ def _train_model(
 
         b_v = tf.keras.callbacks.ModelCheckpoint(filepath=b_v_model_path, save_best_only=True)
         b_t = tf.keras.callbacks.ModelCheckpoint(filepath=b_t_model_path, monitor='loss', save_best_only=True)
-        history = model.fit(train_gen,
-                            validation_data=val_gen,
-                            epochs=epochs,
-                            callbacks=[keras_callbacks, b_v, b_t],
-                            class_weight=class_weight,
-                            shuffle=True)
+        history = model.fit(
+            train_gen,
+            validation_data=val_gen,
+            epochs=epochs,
+            callbacks=keras_callbacks + [b_v, b_t],
+            class_weight=class_weight,
+            shuffle=True
+        )
 
         # Plotting
         def plot_history(data, filename, ylabel):

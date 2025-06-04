@@ -30,10 +30,27 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         super().__init__()
         self.cb = custom_callback
     
-    def on_train_end(self, metrics=None):
+    def _implements_train_batch_hooks(self):
+        return False
+
+    def _implements_test_batch_hooks(self):
+        return False
+
+    def _implements_predict_batch_hooks(self):
+        return False
+    
+    def on_train_begin(self, logs=None):
+        """Automatically retrieve the total number of epochs."""
+        metrics = logs or {}
+        metrics = metrics | self.params  # Merge logs with params
+        self.cb.on_train_begin(metrics=self.cb.filter_metrics(metrics))
+    
+    def on_train_end(self, logs=None):
+        metrics = logs or {}
         self.cb.on_train_end(metrics=self.cb.filter_metrics(metrics))
 
-    def on_epoch_end(self, epoch, metrics=None):
+    def on_epoch_end(self, epoch, logs=None):
+        metrics = logs or {}
         self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
     
 
@@ -64,20 +81,20 @@ class MQTTCallback(BaseCallback):
         self.client.connect(self.broker, self.port)
         self.client.loop_start()  # Start the background loop to handle the connection
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch, metrics=None):
         """
         Method called at the end of each epoch.
         """
-        logs = logs or {}
+        metrics = metrics or {}
         
         message = {
             "notebook": self.notebookid if self.notebookid is not None else "",
             "epoch": epoch + 1,
-            "metrics": {k: round(v, 4) for k, v in logs.items()},
+            "metrics": {k: round(v, 4) for k, v in metrics.items()},
         }
         self.client.publish(self.topic, str(message))
 
-    def on_train_end(self, logs=None):
+    def on_train_end(self, metrics=None):
         """
         Method called at the end of training.
         """
@@ -114,19 +131,20 @@ class FileLogger(BaseCallback):
                 f.write(f"# Last updated: {now}\n")
                 f.write("epoch,loss,accuracy,val_loss,val_accuracy\n")
 
-    def on_train_begin(self, logs=None):
+    def on_train_begin(self, metrics=None):
         """Automatically retrieve the total number of epochs."""
-        self.total_epochs = self.params.get("epochs", None)
+        metrics = metrics or {}
+        self.total_epochs = metrics.get("epochs", None)
         print(f"🔹 Training will have {self.total_epochs} total epochs.")
 
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
+    def on_epoch_end(self, epoch, metrics=None):
+        metrics = metrics or {}
 
         # Ensure values are not None
-        loss = logs.get('loss', 'N/A')
-        accuracy = logs.get('accuracy', 'N/A')
-        val_loss = logs.get('val_loss', 'N/A')
-        val_accuracy = logs.get('val_accuracy', 'N/A')
+        loss = metrics.get('loss', 'N/A')
+        accuracy = metrics.get('accuracy', 'N/A')
+        val_loss = metrics.get('val_loss', 'N/A')
+        val_accuracy = metrics.get('val_accuracy', 'N/A')
 
         # General logging with error handling
         try:
