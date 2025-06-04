@@ -87,7 +87,7 @@ class PascalVOCLoader(BaseDataloader):
         self._current_index = 0  # Reset position when creating new iterator
         return self
 
-    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+    def __next__(self) -> Tuple[Image, List[BBoxClassId]]:
         """Get next item from dataset."""
         if self._current_index >= len(self.image_annotation_pairs):
             self._current_index = 0  # Reset for next iteration
@@ -102,8 +102,8 @@ class PascalVOCLoader(BaseDataloader):
         return len(self.image_annotation_pairs)
     
     def __getitem__(self, idx: Union[int, slice]) -> Union[
-        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
-        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+        Tuple[Image, List[BBoxClassId]],
+        List[Tuple[Image, List[BBoxClassId]]]
     ]:
         """Get item(s) by index.
         
@@ -124,7 +124,7 @@ class PascalVOCLoader(BaseDataloader):
             # Handle single index
             return self._load_item(idx)
     
-    def _load_item(self, idx: int) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+    def _load_item(self, idx: int) -> Tuple[Image, List[BBoxClassId]]:
         """Load single item by index.
         
         Args:

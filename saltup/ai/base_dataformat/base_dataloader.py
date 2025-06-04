@@ -33,7 +33,7 @@ class BaseDataloader(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    def __next__(self) -> Tuple[Union[np.ndarray, Image], List[BBoxClassId]]:
+    def __next__(self) -> Tuple[Image, List[BBoxClassId]]:
         """Get next item from dataset."""
         raise NotImplementedError
 
@@ -53,8 +53,8 @@ class BaseDataloader(ABC):
         raise NotImplementedError
     
     def __getitem__(self, idx: Union[int, slice]) -> Union[
-        Tuple[Union[np.ndarray, Image], List[BBoxClassId]],
-        List[Tuple[Union[np.ndarray, Image], List[BBoxClassId]]]
+        Tuple[Image, List[BBoxClassId]],
+        List[Tuple[Image, List[BBoxClassId]]]
     ]:
         """Get item(s) by index.
         
