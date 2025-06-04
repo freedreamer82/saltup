@@ -76,7 +76,6 @@ def _train_model(
         model.compile(
             optimizer=optimizer,
             loss=loss_function,
-            # metrics=['accuracy'],
             jit_compile=False
         )
         
@@ -85,17 +84,15 @@ def _train_model(
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
         
-        b_v_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.keras')
-        b_t_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.keras')
-        b_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.keras')
+        best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.keras')
+        last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.keras')
 
-        b_v = tf.keras.callbacks.ModelCheckpoint(filepath=b_v_model_path, save_best_only=True)
-        b_t = tf.keras.callbacks.ModelCheckpoint(filepath=b_t_model_path, monitor='loss', save_best_only=True)
+        save_best_clbk = tf.keras.callbacks.ModelCheckpoint(filepath=best_model_path, save_best_only=True)
         history = model.fit(
             train_gen,
             validation_data=val_gen,
             epochs=epochs,
-            callbacks=keras_callbacks + [b_v, b_t],
+            callbacks=keras_callbacks + [save_best_clbk],
             class_weight=class_weight,
             shuffle=SaltupEnv.SALTUP_KERAS_TRAIN_SHUFFLE,
             verbose=SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE
@@ -110,12 +107,13 @@ def _train_model(
             plt.savefig(os.path.join(saved_models_folder_path, filename + '_plot.png'), bbox_inches='tight')
             plt.close(fig)
 
-        plot_history(history.history['loss'], 'history_loss', 'Loss')
-        plot_history(history.history['accuracy'], 'history_accuracy', 'Accuracy')
+        # TODO: Generalize to handle Calssification and Object Detection
+        # plot_history(history.history['loss'], 'history_loss', 'Loss')
+        # plot_history(history.history['accuracy'], 'history_accuracy', 'Accuracy')
 
-        model.save(b_model_path)
-        print('Saved trained model at {} '.format(b_v_model_path))
-        return b_v_model_path
+        model.save(last_epoch_model)
+        print('Saved trained model at {} '.format(best_model_path))
+        return best_model_path
 
     elif isinstance(model, torch.nn.Module):
         # === PyTorch model ===
@@ -123,9 +121,10 @@ def _train_model(
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
 
-        b_v_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
-        b_t_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
-        b_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
+        # TODO: Check saved models. Only best and last epoch models must be saved
+        best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
+        b_train_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
+        last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
 
         best_val_loss = float('inf')
         best_train_loss = float('inf')
@@ -196,6 +195,7 @@ def _train_model(
             history['accuracy'].append(train_acc)
             history['val_accuracy'].append(val_acc)
 
+            # TODO: Give possibility to use custom metrics
             print(f"Epoch {epoch+1}/{epochs} - "
                   f"Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
                   f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
@@ -210,13 +210,13 @@ def _train_model(
             # Save best models (JIT)
             if val_loss < best_val_loss:
                 scripted = torch.jit.script(model.cpu())
-                scripted.save(b_v_model_path)
+                scripted.save(best_model_path)
                 model.to(device)
                 best_val_loss = val_loss
 
             if train_loss < best_train_loss:
                 scripted = torch.jit.script(model.cpu())
-                scripted.save(b_t_model_path)
+                scripted.save(b_train_model_path)
                 model.to(device)
                 best_train_loss = train_loss
 
@@ -225,7 +225,7 @@ def _train_model(
 
         # Save last epoch model
         scripted = torch.jit.script(model.cpu())
-        scripted.save(b_model_path)
+        scripted.save(last_epoch_model)
         model.to(device)
 
         def save_plot(data_key, filename, ylabel):
@@ -241,8 +241,8 @@ def _train_model(
         save_plot('loss', 'history_loss', 'Loss')
         save_plot('accuracy', 'history_accuracy', 'Accuracy')
 
-        print(f"Saved scripted model at {b_model_path}")
-        return b_model_path         
+        print(f"Saved scripted model at {last_epoch_model}")
+        return last_epoch_model         
             
 def training(
     train_DataGenerator:BaseDatagenerator,
@@ -258,7 +258,7 @@ def training(
     model_output_name:str=None,
     training_callback:list=[],
     test_Datagenerator:BaseDatagenerator=None,
-    quantization_param:dict={'enable':False, 'quantize_input':True, 'quantize_output':True},
+    quantization_param:dict={'enable':False, 'quantize_input':True, 'quantize_output':False},
     **kwargs
 ) -> str:
     """
@@ -336,7 +336,6 @@ def training(
             txt_performance_file_path = os.path.join(current_fold_folder, txt_performance_file_name)
             with open(txt_performance_file_path, mode='w') as f:
                 f.write("The accuracy of the test of the fold " + str(fold) + ": "+str(current_accuracy))
-            f.close()
             if  current_accuracy > best_accuracy:
                 best_accuracy = current_accuracy
                 fold_number = fold
@@ -391,7 +390,6 @@ def training(
                     f.write("\nThe accuracy of the golden model: "+ str(best_accuracy))
                     if test_Datagenerator is not None:
                         f.write("\nThe accuracy of the quantized tflite golden model on test:{}".format(accuracy_of_the_tflite_golden_model))
-                f.close()
             
             elif fold == len(kfold_param['split'])-1 and test_Datagenerator is not None:
                 print('\n\nEvaluation on Test set:',best_accuracy,'\n\n')
@@ -476,11 +474,13 @@ def training(
             model_name = os.path.basename(model_path)
             model_name = model_name.split('.')[0]
             tflite_model_path = os.path.join(model_folder, 'quantization', f'quantized_{model_name}.tflite')
-            tflite_model_path = tflite_quantization(model_path, 
-                                                    tflite_model_path,
-                                                    example_samples,
-                                                    quantization_param['quantize_input'],
-                                                    quantization_param['quantize_output'])
+            tflite_model_path = tflite_quantization(
+                model_path, 
+                tflite_model_path,
+                example_samples,
+                quantization_param['quantize_input'],
+                quantization_param['quantize_output']
+            )
             if test_Datagenerator is not None:
                 accuracy_of_the_keras_model = evaluate_model(model_path,test_Datagenerator, model_folder)
             
@@ -490,9 +490,9 @@ def training(
             performance_file_path = os.path.join(model_folder, txt_performance_file_name)
             with open(performance_file_path, mode='w') as f:
                 f.write("The model's path:{}".format(model_path))
-                f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_keras_model))
+                # TODO: Generalize to handle Calssification and Object Detection
+                # f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_keras_model))
                 f.write("\nThe accuracy of the quantized tflite model on test:{}".format(accuracy_of_the_tflite_model))
-            f.close()
         else:
             if test_Datagenerator is not None:
                 model_folder = os.path.dirname(model_path)
@@ -502,4 +502,3 @@ def training(
                 with open(performance_file_path, mode='w') as f:
                     f.write("The model's path:{}".format(model_path))
                     f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_model))
-                f.close()

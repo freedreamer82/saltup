@@ -20,7 +20,7 @@ def tflite_quantization(model_path, output_tflite_path, x_train, quantizing_inpu
         _type_: the path to the tflite model
     """
     print("\n--- Tflite quantization ---")
-    model = keras.models.load_model(model_path)
+    model = keras.models.load_model(model_path, compile=False)
     x_train = x_train.astype("float32")
 
     # Defining the calibration data
