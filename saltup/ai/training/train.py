@@ -488,11 +488,11 @@ def training(
                 accuracy_of_the_tflite_model = evaluate_model(tflite_model_path,test_Datagenerator, tflite_model_folder)
             
             performance_file_path = os.path.join(model_folder, txt_performance_file_name)
-            with open(performance_file_path, mode='w') as f:
-                f.write("The model's path:{}".format(model_path))
-                # TODO: Generalize to handle Calssification and Object Detection
+            # TODO: Generalize to handle Calssification and Object Detection
+            # with open(performance_file_path, mode='w') as f:
+            #     f.write("The model's path:{}".format(model_path))
                 # f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_keras_model))
-                f.write("\nThe accuracy of the quantized tflite model on test:{}".format(accuracy_of_the_tflite_model))
+                # f.write("\nThe accuracy of the quantized tflite model on test:{}".format(accuracy_of_the_tflite_model))
         else:
             if test_Datagenerator is not None:
                 model_folder = os.path.dirname(model_path)
