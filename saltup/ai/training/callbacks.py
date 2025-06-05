@@ -1,8 +1,36 @@
 import os
 import datetime
+from dataclasses import dataclass, asdict
+from typing import Union
 import paho.mqtt.client as mqtt
 
 import tensorflow as tf
+import torch
+
+
+@dataclass
+class CallbackContext:
+    model: Union[tf.keras.Model, torch.nn.Module]
+    epochs: int = None
+    batch_size: int = None
+    loss: float = None
+    val_loss: float = None
+    accuracy: float = None
+    val_accuracy: float = None
+    misc: dict = None
+
+    def to_dict(self):
+        tmp = {
+            'model': type(self.model),
+            'epochs': self.epochs,
+            'batch_size': self.batch_size,
+            'loss': self.loss,
+            'val_loss': self.val_loss,
+            'accuracy': self.accuracy,
+            'val_accuracy': self.val_accuracy
+        }
+        return tmp | self.misc
+
 
 class BaseCallback():
     def __init__(self, metric_keys: list = None):
@@ -15,13 +43,13 @@ class BaseCallback():
             return metrics
         return {k: v for k, v in metrics.items() if k in self.metric_keys}
     
-    def on_train_begin(self, metrics=None):
+    def on_train_begin(self, context: CallbackContext):
         pass
 
-    def on_train_end(self, metrics=None):
+    def on_train_end(self, context: CallbackContext):
         pass
     
-    def on_epoch_end(self, epoch, metrics=None):
+    def on_epoch_end(self, epoch, context: CallbackContext):
         pass
 
 
@@ -41,17 +69,46 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
     
     def on_train_begin(self, logs=None):
         """Automatically retrieve the total number of epochs."""
-        metrics = logs or {}
-        metrics = metrics | self.params  # Merge logs with params
-        self.cb.on_train_begin(metrics=self.cb.filter_metrics(metrics))
+        logs = logs or {}
+        context = CallbackContext(
+            model=self.model,
+            epochs=self.params.get('epochs', None),
+            batch_size=self.params.get('batch_size', None),
+            loss=logs.get('loss', None),
+            val_loss=logs.get('val_loss', None),
+            accuracy=logs.get('accuracy', None),
+            val_accuracy=logs.get('val_accuracy', None),
+            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']}
+        )
+        self.cb.on_train_begin(context)
     
     def on_train_end(self, logs=None):
-        metrics = logs or {}
-        self.cb.on_train_end(metrics=self.cb.filter_metrics(metrics))
+        logs = logs or {}
+        context = CallbackContext(
+            model=self.model,
+            epochs=self.params.get('epochs', None),
+            batch_size=self.params.get('batch_size', None),
+            loss=logs.get('loss', None),
+            val_loss=logs.get('val_loss', None),
+            accuracy=logs.get('accuracy', None),
+            val_accuracy=logs.get('val_accuracy', None),
+            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']}
+        )
+        self.cb.on_train_end(context)
 
     def on_epoch_end(self, epoch, logs=None):
-        metrics = logs or {}
-        self.cb.on_epoch_end(epoch, metrics=self.cb.filter_metrics(metrics))
+        logs = logs or {}
+        context = CallbackContext(
+            model=self.model,
+            epochs=self.params.get('epochs', None),
+            batch_size=self.params.get('batch_size', None),
+            loss=logs.get('loss', None),
+            val_loss=logs.get('val_loss', None),
+            accuracy=logs.get('accuracy', None),
+            val_accuracy=logs.get('val_accuracy', None),
+            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']}
+        )
+        self.cb.on_epoch_end(epoch, context)
     
 
 class MQTTCallback(BaseCallback):
@@ -81,20 +138,18 @@ class MQTTCallback(BaseCallback):
         self.client.connect(self.broker, self.port)
         self.client.loop_start()  # Start the background loop to handle the connection
 
-    def on_epoch_end(self, epoch, metrics=None):
+    def on_epoch_end(self, epoch, context: CallbackContext):
         """
         Method called at the end of each epoch.
-        """
-        metrics = metrics or {}
-        
+        """        
         message = {
             "notebook": self.notebookid if self.notebookid is not None else "",
             "epoch": epoch + 1,
-            "metrics": {k: round(v, 4) for k, v in metrics.items()},
+            "metrics": {k: round(v, 4) for k, v in context.to_dict().items() if isinstance(v, float)},
         }
         self.client.publish(self.topic, str(message))
 
-    def on_train_end(self, metrics=None):
+    def on_train_end(self, context: CallbackContext):
         """
         Method called at the end of training.
         """
@@ -131,20 +186,17 @@ class FileLogger(BaseCallback):
                 f.write(f"# Last updated: {now}\n")
                 f.write("epoch,loss,accuracy,val_loss,val_accuracy\n")
 
-    def on_train_begin(self, metrics=None):
+    def on_train_begin(self, context: CallbackContext):
         """Automatically retrieve the total number of epochs."""
-        metrics = metrics or {}
-        self.total_epochs = metrics.get("epochs", None)
+        self.total_epochs = context.epochs
         print(f"🔹 Training will have {self.total_epochs} total epochs.")
 
-    def on_epoch_end(self, epoch, metrics=None):
-        metrics = metrics or {}
-
+    def on_epoch_end(self, epoch, context: CallbackContext):
         # Ensure values are not None
-        loss = metrics.get('loss', 'N/A')
-        accuracy = metrics.get('accuracy', 'N/A')
-        val_loss = metrics.get('val_loss', 'N/A')
-        val_accuracy = metrics.get('val_accuracy', 'N/A')
+        loss = context.loss
+        accuracy = context.accuracy
+        val_loss = context.val_loss
+        val_accuracy = context.val_accuracy
 
         # General logging with error handling
         try:
