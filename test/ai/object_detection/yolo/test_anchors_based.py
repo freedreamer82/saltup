@@ -48,11 +48,11 @@ def yolo_anchors_based_with_temp_model():
         create_simple_yolo_onnx_model(temp_file_path)
 
         # Initialize YoloAnchorsBased with the temporary model
-        yolot = YoloType.ANCHORS_BASED  # Replace with the appropriate YoloType
+        
         yolo_nn_model = NeuralNetworkModel(temp_file_path)
         number_class = 4  # Replace with the actual number of classes
         anchors = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8], [0.9, 1.0]])  # Normalized anchors
-        yolo_instance = YoloAnchorsBased(yolot, yolo_nn_model, number_class, anchors)
+        yolo_instance = YoloAnchorsBased(yolo_nn_model, number_class, anchors)
 
         yield yolo_instance
 

@@ -48,9 +48,8 @@ def yolo_nas_with_temp_model():
         create_simple_yolo_onnx_model(temp_file_path)
 
         # Initialize YoloAnchorsBased with the temporary model
-        yolot = YoloType.DAMO  # Replace with the appropriate YoloType
         number_class = 4  # Replace with the actual number of classes
-        yolo_instance = YoloNas(yolot, NeuralNetworkModel(temp_file_path), number_class)
+        yolo_instance = YoloNas(NeuralNetworkModel(temp_file_path), number_class)
 
         yield yolo_instance
 

@@ -48,9 +48,8 @@ def yolo_ultralytics_with_temp_model():
         create_simple_yolo_onnx_model(temp_file_path)
 
         # Initialize YoloAnchorsBased with the temporary model
-        yolot = YoloType.ULTRALYTICS  # Replace with the appropriate YoloType
         number_class = 4  # Replace with the actual number of classes
-        yolo_instance = YoloUltralytics(yolot, NeuralNetworkModel(temp_file_path), number_class)
+        yolo_instance = YoloUltralytics(NeuralNetworkModel(temp_file_path), number_class)
 
         yield yolo_instance
 

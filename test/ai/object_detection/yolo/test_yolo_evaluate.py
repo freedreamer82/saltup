@@ -33,7 +33,7 @@ class TestEvaluate(unittest.TestCase):
                 return image
 
             def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
-                input_shape = self.model_input_shape[1:]  # Remove batch size
+                input_shape = self._model_input_shape[1:]  # Remove batch size
                 return (
                     input_shape,  # Shape: (480, 640, 1)
                     ColorMode.RGB,

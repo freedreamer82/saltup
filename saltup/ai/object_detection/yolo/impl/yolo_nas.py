@@ -26,7 +26,7 @@ class YoloNas(BaseYolo):
         super().__init__(YoloType.SUPERGRAD, model, number_class)  # Initialize the BaseYolo class
     
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
-        input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+        input_shape = self._model_input_shape[1:]  # Rimuove il batch size
         return (
             input_shape,  # Shape: (3, 480, 640)
             ColorMode.RGB,
@@ -126,8 +126,8 @@ class YoloNas(BaseYolo):
         boxes = []
         probs = []
         class_ids = []
-        x_factor = image_width / self.input_model_width
-        y_factor = image_height / self.input_model_height
+        x_factor = image_width / self._input_model_width
+        y_factor = image_height / self._input_model_height
         
         for i in range(rows):
             # Extract the class scores from the current row
