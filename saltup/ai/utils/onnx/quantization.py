@@ -11,6 +11,7 @@ from onnxruntime import InferenceSession
 
 from saltup.ai.utils.onnx.onnx import print_model_info
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
+from saltup.utils.data.image import Image
 
 
 def generate_quantization_config(sensitivity_results: dict) -> dict:
@@ -94,9 +95,11 @@ def analyze_layer_sensitivity(
     model_input = session.get_inputs()[0]
     input_name = model_input.name
     print(f"\nModel input name: {input_name}")
+    
     _, height, width, channels = model_input.shape
     print(f"Expected input shape: {model_input.shape} (N, {height}, {width}, {channels})")
     
+    calibration_imgs = np.zeros((num_samples, height, width, channels), dtype=np.float32)
     for cnt, (image, _) in enumerate(calibration_dataloader):
         if preprocess_fn:
             image = preprocess_fn(image, height, width)
@@ -104,76 +107,89 @@ def analyze_layer_sensitivity(
         if cnt >= num_samples:
             break
         
+        if isinstance(image, Image):
+            calibration_imgs[cnt] = image.get_data()
+        elif isinstance(image, np.ndarray):
+            calibration_imgs[cnt] = image
+        else:
+            raise ValueError(f"Unsupported image type: {type(image)}. Expected PIL Image or numpy array.")
+    
+    print(f"Shape calibration data: {calibration_imgs.shape}")
+    
+    # Check that the dimensions are valid
+    if 0 in calibration_imgs.shape:
+        raise ValueError(f"Invalid dimension found in calibration_data: {calibration_imgs.shape}")
+        
+    try:
+        input_data = {input_name: calibration_imgs}
+        print("\nTesting base inference...")
+        base_preds = session.run(None, input_data)[0]
+        print(f"Base predictions shape: {base_preds.shape}")
+    except Exception as e:
+        print(f"\nError during inference: {str(e)}")
+        print(f"Expected shape: {session.get_inputs()[0].shape}")
+        raise
+
+    results = {}
+
+    # Add problematic layer to exclusion list
+    if exclude_nodes is None:
+        exclude_nodes = []
+
+    total_nodes = len([node for node in model.graph.node])
+    print(f"\nAnalyzing {total_nodes} layers...")
+
+    for i, node in enumerate(model.graph.node, 1):
+        if node.name in exclude_nodes:
+            print(f"Skipping node: {node.name}")
+            continue
+
+        print(f"Analyzing layer {i}/{total_nodes}: {node.name} ({node.op_type})")
+        test_model = deepcopy(model)
+
+        # Simulate INT8 quantization for the layer's initializers
+        for init in test_model.graph.initializer:
+            if init.name in node.input:
+                # Load tensor data
+                data = np.frombuffer(init.raw_data, dtype=np.float32)
+
+                # Check that tensor is not empty
+                if data.size == 0:
+                    print(f"Warning: initializer {init.name} is empty, skipping quantization.")
+                    continue  # Ignore empty initializers
+
+                # Determine signed/unsigned INT8 range
+                qmin, qmax = -127, 127  # Signed INT8
+                scale = max(np.max(np.abs(data)) / qmax, 1e-8)  # Minimum tolerance to avoid division by zero
+
+                # Simulated quantization (quantize and then de-quantize)
+                quant_data = np.clip(np.round(data / scale), qmin, qmax) * scale
+
+                # Update tensor with quantized data
+                init.raw_data = quant_data.astype(np.float32).tobytes()
+
         try:
-            input_data = {input_name: image.get_data()}
-            print("\nTesting base inference...")
-            base_preds = session.run(None, input_data)[0]
-            print(f"Base predictions shape: {base_preds.shape}")
+            test_session = InferenceSession(test_model.SerializeToString())
+            test_preds = test_session.run(None, input_data)[0]
+
+            mse = np.mean((base_preds - test_preds) ** 2)
+            max_diff = np.max(np.abs(base_preds - test_preds))
+            cosine_sim = np.mean([
+                np.dot(p1.flatten(), p2.flatten()) /
+                (np.linalg.norm(p1.flatten()) * np.linalg.norm(p2.flatten()))
+                for p1, p2 in zip(base_preds, test_preds)
+            ])
+
+            # Convert numpy values to standard Python types
+            results[node.name] = {
+                'mse': float(mse),
+                'max_difference': float(max_diff),
+                'cosine_similarity': float(cosine_sim),
+                'op_type': str(node.op_type),
+                'safe_to_quantize': bool(mse < 1e-4 and max_diff < 0.01 and cosine_sim > 0.99)
+            }
         except Exception as e:
-            print(f"\nError during inference: {str(e)}")
-            print(f"Expected shape: {session.get_inputs()[0].shape}")
-            raise
-
-        results = {}
-
-        # Add problematic layer to exclusion list
-        if exclude_nodes is None:
-            exclude_nodes = []
-
-        total_nodes = len([node for node in model.graph.node])
-        print(f"\nAnalyzing {total_nodes} layers...")
-
-        for i, node in enumerate(model.graph.node, 1):
-            if node.name in exclude_nodes:
-                print(f"Skipping node: {node.name}")
-                continue
-
-            print(f"Analyzing layer {i}/{total_nodes}: {node.name} ({node.op_type})")
-            test_model = deepcopy(model)
-
-            # Simulate INT8 quantization for the layer's initializers
-            for init in test_model.graph.initializer:
-                if init.name in node.input:
-                    # Load tensor data
-                    data = np.frombuffer(init.raw_data, dtype=np.float32)
-
-                    # Check that tensor is not empty
-                    if data.size == 0:
-                        print(f"Warning: initializer {init.name} is empty, skipping quantization.")
-                        continue  # Ignore empty initializers
-
-                    # Determine signed/unsigned INT8 range
-                    qmin, qmax = -127, 127  # Signed INT8
-                    scale = max(np.max(np.abs(data)) / qmax, 1e-8)  # Minimum tolerance to avoid division by zero
-
-                    # Simulated quantization (quantize and then de-quantize)
-                    quant_data = np.clip(np.round(data / scale), qmin, qmax) * scale
-
-                    # Update tensor with quantized data
-                    init.raw_data = quant_data.astype(np.float32).tobytes()
-
-            try:
-                test_session = InferenceSession(test_model.SerializeToString())
-                test_preds = test_session.run(None, input_data)[0]
-
-                mse = np.mean((base_preds - test_preds) ** 2)
-                max_diff = np.max(np.abs(base_preds - test_preds))
-                cosine_sim = np.mean([
-                    np.dot(p1.flatten(), p2.flatten()) /
-                    (np.linalg.norm(p1.flatten()) * np.linalg.norm(p2.flatten()))
-                    for p1, p2 in zip(base_preds, test_preds)
-                ])
-
-                # Convert numpy values to standard Python types
-                results[node.name] = {
-                    'mse': float(mse),
-                    'max_difference': float(max_diff),
-                    'cosine_similarity': float(cosine_sim),
-                    'op_type': str(node.op_type),
-                    'safe_to_quantize': bool(mse < 1e-4 and max_diff < 0.01 and cosine_sim > 0.99)
-                }
-            except Exception as e:
-                print(f"Error analyzing node {node.name}: {str(e)}")
-                continue
+            print(f"Error analyzing node {node.name}: {str(e)}")
+            continue
 
     return results

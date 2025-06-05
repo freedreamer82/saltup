@@ -36,7 +36,7 @@ def convert_keras_to_onnx(keras_model_path, onnx_path,opset = 16):
     input_shape = model.input_shape[1:]  # Remove batch size
     
     # 3. Convert to ONNX
-    spec = (tf.TensorSpec(shape=(1,) + input_shape, dtype=tf.float32, name="input"),)
+    spec = (tf.TensorSpec(shape=(None,) + input_shape, dtype=tf.float32, name="input"),)
     
     # Model conversion
     model_proto, _ = tf2onnx.convert.from_keras(

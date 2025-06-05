@@ -23,7 +23,7 @@ from onnxruntime.quantization import (
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 
 
-class CalibrationDataReader(CalibrationDataReader):
+class OnnxCalibrationDataReader(CalibrationDataReader):
     def __init__(self, dataloader: BaseDataloader, model_path: str, preprocess_fn: callable = lambda x : x):
         self.enum_data = None
 
@@ -44,7 +44,7 @@ class CalibrationDataReader(CalibrationDataReader):
 
         
         # Process data
-        self.data_list = [preprocess_fn(image.get_data()) for image, label in dataloader]
+        self.data_list = [preprocess_fn(image.get_data(), height, width) for image, label in dataloader]
 
         self.input_name = session.get_inputs()[0].name
         self.datasize = len(self.data_list)
