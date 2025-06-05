@@ -10,7 +10,7 @@ import onnx
 from onnx import helper, TensorProto
 from saltup.utils.misc import suppress_stdout
 
-from saltup.ai.nn_manager import NeuralNetworkManager
+from saltup.ai.nn_model import NeuralNetworkModel
 from saltup.ai.utils.keras.to_onnx import convert_keras_to_onnx
 from onnx import helper, TensorProto
 from saltup.utils.misc import suppress_stdout
@@ -141,7 +141,7 @@ def sample_models(root_dir, request):
 # Fixture to create an instance of NeuralNetworkManager
 @pytest.fixture
 def nn_manager():
-    return NeuralNetworkManager()
+    return NeuralNetworkModel()
 
 # Test loading models of different formats
 @pytest.mark.parametrize("model_format", ["pt", "keras", "h5", "onnx", "tflite"])

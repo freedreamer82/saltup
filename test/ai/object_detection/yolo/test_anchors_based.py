@@ -9,6 +9,7 @@ from saltup.ai.object_detection.yolo.yolo import YoloType
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
+from saltup.ai.nn_model import NeuralNetworkModel
 
 # Function to create a simple ONNX model (mimicking YOLO output)
 def create_simple_yolo_onnx_model(output_path):
@@ -48,9 +49,10 @@ def yolo_anchors_based_with_temp_model():
 
         # Initialize YoloAnchorsBased with the temporary model
         yolot = YoloType.ANCHORS_BASED  # Replace with the appropriate YoloType
+        yolo_nn_model = NeuralNetworkModel(temp_file_path)
         number_class = 4  # Replace with the actual number of classes
         anchors = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8], [0.9, 1.0]])  # Normalized anchors
-        yolo_instance = YoloAnchorsBased(yolot, temp_file_path, number_class, anchors)
+        yolo_instance = YoloAnchorsBased(yolot, yolo_nn_model, number_class, anchors)
 
         yield yolo_instance
 

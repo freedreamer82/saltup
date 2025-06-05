@@ -11,6 +11,7 @@ import os
 from typing import Any, Dict, List, Tuple
 import torch
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from saltup.ai.nn_model import NeuralNetworkModel
 
 
 class TestEvaluate(unittest.TestCase):
@@ -43,8 +44,8 @@ class TestEvaluate(unittest.TestCase):
                     image_height: int, image_width: int, confidence_thr: float = 0.5, 
                             iou_threshold: float = 0.5) -> List[Tuple[BBox, int, float]]:
                 return []
-
-        self.yolo = MockYolo(yolot=None, model_path=self.onnx_model_path, number_class=1)
+        
+        self.yolo = MockYolo(yolot=None, model=NeuralNetworkModel(self.onnx_model_path), number_class=1)
 
     def create_simple_onnx_model(self, model_path: str):
         # Create a simple ONNX model with a single Identity node

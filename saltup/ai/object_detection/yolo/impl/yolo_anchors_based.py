@@ -10,6 +10,7 @@ from saltup.ai.object_detection.utils.anchor_based_model import (
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from saltup.utils.data.image.image_utils import  ColorMode ,ImageFormat
 from saltup.utils.data.image.image_utils import Image
+from saltup.ai.nn_model import NeuralNetworkModel
 
 
 class YoloAnchorsBased(BaseYolo):
@@ -21,7 +22,7 @@ class YoloAnchorsBased(BaseYolo):
     def __init__(
         self,
         yolot: YoloType,
-        model_path: str,
+        model: NeuralNetworkModel,
         number_class: int,
         anchors: np.ndarray,
         max_output_boxes: int = 10
@@ -34,15 +35,15 @@ class YoloAnchorsBased(BaseYolo):
         :param anchors: A numpy array of anchor boxes with shape (N, 2), where N is the number of anchors.
                        Each anchor is represented as (width, height).
         """
-        super().__init__(yolot, model_path, number_class)  # Initialize the BaseYolo class
+        super().__init__(yolot, model, number_class)  # Initialize the BaseYolo class
         self.anchors = anchors  # Store the anchor boxes
         self.num_anchors = anchors.shape[0]  # Number of anchor boxes
         self.max_output_boxes = max_output_boxes
 
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
-        input_shape = self.model_input_shape[1:]  # Rimuove il batch size
+        input_shape = self.model_input_shape[1:]
         return (
-            input_shape,  # Shape: (480, 640,1)
+            input_shape,
             ColorMode.RGB,
             ImageFormat.HWC
         )

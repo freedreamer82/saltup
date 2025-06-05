@@ -13,7 +13,7 @@ from saltup.ai.object_detection.utils.bbox  import BBox, BBoxFormat
 from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
 from saltup.ai.object_detection.yolo.yolo_type  import YoloType
 from saltup.utils.data.image.image_utils import ColorMode ,ImageFormat
-from saltup.ai.nn_manager import NeuralNetworkManager
+from saltup.ai.nn_model import NeuralNetworkModel
 from saltup.utils.data.image.image_utils import Image
 
 
@@ -168,14 +168,13 @@ image        """
         )
    
 
-class BaseYolo(NeuralNetworkManager):
+class BaseYolo():
     """Base class for implementing a generic YOLO model."""
-    def __init__(self, yolot: YoloType, model_path: str, number_class:int):
-        super().__init__()  # Initialize NeuralNetworkManager
-        self.model_path = model_path
+    def __init__(self, yolot: YoloType, model: NeuralNetworkModel, number_class:int):
+
         self.number_class = number_class
-        self.model, self.model_input_shape, self.model_output_shape = self.load_model(model_path)  # Load model using inherited method
-     
+        self.model, self.model_input_shape, self.model_output_shape = model.load()
+        
         self.yolotype = yolot
         self.input_model_format = self.get_input_info()[2]
         self.input_model_color = self.get_input_info()[1]
@@ -301,7 +300,7 @@ class BaseYolo(NeuralNetworkManager):
 
         # Measure inference time
         start_inference = time.time()
-        raw_output = self.model_inference(preprocessed_image)
+        raw_output = self.model.model_inference(preprocessed_image)
         end_inference = time.time()
         inference_time_ms = (end_inference - start_inference) * 1000
 
