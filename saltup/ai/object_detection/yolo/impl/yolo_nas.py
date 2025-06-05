@@ -12,8 +12,7 @@ class YoloNas(BaseYolo):
     A class that extends BaseYolo to handle supergrad YOLO models.
     """
     def __init__(
-        self, 
-        yolot: YoloType, 
+        self,
         model:NeuralNetworkModel,
         number_class: int
         ):
@@ -24,7 +23,7 @@ class YoloNas(BaseYolo):
         :param model_path: Path to the model file.
         :param number_class: The number of classes in the model.
         """
-        super().__init__(yolot, model, number_class)  # Initialize the BaseYolo class
+        super().__init__(YoloType.SUPERGRAD, model, number_class)  # Initialize the BaseYolo class
     
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
         input_shape = self.model_input_shape[1:]  # Rimuove il batch size

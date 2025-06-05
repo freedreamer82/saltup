@@ -14,12 +14,12 @@ class YoloFactory:
         model = NeuralNetworkModel(modelpath)
         
         if yolo_type == YoloType.ANCHORS_BASED:
-            return YoloAnchorsBased(yolo_type, model, number_class, BaseYolo.load_anchors(kwargs['anchors']))
+            return YoloAnchorsBased(model, number_class, BaseYolo.load_anchors(kwargs['anchors']))
         elif yolo_type == YoloType.ULTRALYTICS:
-             return YoloUltralytics(yolo_type, model, number_class, **kwargs)
+             return YoloUltralytics(model, number_class, **kwargs)
         elif yolo_type == YoloType.SUPERGRAD:
-            return YoloNas(yolo_type, model, number_class, **kwargs)
+            return YoloNas(model, number_class, **kwargs)
         elif yolo_type == YoloType.DAMO:
-            return YoloDamo(yolo_type, model, number_class, **kwargs)
+            return YoloDamo(model, number_class, **kwargs)
         else:
             raise ValueError(f"Unknown processor type: {yolo_type}")

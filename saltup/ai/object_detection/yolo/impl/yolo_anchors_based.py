@@ -21,7 +21,6 @@ class YoloAnchorsBased(BaseYolo):
 
     def __init__(
         self,
-        yolot: YoloType,
         model: NeuralNetworkModel,
         number_class: int,
         anchors: np.ndarray,
@@ -35,13 +34,13 @@ class YoloAnchorsBased(BaseYolo):
         :param anchors: A numpy array of anchor boxes with shape (N, 2), where N is the number of anchors.
                        Each anchor is represented as (width, height).
         """
-        super().__init__(yolot, model, number_class)  # Initialize the BaseYolo class
+        super().__init__(YoloType.ANCHORS_BASED, model, number_class)  # Initialize the BaseYolo class
         self.anchors = anchors  # Store the anchor boxes
         self.num_anchors = anchors.shape[0]  # Number of anchor boxes
         self.max_output_boxes = max_output_boxes
 
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
-        input_shape = self.model_input_shape[1:]
+        input_shape = self._model_input_shape[1:]
         return (
             input_shape,
             ColorMode.RGB,
@@ -151,13 +150,13 @@ class YoloAnchorsBased(BaseYolo):
             List[Tuple[BBox, int, float]]: List of predicted bounding boxes in the image with their respective score and class_id.
         """
         anchors = np.array(self.anchors).reshape(-1, 2)
-        input_shape = (self.input_model_height, self.input_model_width)
+        input_shape = (self._input_model_height, self._input_model_width)
         
         if isinstance(raw_output, list):
             raw_output = raw_output[0]
             
         preds_decoded = postprocess_decode(
-            raw_output, anchors, self.number_class, input_shape, calc_loss=False)
+            raw_output, anchors, self._number_class, input_shape, calc_loss=False)
         input_image_shape = [image_height, image_width]
 
         corners_boxes, scores, classes, centers_boxes = tiny_anchors_based_nms(
@@ -166,7 +165,7 @@ class YoloAnchorsBased(BaseYolo):
             max_boxes=self.max_output_boxes,
             score_threshold=confidence_thr,
             iou_threshold=iou_threshold,
-            classes_ids=list(range(0, self.number_class))
+            classes_ids=list(range(0, self._number_class))
         )
 
         result = []

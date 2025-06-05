@@ -12,18 +12,37 @@ from saltup.saltup_env import SaltupEnv
 
 
 class NeuralNetworkModel:
-    """Class to manage loading and inference for different neural network model formats."""
-    
-    def __init__(self, model_path: str):
+    """Class to manage loading and inference for different neural network model formats or instances."""
+
+    def __init__(self, model_or_path: Any):
         self.model = None
-        if not os.path.exists(model_path):
-            raise ValueError(f"Model file not found: {model_path}")
-        self.model_path = model_path
+        self.model_path = None
         self.supported_formats = [".pt", ".keras", ".h5", ".onnx", ".tflite"]
         self.inference_time_ms = None
         self._is_loaded = False
         self.input_shape = None
         self.output_shape = None
+
+        # Accept either a path or an already loaded model
+        if isinstance(model_or_path, str):
+            if not os.path.exists(model_or_path):
+                raise ValueError(f"Model file not found: {model_or_path}")
+            self.model_path = model_or_path
+        elif isinstance(model_or_path, torch.nn.Module):
+            self.model = model_or_path
+            self._is_loaded = True
+            if hasattr(self.model, 'input_shape'):
+                self.input_shape = self.model.input_shape
+            if hasattr(self.model, 'output_shape'):
+                self.output_shape = self.model.output_shape
+        elif hasattr(model_or_path, 'predict') and hasattr(model_or_path, 'input_shape'):
+            # Assume Keras model
+            self.model = model_or_path
+            self.input_shape = self.model.input_shape
+            self.output_shape = self.model.output_shape
+            self._is_loaded = True
+        else:
+            raise ValueError("model_or_path must be a file path or a valid PyTorch/Keras model instance")
         
     @property
     def is_loaded(self) -> bool:
@@ -36,16 +55,13 @@ class NeuralNetworkModel:
 
     def load(self) -> Tuple[Any, Tuple[Any], Tuple[Any]]:
         """
-        Load a model from the given path based on its file extension.
-
-        Args:
-            model_path: Path to the model file.
+        Load a model from the given path or instance based on its type or file extension.
 
         Returns:
-            The loaded model.
+            Tuple containing the loaded model, input shape, and output shape.
 
         Raises:
-            ValueError: If the model format is not supported.
+            ValueError: If the model format is not supported or the file does not exist.
         """
 
         if self._is_loaded:

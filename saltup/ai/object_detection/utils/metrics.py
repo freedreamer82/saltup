@@ -96,6 +96,44 @@ class Metric:
             'f1_score': self.getF1Score(),
         }
 
+    def __add__(self, other):
+        if not isinstance(other, Metric):
+            return NotImplemented
+        result = Metric()
+        result.tp = self.tp + other.tp
+        result.fp = self.fp + other.fp
+        result.tn = self.tn + other.tn
+        result.fn = self.fn + other.fn
+        return result
+
+    def __sub__(self, other):
+        if not isinstance(other, Metric):
+            return NotImplemented
+        result = Metric()
+        result.tp = self.tp - other.tp
+        result.fp = self.fp - other.fp
+        result.tn = self.tn - other.tn
+        result.fn = self.fn - other.fn
+        return result
+
+    def __iadd__(self, other):
+        if not isinstance(other, Metric):
+            return NotImplemented
+        self.tp += other.tp
+        self.fp += other.fp
+        self.tn += other.tn
+        self.fn += other.fn
+        return self
+
+    def __isub__(self, other):
+        if not isinstance(other, Metric):
+            return NotImplemented
+        self.tp -= other.tp
+        self.fp -= other.fp
+        self.tn -= other.tn
+        self.fn -= other.fn
+        return self
+
 def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     """
     Compute Average Precision (AP) using the precision-recall curve.

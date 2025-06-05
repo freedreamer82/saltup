@@ -1,20 +1,19 @@
-
 import numpy as np
 from typing import (
     Optional, Callable, Union,
-    Any, Dict, List ,Tuple,
+    Any, Dict, List, Tuple,
 )
 import time
-import cv2
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-from saltup.ai.object_detection.utils.bbox  import BBox, BBoxFormat
-from saltup.ai.object_detection.utils.metrics  import compute_ap, compute_map_50_95 , compute_ap_for_threshold
-from saltup.ai.object_detection.yolo.yolo_type  import YoloType
-from saltup.utils.data.image.image_utils import ColorMode ,ImageFormat
+from saltup.ai.object_detection.utils.bbox import BBoxFormat, BBox, BBoxClassId, BBoxClassIdScore
+from saltup.ai.object_detection.utils.metrics import compute_ap, compute_map_50_95, compute_ap_for_threshold
+from saltup.ai.object_detection.yolo.yolo_type import YoloType
+from saltup.ai.object_detection.utils.metrics import Metric
+from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, Image
 from saltup.ai.nn_model import NeuralNetworkModel
-from saltup.utils.data.image.image_utils import Image
+from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 
 
 class YoloOutput:
@@ -41,24 +40,24 @@ image        """
 
     tprocessing_time_ms = 0.0 
 
-    def get_boxes(self) -> List[Tuple['BBox', int, float]]:
+    def get_boxes(self) -> List[BBoxClassIdScore]:
         """
         Get the list of bounding boxes.
 
         Returns:
             List of tuples containing:
-                - BBox coordinates in corner normalized.
-                - Class ID (int).
-                - Confidence score (float).
+            - BBox object.
+            - Class ID (int).
+            - Confidence score (float).
         """
         return self._boxes
     
-    def set_boxes(self, boxes: List[BBox]):
+    def set_boxes(self, boxes: List[BBoxClassIdScore]):
         """
         Set the list of bounding boxes.
 
         Args:
-            boxes: List of BBox objects.
+            boxes: List of tuples containing (BBox, class_id, score).
         """
         self._boxes = boxes
         
@@ -172,39 +171,43 @@ class BaseYolo():
     """Base class for implementing a generic YOLO model."""
     def __init__(self, yolot: YoloType, model: NeuralNetworkModel, number_class:int):
 
-        self.number_class = number_class
-        self.model, self.model_input_shape, self.model_output_shape = model.load()
+        self._number_class = number_class
+        self._model = model
+        _, self._model_input_shape, self._model_output_shape = model.load()
         
-        self.yolotype = yolot
-        self.input_model_format = self.get_input_info()[2]
-        self.input_model_color = self.get_input_info()[1]
-        if self.input_model_format == ImageFormat.HWC:
-            self.input_model_height = self.get_input_info()[0][0]
-            self.input_model_width =self.get_input_info()[0][1]
-            self.input_model_channel = self.get_input_info()[0][2]
+        self._yolotype = yolot
+        self._input_model_format = self.get_input_info()[2]
+        self._input_model_color = self.get_input_info()[1]
+        if self._input_model_format == ImageFormat.HWC:
+            self._input_model_height = self.get_input_info()[0][0]
+            self._input_model_width = self.get_input_info()[0][1]
+            self._input_model_channel = self.get_input_info()[0][2]
         else:   
-            self.input_model_height = self.get_input_info()[0][1]
-            self.input_model_width = self.get_input_info()[0][2]  
-            self.input_model_channel =self.get_input_info()[0][0]
+            self._input_model_height = self.get_input_info()[0][1]
+            self._input_model_width = self.get_input_info()[0][2]  
+            self._input_model_channel = self.get_input_info()[0][0]
 
     def get_input_model_height(self) -> int:
-        return self.input_model_height
+        return self._input_model_height
 
     def get_input_model_width(self) -> int:
-        return self.input_model_width
+        return self._input_model_width
 
     def get_input_model_channel(self) -> int:
-        return self.input_model_channel
+        return self._input_model_channel
 
     def get_input_model_format(self) -> ImageFormat:
-        return self.input_model_format
+        return self._input_model_format
 
     def get_input_model_color(self) -> ColorMode:
-        return self.input_model_color
+        return self._input_model_color
     
     def getYoloType(self) -> YoloType:
-        return self.yolotype
+        return self._yolotype
     
+    def get_number_class(self) -> int:
+        """Get the number of classes in the YOLO model."""
+        return self._number_class
 
     @abstractmethod
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
@@ -292,15 +295,15 @@ class BaseYolo():
         else:
             # Use custom preprocessing if provided, otherwise use the native method
             if callable(preprocess):
-                preprocessed_image = preprocess(img, self.input_model_height, self.input_model_width)
+                preprocessed_image = preprocess(img, self._input_model_height, self._input_model_width)
             else:
-                preprocessed_image = self.preprocess(img, self.input_model_height, self.input_model_width)
+                preprocessed_image = self.preprocess(img, self._input_model_height, self._input_model_width)
         end_preprocess = time.time()
         preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
 
         # Measure inference time
         start_inference = time.time()
-        raw_output = self.model.model_inference(preprocessed_image)
+        raw_output = self._model.model_inference(preprocessed_image)
         end_inference = time.time()
         inference_time_ms = (end_inference - start_inference) * 1000
 
@@ -443,10 +446,12 @@ class BaseYolo():
         """
         raise NotImplementedError("The preprocess method must be overridden in the derived class.")
     
-    def postprocess(self,
-                    raw_output: np.ndarray,
-                    image_height:int, image_width:int, confidence_thr:float=0.5, 
-                            iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
+    def postprocess(
+        self,
+        raw_output: np.ndarray,
+        image_height:int, image_width:int, confidence_thr:float=0.5, 
+        iou_threshold:float=0.5
+    ) -> List[BBoxClassIdScore]:
         """
         Postprocess the raw output from the model to produce structured results.
 
@@ -454,3 +459,119 @@ class BaseYolo():
         :return: A YoloOutput object.
         """
         raise NotImplementedError("The postprocess method must be overridden in the derived class.")
+
+
+def evaluate_image(
+    predictions: YoloOutput, 
+    ground_truth: List[BBoxClassId], 
+    iou_thres: float
+) -> Metric:
+    """Evaluate predictions against ground truth and compute overall and per-class metrics.
+    
+    Args:
+        predictions: YOLO model predictions.
+        ground_truth: Ground truth bounding boxes and class IDs.
+        iou_thres: IoU threshold for matching predictions to ground truth.
+    
+    Returns:
+        Metric object containing TP, FP, FN, precision, recall, and F1-score.
+    """
+    pred_boxes_with_info = predictions.get_boxes()
+    pred_boxes = [bbox for bbox, _, _ in pred_boxes_with_info]
+    pred_classes = [class_id for _, class_id, _ in pred_boxes_with_info]
+
+    # Initialize counters
+    tp = 0
+    fp = 0
+    fn = 0
+
+    matched_gt = [False] * len(ground_truth)
+
+    for pred_box, pred_class in zip(pred_boxes, pred_classes):
+        best_iou = 0
+        best_match_idx = -1
+
+        for j, (gt_box, gt_class) in enumerate(ground_truth):
+            if matched_gt[j]:
+                continue
+
+            iou = pred_box.compute_iou(gt_box)
+            if iou > best_iou:
+                best_iou = iou
+                best_match_idx = j
+
+        if (
+            best_iou >= iou_thres
+            and pred_class == ground_truth[best_match_idx].class_id
+        ):
+            tp += 1
+            matched_gt[best_match_idx] = True
+        else:
+            fp += 1
+
+    # Count False Negatives
+    for matched in matched_gt:
+        if not matched:
+            fn += 1
+
+    metric = Metric()
+    metric.addTP(tp)
+    metric.addFP(fp)
+    metric.addFN(fn)
+    # TN is not defined in object detection, so we leave it as 0
+
+    return metric
+
+
+def evaluate(
+    yolo: BaseYolo,
+    dataloader: BaseDataloader,
+    iou_threshold: float = 0.5,
+    confidence_threshold: float = 0.5,
+) -> Tuple[Dict[int, Metric], Metric]:
+    """
+    Evaluate a YOLO model on a dataset using a dataloader.
+
+    Args:
+        yolo (BaseYolo): The YOLO model to evaluate.
+        dataloader (BaseDataloader): Dataloader yielding (image, label) pairs.
+        preprocess (Callable, optional): Preprocessing function for images. Defaults to identity.
+        iou_threshold (float, optional): IoU threshold for matching. Defaults to 0.5.
+        confidence_threshold (float, optional): Confidence threshold for predictions. Defaults to 0.5.
+
+    Returns:
+        Tuple[Dict[int, Metric], Metric]: 
+            - Dictionary mapping class IDs to their Metric objects.
+            - Overall Metric object for all classes.
+    """
+    number_classes = yolo.get_number_class()
+    metrics = Metric()
+    metrics_per_class = {k:Metric() for k in range(number_classes)}
+    for image, label in dataloader:
+        yolo_out = yolo.run(
+            image,
+            confidence_thr=confidence_threshold,
+            iou_threshold=iou_threshold
+        )
+        
+        metric = evaluate_image(
+            yolo_out,
+            label,
+            iou_threshold
+        )
+        
+        predictions = yolo_out.get_boxes()
+        for bbox, class_id, _ in predictions:
+            if class_id in metrics_per_class:
+                metrics_per_class[class_id].addTP(metric.getTP())
+                metrics_per_class[class_id].addFP(metric.getFP())
+                metrics_per_class[class_id].addFN(metric.getFN())
+            else:
+                # If class_id is not in metrics, we can skip or handle it as needed
+                pass
+        metrics.addTP(metric.getTP())
+        metrics.addFP(metric.getFP())
+        metrics.addFN(metric.getFN())
+    
+    return metrics_per_class, metrics
+        

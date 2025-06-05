@@ -86,7 +86,7 @@ import os
 import numpy as np
 from copy import deepcopy
 from enum import auto, IntEnum
-from typing import List, Tuple, Dict, Optional, Union
+from typing import Iterator, List, Tuple, Dict, Optional, Union
 
 from saltup.saltup_env import SaltupEnv
 from saltup.utils.data.image.image_utils import ColorMode
@@ -1099,6 +1099,13 @@ class BBoxClassId(BBox):
             >>> bbox[1:3]  # Returns array([0.2, 0.3])
         """
         return np.array(list(self.get_coordinates()) + [self.class_id])[idx]
+    
+    def __iter__(self) -> Iterator[Union['BBox', int]]:
+        """
+        Allow unpacking: (BBox, class_id)
+        """
+        yield self
+        yield self.class_id
 
     def __repr__(self):
         """
@@ -1188,6 +1195,14 @@ class BBoxClassIdScore(BBoxClassId):
             tuple: A tuple containing the bounding box data and the score.
         """
         return super().get_data(fmt, img_shape), self.score
+    
+    def __iter__(self) -> Iterator[Union['BBox', int, float]]:
+        """
+        Allow unpacking: (BBox, class_id, score)
+        """
+        yield self
+        yield self.class_id
+        yield self.score
 
     def __repr__(self):
         """
