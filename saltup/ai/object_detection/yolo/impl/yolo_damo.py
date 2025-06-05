@@ -5,7 +5,7 @@ from typing import Union, Any, List, Tuple
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.utils.data.image.image_utils import  Image, ColorMode ,ImageFormat
 from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
-
+from saltup.ai.nn_model import NeuralNetworkModel
 
 class YoloDamo(BaseYolo):
     """
@@ -14,7 +14,7 @@ class YoloDamo(BaseYolo):
     def __init__(
         self, 
         yolot: YoloType, 
-        model_path: str,  
+        model: NeuralNetworkModel,
         number_class: int
         ):
         """
@@ -24,7 +24,7 @@ class YoloDamo(BaseYolo):
         :param model_path: Path to the model file.
         :param number_class: The number of classes in the model.
         """
-        super().__init__(yolot, model_path, number_class)  # Initialize the BaseYolo class
+        super().__init__(yolot, model, number_class)  # Initialize the BaseYolo class
     
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
         input_shape = self.model_input_shape[1:]  # Rimuove il batch size

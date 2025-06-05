@@ -11,19 +11,30 @@ from saltup.utils.misc import suppress_stdout
 from saltup.saltup_env import SaltupEnv
 
 
-class NeuralNetworkManager:
+class NeuralNetworkModel:
     """Class to manage loading and inference for different neural network model formats."""
     
-    def __init__(self):
+    def __init__(self, model_path: str):
         self.model = None
+        if not os.path.exists(model_path):
+            raise ValueError(f"Model file not found: {model_path}")
+        self.model_path = model_path
         self.supported_formats = [".pt", ".keras", ".h5", ".onnx", ".tflite"]
         self.inference_time_ms = None
+        self._is_loaded = False
+        self.input_shape = None
+        self.output_shape = None
+        
+    @property
+    def is_loaded(self) -> bool:
+        """Check if the model is loaded."""
+        return self._is_loaded
 
     def get_supported_formats(self) -> List[str]:
         """Return a list of supported model formats."""
         return self.supported_formats
 
-    def load_model(self, model_path: str) -> Tuple[Any, Tuple[Any], Tuple[Any]]:
+    def load(self) -> Tuple[Any, Tuple[Any], Tuple[Any]]:
         """
         Load a model from the given path based on its file extension.
 
@@ -36,44 +47,45 @@ class NeuralNetworkManager:
         Raises:
             ValueError: If the model format is not supported.
         """
-        if not os.path.exists(model_path):
-            raise ValueError(f"Model file not found: {model_path}")
+
+        if self._is_loaded:
+            return self.model, self.input_shape, self.output_shape
         
         with suppress_stdout():
-            if model_path.endswith(".pt"):
+            if self.model_path.endswith(".pt"):
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                 # Load PyTorch model
-                self.model = torch.jit.load(model_path, map_location=device)  # Generic PyTorch model loading
+                self.model = torch.jit.load(self.model_path, map_location=device)  # Generic PyTorch model loading
                 self.model.eval()  # Set the model to evaluation mode
                 # Assuming the model has an attribute `input_shape` or similar
                 if hasattr(self.model, 'input_shape'):
-                    model_input_shape =  self.model.input_shape
+                    self.input_shape =  self.model.input_shape
                 
                 # Assuming the model has an attribute `output_shape` or similar
                 if hasattr(self.model, 'output_shape'):
-                    model_output_shape =  self.model.output_shape
+                    self.output_shape =  self.model.output_shape
                 else:
                     # If no output_shape attribute, infer from a forward pass (requires example input)
                     example_input = torch.randn(1, *self.model.input_shape)  # Example input
                     with torch.no_grad():
                         output = self.model(example_input)
-                    model_output_shape =  output.shape[1:]  # Exclude batch size
+                    self.output_shape =  output.shape[1:]  # Exclude batch size
+                self._is_loaded = True
+                return self.model, self.input_shape, self.output_shape
                 
-                return self.model, model_input_shape, model_output_shape
-                
-            elif model_path.endswith(".keras") or model_path.endswith(".h5"):
+            elif self.model_path.endswith(".keras") or self.model_path.endswith(".h5"):
                 # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
                 try:
-                    self.model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+                    self.model = tf.keras.models.load_model(self.model_path, compile=False, safe_mode=False)
                 except:
-                    self.model = load_model(model_path, compile=False, safe_mode=False)
-                model_input_shape = self.model.input_shape  # Exclude the batch size
-                model_output_shape = self.model.output_shape  # Exclude the batch size
-    
-                return self.model, model_input_shape, model_output_shape
+                    self.model = load_model(self.model_path, compile=False, safe_mode=False)
+                self.input_shape = self.model.input_shape  # Exclude the batch size
+                self.output_shape = self.model.output_shape  # Exclude the batch size
+                self._is_loaded = True
+                return self.model, self.input_shape, self.output_shape
 
             
-            elif model_path.endswith(".onnx"):
+            elif self.model_path.endswith(".onnx"):
                 use_gpu = SaltupEnv.SALTUP_NN_MNG_USE_GPU
                 providers = ort.get_available_providers()
                 
@@ -83,27 +95,28 @@ class NeuralNetworkManager:
                     providers = ["CPUExecutionProvider"]
                 
                 # Load ONNX model with specified providers
-                self.model = ort.InferenceSession(model_path, providers=providers)
+                self.model = ort.InferenceSession(self.model_path, providers=providers)
                 # Load ONNX model
                 #self.model = ort.InferenceSession(model_path)
                 input_metadata = self.model.get_inputs()[0]
-                model_input_shape = tuple(input_metadata.shape)
+                self.input_shape = tuple(input_metadata.shape)
                 output_metadata = self.model.get_outputs()[0]
-                model_output_shape = tuple(output_metadata.shape)
-                return self.model, model_input_shape, model_output_shape
+                self.output_shape = tuple(output_metadata.shape)
+                self._is_loaded = True
+                return self.model, self.input_shape, self.output_shape
 
-            elif model_path.endswith(".tflite"):
+            elif self.model_path.endswith(".tflite"):
                 # Load TensorFlow Lite model
-                self.model = tf.lite.Interpreter(model_path=model_path)
+                self.model = tf.lite.Interpreter(model_path=self.model_path)
                 self.model.allocate_tensors()  # Allocate tensors for inference
                 # Get the input shape from the interpreter
                 input_details = self.model.get_input_details()[0]
-                model_input_shape = tuple(input_details['shape'])
+                self.input_shape = tuple(input_details['shape'])
             
                 output_details = self.model.get_output_details()[0]
-                model_output_shape =  tuple(output_details['shape'])
-                
-                return self.model, model_input_shape, model_output_shape
+                self.output_shape =  tuple(output_details['shape'])
+                self._is_loaded = True
+                return self.model, self.input_shape, self.output_shape
 
                 
             else:
