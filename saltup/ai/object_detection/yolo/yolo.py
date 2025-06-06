@@ -465,62 +465,64 @@ def evaluate_image(
     predictions: YoloOutput, 
     ground_truth: List[BBoxClassId], 
     iou_thres: float
-) -> Metric:
-    """Evaluate predictions against ground truth and compute overall and per-class metrics.
-    
+) -> Dict[int, Metric]:
+    """
+    Evaluate predictions against ground truth and compute per-class metrics.
+
     Args:
         predictions: YOLO model predictions.
         ground_truth: Ground truth bounding boxes and class IDs.
         iou_thres: IoU threshold for matching predictions to ground truth.
-    
+
     Returns:
-        Metric object containing TP, FP, FN, precision, recall, and F1-score.
+        Dict[int, Metric]: Dictionary mapping class_id to Metric object.
     """
     pred_boxes_with_info = predictions.get_boxes()
-    pred_boxes = [bbox for bbox, _, _ in pred_boxes_with_info]
-    pred_classes = [class_id for _, class_id, _ in pred_boxes_with_info]
+    # Organize predictions and ground truth by class
+    preds_by_class = {}
+    for bbox, class_id, score in pred_boxes_with_info:
+        preds_by_class.setdefault(class_id, []).append((bbox, score))
 
-    # Initialize counters
-    tp = 0
-    fp = 0
-    fn = 0
+    gt_by_class = {}
+    for bbox, class_id in ground_truth:
+        gt_by_class.setdefault(class_id, []).append(bbox)
 
-    matched_gt = [False] * len(ground_truth)
+    all_classes = set(preds_by_class.keys()) | set(gt_by_class.keys())
+    metrics_per_class = {class_id: Metric() for class_id in all_classes}
 
-    for pred_box, pred_class in zip(pred_boxes, pred_classes):
-        best_iou = 0
-        best_match_idx = -1
+    for class_id in all_classes:
+        preds = preds_by_class.get(class_id, [])
+        gts = gt_by_class.get(class_id, [])
+        matched_gt = [False] * len(gts)
+        tp = 0
+        fp = 0
 
-        for j, (gt_box, gt_class) in enumerate(ground_truth):
-            if matched_gt[j]:
-                continue
+        # Sort predictions by score descending if available
+        preds = sorted(preds, key=lambda x: x[1], reverse=True)
 
-            iou = pred_box.compute_iou(gt_box)
-            if iou > best_iou:
-                best_iou = iou
-                best_match_idx = j
+        for pred_bbox, _ in preds:
+            best_iou = 0
+            best_match_idx = -1
+            for j, gt_bbox in enumerate(gts):
+                if matched_gt[j]:
+                    continue
+                iou = pred_bbox.compute_iou(gt_bbox)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_match_idx = j
+            if best_iou >= iou_thres and best_match_idx != -1:
+                tp += 1
+                matched_gt[best_match_idx] = True
+            else:
+                fp += 1
 
-        if (
-            best_iou >= iou_thres
-            and pred_class == ground_truth[best_match_idx].class_id
-        ):
-            tp += 1
-            matched_gt[best_match_idx] = True
-        else:
-            fp += 1
+        fn = matched_gt.count(False)
+        metric = metrics_per_class[class_id]
+        metric.addTP(tp)
+        metric.addFP(fp)
+        metric.addFN(fn)
 
-    # Count False Negatives
-    for matched in matched_gt:
-        if not matched:
-            fn += 1
-
-    metric = Metric()
-    metric.addTP(tp)
-    metric.addFP(fp)
-    metric.addFN(fn)
-    # TN is not defined in object detection, so we leave it as 0
-
-    return metric
+    return metrics_per_class
 
 
 def evaluate(
@@ -545,7 +547,6 @@ def evaluate(
             - Overall Metric object for all classes.
     """
     number_classes = yolo.get_number_class()
-    metrics = Metric()
     metrics_per_class = {k:Metric() for k in range(number_classes)}
     for image, label in dataloader:
         yolo_out = yolo.run(
@@ -554,24 +555,16 @@ def evaluate(
             iou_threshold=iou_threshold
         )
         
-        metric = evaluate_image(
+        one_shot_metric = evaluate_image(
             yolo_out,
             label,
             iou_threshold
         )
         
-        predictions = yolo_out.get_boxes()
-        for bbox, class_id, _ in predictions:
-            if class_id in metrics_per_class:
-                metrics_per_class[class_id].addTP(metric.getTP())
-                metrics_per_class[class_id].addFP(metric.getFP())
-                metrics_per_class[class_id].addFN(metric.getFN())
-            else:
-                # If class_id is not in metrics, we can skip or handle it as needed
-                pass
-        metrics.addTP(metric.getTP())
-        metrics.addFP(metric.getFP())
-        metrics.addFN(metric.getFN())
+        for class_id in metrics_per_class:
+            if class_id in one_shot_metric:
+                metrics_per_class[class_id].addTP(one_shot_metric[class_id].getTP())
+                metrics_per_class[class_id].addFP(one_shot_metric[class_id].getFP())
+                metrics_per_class[class_id].addFN(one_shot_metric[class_id].getFN())
     
-    return metrics_per_class, metrics
-        
+    return metrics_per_class

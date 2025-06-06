@@ -3,7 +3,6 @@ from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from typing import List, Tuple, Union
  
 
-
 class Metric:
     def __init__(self):
         """
@@ -133,6 +132,20 @@ class Metric:
         self.tn -= other.tn
         self.fn -= other.fn
         return self
+
+    def __str__(self):
+        """Return a string representation for pretty printing."""
+        metrics = self.get_metrics()
+        return (
+            f"Metric(\n"
+            f"  TP: {metrics['tp']}, FP: {metrics['fp']}, TN: {metrics['tn']}, FN: {metrics['fn']}\n"
+            f"  Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, "
+            f"F1-score: {metrics['f1_score']:.4f}\n"
+            f")"
+        )
+
+    def __repr__(self):
+        return self.__str__()
 
 def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     """

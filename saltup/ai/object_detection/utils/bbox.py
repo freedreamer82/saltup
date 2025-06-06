@@ -464,12 +464,17 @@ class BBox:
             x2 = max(0, min(x2, img_width))
             y2 = max(0, min(y2, img_height))
 
-            # Normalize
+            # Normalize and clamp to [0, 1]
+            x1_norm = min(max(x1 / img_width, 0.0), 1.0)
+            y1_norm = min(max(y1 / img_height, 0.0), 1.0)
+            x2_norm = min(max(x2 / img_width, 0.0), 1.0)
+            y2_norm = min(max(y2 / img_height, 0.0), 1.0)
+
             return (
-                round(x1 / img_width, FLOAT_PRECISION),
-                round(y1 / img_height, FLOAT_PRECISION),
-                round(x2 / img_width, FLOAT_PRECISION),
-                round(y2 / img_height, FLOAT_PRECISION)
+                round(x1_norm, FLOAT_PRECISION),
+                round(y1_norm, FLOAT_PRECISION),
+                round(x2_norm, FLOAT_PRECISION),
+                round(y2_norm, FLOAT_PRECISION)
             )
 
         elif fmt == BBoxFormat.TOPLEFT_ABSOLUTE or fmt == BBoxFormat.COCO:
@@ -487,12 +492,17 @@ class BBox:
             w = min(w, img_width - x1)
             h = min(h, img_height - y1)
 
-            # Normalize
+            # Normalize and clamp to [0, 1]
+            x1_norm = min(max(x1 / img_width, 0.0), 1.0)
+            y1_norm = min(max(y1 / img_height, 0.0), 1.0)
+            w_norm = min(max(w / img_width, 0.0), 1.0)
+            h_norm = min(max(h / img_height, 0.0), 1.0)
+
             return (
-                round(x1 / img_width, FLOAT_PRECISION),
-                round(y1 / img_height, FLOAT_PRECISION),
-                round(w / img_width, FLOAT_PRECISION),
-                round(h / img_height, FLOAT_PRECISION)
+                round(x1_norm, FLOAT_PRECISION),
+                round(y1_norm, FLOAT_PRECISION),
+                round(w_norm, FLOAT_PRECISION),
+                round(h_norm, FLOAT_PRECISION)
             )
 
         elif fmt == BBoxFormat.CENTER_ABSOLUTE:
@@ -520,12 +530,17 @@ class BBox:
             w = x2 - x1
             h = y2 - y1
 
-            # Normalize
+            # Normalize and clamp to [0, 1]
+            xc_norm = min(max(xc / img_width, 0.0), 1.0)
+            yc_norm = min(max(yc / img_height, 0.0), 1.0)
+            w_norm = min(max(w / img_width, 0.0), 1.0)
+            h_norm = min(max(h / img_height, 0.0), 1.0)
+
             return (
-                round(xc / img_width, FLOAT_PRECISION),
-                round(yc / img_height, FLOAT_PRECISION),
-                round(w / img_width, FLOAT_PRECISION),
-                round(h / img_height, FLOAT_PRECISION)
+                round(xc_norm, FLOAT_PRECISION),
+                round(yc_norm, FLOAT_PRECISION),
+                round(w_norm, FLOAT_PRECISION),
+                round(h_norm, FLOAT_PRECISION)
             )
 
         raise ValueError(f"Unsupported format: {fmt}")
@@ -557,7 +572,7 @@ class BBox:
         if img_width <= 0 or img_height <= 0:
             raise ValueError("Image dimensions must be positive")
         if not all(0 <= x <= 1 for x in bbox):
-            raise ValueError("Normalized coordinates must be in range [0,1]")
+            raise ValueError("Normalized coordinates must be in range [0,1]. Passed:\n" + str(bbox))
         if not isinstance(fmt, BBoxFormat):
             raise TypeError("Format must be a BBoxFormat")
 

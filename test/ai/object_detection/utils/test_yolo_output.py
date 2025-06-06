@@ -1,6 +1,7 @@
 import pytest
 from typing import List, Tuple, Optional
 import numpy as np
+
 from saltup.ai.object_detection.yolo.yolo import YoloOutput
 from saltup.ai.object_detection.utils.bbox  import BBoxFormat, BBox, BBoxClassIdScore
 from saltup.utils.data.image.image_utils import Image
