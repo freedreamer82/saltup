@@ -52,6 +52,7 @@ class BaseDataloader(ABC):
         """Merges another dataloader into this one."""
         raise NotImplementedError
     
+    # TODO @S0nFra: Correct this method signature
     def __getitem__(self, idx: Union[int, slice]) -> Union[
         Tuple[Image, List[BBoxClassId]],
         List[Tuple[Image, List[BBoxClassId]]]

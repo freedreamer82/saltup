@@ -140,6 +140,7 @@ class YoloDarknetLoader(BaseDataloader):
             YoloDarknetLoader2: Second loader instance
         """
         raise NotImplementedError("Merging not implemented yet")
+    
     def _load_image_label_pairs(self) -> List[Tuple[str, str]]:
         """
         Load pairs from images and labels directories.
