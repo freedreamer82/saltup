@@ -242,9 +242,12 @@ class BBox:
         return deepcopy(self)
 
     @classmethod
-    def is_normalized(cls, coordinates: Union[List, Tuple, 'BBox']) -> bool:
+    def is_normalized(cls, coordinates: Union[List, Tuple, 'BBox'], eps: float = 5e-3) -> bool:
         """
         Check if the bounding box coordinates are normalized.
+        Args:
+            coordinates: The bounding box coordinates or a BBox object.
+            eps: Tolerance for floating point comparison (default: 5e-3).
 
         Returns:
             bool: True if the coordinates are normalized, False otherwise.
@@ -252,8 +255,25 @@ class BBox:
         if isinstance(coordinates, BBox):
             coordinates = coordinates.get_coordinates()
         
-        # For normalized formats, check if all coordinates are between 0 and 1
-        return all(0 <= x <= 1 for x in coordinates)
+        # For normalized formats, check if all coordinates are between 0 and 1 (with tolerance)
+        return all(-eps <= x <= 1.0 + eps for x in coordinates)
+    
+    @classmethod
+    def clamp_normalized_coordinates(cls, coordinates: Union[List, Tuple]) -> List[float]:
+        """
+        Clamp normalized coordinates to ensure they are within [0, 1].
+
+        Args:
+            coordinates: List or tuple of normalized coordinates.
+
+        Returns:
+            List of clipped coordinates.
+        """
+        if not isinstance(coordinates, (list, tuple)):
+            raise TypeError("Coordinates must be a list or tuple.")
+        if not all(isinstance(x, (int, float)) for x in coordinates):
+            raise ValueError("All coordinates must be numeric.")
+        return [min(max(x, 0.0), 1.0) for x in coordinates]
 
     @classmethod
     def corners_to_center_format(cls, box: Union[List, Tuple]) -> Tuple[float, float, float, float]:
@@ -277,6 +297,11 @@ class BBox:
         yc = (y1 + y2) / 2
         w = abs(x2 - x1)  # Using abs to handle reversed coordinates
         h = abs(y2 - y1)
+        
+        if cls.is_normalized([xc, yc, w, h]):
+            # Clip normalized coordinates to [0, 1]
+            xc, yc, w, h = cls.clamp_normalized_coordinates([xc, yc, w, h])
+        
         return xc, yc, w, h
 
     @classmethod
@@ -299,6 +324,11 @@ class BBox:
         x1, y1, x2, y2 = box
         w = abs(x2 - x1)
         h = abs(y2 - y1)
+        
+        if cls.is_normalized([x1, y1, w, h]):
+            # Clip normalized coordinates to [0, 1]
+            x1, y1, w, h = cls.clamp_normalized_coordinates([x1, y1, w, h])
+        
         return x1, y1, w, h
 
     @classmethod
@@ -328,6 +358,10 @@ class BBox:
         x2 = max(0, xc + w / 2)
         y2 = max(0, yc + h / 2)
         
+        if cls.is_normalized([x1, y1, x2, y2]):
+            # Clip normalized coordinates to [0, 1]
+            x1, y1, x2, y2 = cls.clamp_normalized_coordinates([x1, y1, x2, y2])
+        
         return x1, y1, x2, y2
 
     @classmethod
@@ -353,6 +387,11 @@ class BBox:
 
         x1 = xc - w / 2
         y1 = yc - h / 2
+        
+        if cls.is_normalized([x1, y1, w, h]):
+            # Clip normalized coordinates to [0, 1]
+            x1, y1, w, h = cls.clamp_normalized_coordinates([x1, y1, w, h])
+
         return x1, y1, w, h
 
     @classmethod
@@ -379,6 +418,10 @@ class BBox:
         xc = x1 + w / 2
         yc = y1 + h / 2
         
+        if cls.is_normalized([xc, yc, w, h]):
+            # Clip normalized coordinates to [0, 1]
+            xc, yc, w, h = cls.clamp_normalized_coordinates([xc, yc, w, h])
+        
         return xc, yc, w, h
 
     @classmethod
@@ -404,6 +447,11 @@ class BBox:
         
         x2 = x1 + w
         y2 = y1 + h
+        
+        if cls.is_normalized([x1, y1, x2, y2]):
+            # Clip normalized coordinates to [0, 1]
+            x1, y1, x2, y2 = cls.clamp_normalized_coordinates([x1, y1, x2, y2])
+        
         return x1, y1, x2, y2
 
     @classmethod
@@ -465,10 +513,12 @@ class BBox:
             y2 = max(0, min(y2, img_height))
 
             # Normalize and clamp to [0, 1]
-            x1_norm = min(max(x1 / img_width, 0.0), 1.0)
-            y1_norm = min(max(y1 / img_height, 0.0), 1.0)
-            x2_norm = min(max(x2 / img_width, 0.0), 1.0)
-            y2_norm = min(max(y2 / img_height, 0.0), 1.0)
+            x1_norm, y1_norm, x2_norm, y2_norm = cls.clamp_normalized_coordinates([
+                x1 / img_width,
+                y1 / img_height,
+                x2 / img_width,
+                y2 / img_height
+            ])
 
             return (
                 round(x1_norm, FLOAT_PRECISION),
@@ -493,10 +543,12 @@ class BBox:
             h = min(h, img_height - y1)
 
             # Normalize and clamp to [0, 1]
-            x1_norm = min(max(x1 / img_width, 0.0), 1.0)
-            y1_norm = min(max(y1 / img_height, 0.0), 1.0)
-            w_norm = min(max(w / img_width, 0.0), 1.0)
-            h_norm = min(max(h / img_height, 0.0), 1.0)
+            x1_norm, y1_norm, w_norm, h_norm = cls.clamp_normalized_coordinates([
+                x1 / img_width,
+                y1 / img_height,
+                w / img_width,
+                h / img_height
+            ])
 
             return (
                 round(x1_norm, FLOAT_PRECISION),
@@ -531,10 +583,12 @@ class BBox:
             h = y2 - y1
 
             # Normalize and clamp to [0, 1]
-            xc_norm = min(max(xc / img_width, 0.0), 1.0)
-            yc_norm = min(max(yc / img_height, 0.0), 1.0)
-            w_norm = min(max(w / img_width, 0.0), 1.0)
-            h_norm = min(max(h / img_height, 0.0), 1.0)
+            xc_norm, yc_norm, w_norm, h_norm = cls.clamp_normalized_coordinates([
+                xc / img_width,
+                yc / img_height,
+                w / img_width,
+                h / img_height
+            ])
 
             return (
                 round(xc_norm, FLOAT_PRECISION),
