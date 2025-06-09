@@ -524,17 +524,18 @@ def create_dataset_structure(root_dir: str):
     return directories
 
 
-def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
-    """Get directory paths for dataset in YOLO format.
+def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str, Optional[str], Optional[str]]:
+    """Get directory paths for dataset in YOLO format, including test set if present.
     
     Args:
         root_dir: Dataset root directory
         
     Returns:
-        Tuple of (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir)
+        Tuple of (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir)
+        Test directories are None if not present.
         
     Raises:
-        FileNotFoundError: If required directories don't exist
+        FileNotFoundError: If required train/val directories don't exist
     """
     # Verify root directory exists
     if not os.path.exists(root_dir):
@@ -545,6 +546,8 @@ def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
     train_labels_dir = os.path.join(root_dir, 'labels', 'train')
     val_images_dir = os.path.join(root_dir, 'images', 'val')
     val_labels_dir = os.path.join(root_dir, 'labels', 'val')
+    test_images_dir = os.path.join(root_dir, 'images', 'test')
+    test_labels_dir = os.path.join(root_dir, 'labels', 'test')
     
     # Verify required YOLO Darknet directories exist
     required_dirs = [
@@ -558,15 +561,19 @@ def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
         if not os.path.exists(dir_path):
             raise FileNotFoundError(f"{dir_name} directory not found at {dir_path}")
     
-    return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir
+    # Test directories are optional
+    if os.path.exists(test_images_dir) and os.path.exists(test_labels_dir):
+        return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir
+    else:
+        return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, None, None
 
 
 def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, List[str]]]]:
     """Verify directory structure and validate image-label pairs.
-    
+
     Args:
         root_dir: Dataset root directory
-        
+
     Returns:
         Dict containing per-split statistics:
             images: Number of images
@@ -575,30 +582,33 @@ def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, 
             unmatched_images: List of images without labels
             unmatched_labels: List of labels without images
     """
-    train_images_dir, train_labels_dir, val_images_dir, val_labels_dir = get_dataset_paths(root_dir)
-    
+    train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir = get_dataset_paths(root_dir)
+
     stats = {
         'train': {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []},
-        'val': {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []}
+        'val': {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []},
     }
-    
-    # Helper function to check image-label correspondences
+
     def check_matches(images_dir, labels_dir, split):
-        image_files = {os.path.splitext(f)[0] for f in os.listdir(images_dir) 
-                      if f.endswith(('.jpg', '.jpeg', '.png'))}
-        label_files = {os.path.splitext(f)[0] for f in os.listdir(labels_dir) 
-                      if f.endswith('.txt')}
-        
+        image_files = {os.path.splitext(f)[0] for f in os.listdir(images_dir)
+                       if f.lower().endswith(('.jpg', '.jpeg', '.png'))}
+        label_files = {os.path.splitext(f)[0] for f in os.listdir(labels_dir)
+                       if f.lower().endswith('.txt')}
+
         stats[split]['images'] = len(image_files)
         stats[split]['labels'] = len(label_files)
         stats[split]['matched'] = len(image_files & label_files)
-        stats[split]['unmatched_images'] = list(image_files - label_files)
-        stats[split]['unmatched_labels'] = list(label_files - image_files)
-    
-    # Verify both training and validation sets
+        stats[split]['unmatched_images'] = sorted(list(image_files - label_files))
+        stats[split]['unmatched_labels'] = sorted(list(label_files - image_files))
+
     check_matches(train_images_dir, train_labels_dir, 'train')
     check_matches(val_images_dir, val_labels_dir, 'val')
-    
+
+    # Check test split if present
+    if test_images_dir and test_labels_dir:
+        stats['test'] = {'images': 0, 'labels': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_labels': []}
+        check_matches(test_images_dir, test_labels_dir, 'test')
+
     return stats
 
 
@@ -614,7 +624,7 @@ def analyze_dataset(root_dir: str, class_names: Optional[List[str]] = None) -> N
     print("\n=== YOLO Dataset Analysis ===")
     
     # Dataset structure analysis
-    for split in ['train', 'val']:
+    for split in structure.keys():
         print(f"\n{split.upper()} Set Structure:")
         print(f"- Total images: {structure[split]['images']}")
         print(f"- Total labels: {structure[split]['labels']}")
