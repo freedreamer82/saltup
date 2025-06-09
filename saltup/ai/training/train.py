@@ -31,8 +31,8 @@ from saltup.ai.classification.datagenerator import (
 from saltup.saltup_env import SaltupEnv
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
 from saltup.ai.classification.evaluate import evaluate_model
-from saltup.ai.utils.keras.to_tflite_quantization import *
 from saltup.ai.utils.keras.to_onnx import *
+from saltup.ai.utils.keras.to_tflite import tflite_conversion
 from saltup.ai.training.callbacks import *
 from saltup.utils.data.image.image_utils import Image, ColorMode
 from saltup.ai.object_detection.utils.metrics import Metric
@@ -73,6 +73,15 @@ def _train_model(
         if optimizer is None or loss_function is None:
             raise ValueError("For Keras models, both `optimizer` and `loss_function` must be provided.")
         
+        # TODO @S0nFra: Allow possibility to define arguments via SaltupEnv
+        # SALTUP_TRAINING_KERAS_COMPILE_ARGS = {
+        #     "optimizer": optimizer,
+        #     "loss": loss_function,
+        #     'jit_compile': False,
+        # }.update(SaltupEnv.SALTUP_TRAINING_KERAS_COMPILE_ARGS)   
+        # model.compile(
+        #     **SALTUP_TRAINING_KERAS_COMPILE_ARGS
+        # )
         model.compile(
             optimizer=optimizer,
             loss=loss_function,
@@ -86,6 +95,21 @@ def _train_model(
         
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.keras')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.keras')
+
+        # TODO @S0nFra: Allow possibility to define arguments via SaltupEnv
+        # SALTUP_TRAINING_KERAS_FIT_ARGS = {
+        #     "validation_data": val_gen,
+        #     "epochs": epochs,
+        #     "callbacks": keras_callbacks + [save_best_clbk],
+        #     "class_weight": class_weight,
+        #     "shuffle": SaltupEnv.SALTUP_KERAS_TRAIN_SHUFFLE,
+        #     "verbose": SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE
+        # }
+        # SALTUP_TRAINING_KERAS_FIT_ARGS.update(SaltupEnv.SALTUP_TRAINING_KERAS_FIT_ARGS)
+        # history = model.fit(
+        #     train_gen,
+        #     **SALTUP_TRAINING_KERAS_FIT_ARGS
+        # )
 
         save_best_clbk = tf.keras.callbacks.ModelCheckpoint(filepath=best_model_path, save_best_only=True)
         history = model.fit(
@@ -138,7 +162,7 @@ def _train_model(
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model.to(device)
-
+        
         for epoch in range(epochs):
             model.train()
             running_loss, correct, total = 0, 0, 0
@@ -207,6 +231,7 @@ def _train_model(
                 'accuracy': round(train_acc, 4),
                 'val_accuracy': round(val_acc, 4)
             })
+            
             # Save best models (JIT)
             if val_loss < best_val_loss:
                 scripted = torch.jit.script(model.cpu())
@@ -257,10 +282,8 @@ def training(
     scheduler:callable=None,
     model_output_name:str=None,
     training_callback:list=[],
-    test_Datagenerator:BaseDatagenerator=None,
-    quantization_param:dict={'enable':False, 'quantize_input':True, 'quantize_output':False},
     **kwargs
-) -> str:
+) -> dict:
     """
     Classification training function.
 
@@ -277,24 +300,29 @@ def training(
         scheduler (callable, optional): Scheduler for the optimizer. Defaults to None.
         model_output_name (str, optional): Name for the output model. Defaults to None.
         training_callback (list, optional): List of callbacks for training. Defaults to [].
-        test_Datagenerator (BaseDatagenerator, optional): Test data generator. Defaults to None.
-        quantization_param (dict, optional): Quantization parameters. Defaults to {'enable':False, 'quantize_input':True, 'quantize_output':True}.
         **kwargs: Additional keyword arguments.
 
     Returns:
-        str: Path to the trained model.
+        list: List with paths of files generate during trainig.
     """
+    results_dict = {
+        'kfolds': kfold_param['enable'],
+        'models_paths': [],
+    }
+    
     parameters_path = os.path.join(output_dir, "options.txt")
     with open(parameters_path, mode='w') as f:
         if kfold_param['enable']:
             f.write("The number of folds: {}".format(len(kfold_param['split'])))
         f.write("\nThe number of epochs: {}".format(epochs))
         f.write("\nThe batch size: {}".format(batch_size))
+    
     if kfold_param['enable']:
         kfolds = train_DataGenerator.split(kfold_param['split'])
         acc_per_fold = []
         best_accuracy = -1
         golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
+        # TODO @Marc: Add function for validate golden model and add golden model folder to results_dict
         for fold in range(len(kfolds)):
             print(f"\n--- Fold {fold + 1} ---")
             train_generator, val_generator = kfoldGenerator(kfolds, fold).get_fold_generators()
@@ -308,7 +336,6 @@ def training(
             if isinstance(fold_model, torch.nn.Module):
                 train_generator = pytorch_DataGenerator(train_generator, batch_size=train_generator.batch_size, shuffle=True)
                 val_generator = pytorch_DataGenerator(val_generator, batch_size=val_generator.batch_size, shuffle=True)
-                test_Datagenerator = pytorch_DataGenerator(test_Datagenerator, batch_size=test_Datagenerator.batch_size, shuffle=True)
             
             fold_path = os.path.join(output_dir,'k_'+str(fold))
             os.mkdir(fold_path)
@@ -336,6 +363,7 @@ def training(
             txt_performance_file_path = os.path.join(current_fold_folder, txt_performance_file_name)
             with open(txt_performance_file_path, mode='w') as f:
                 f.write("The accuracy of the test of the fold " + str(fold) + ": "+str(current_accuracy))
+            
             if  current_accuracy > best_accuracy:
                 best_accuracy = current_accuracy
                 fold_number = fold
@@ -348,71 +376,15 @@ def training(
                 golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
                 onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
                 onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path)
+                results_dict['models_paths'].append(onnx_model_path)
                 
-                example_samples = np.array([train_generator[i][0] for i in range(50)])
-                example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
                 tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
-                tflite_model_path = tflite_quantization(
+                tflite_model_path = tflite_conversion(
                     golden_model_path, 
-                    tflite_golden_model_path,
-                    example_samples,
-                    False,
-                    False
+                    tflite_golden_model_path
                 )
-            
-            if quantization_param['enable'] and fold == len(kfold_param['split'])-1:
-                if not golden_model_path.endswith('.keras'):
-                    raise ValueError("The model is not a keras model.")
-                golden_fold_folder = os.path.dirname(golden_model_path)
-                
-                print("calibration data shape",example_samples.shape)
-                model_name = os.path.basename(golden_model_path)
-                model_name = model_name.split('.')[0]
-                quantized_model_path = os.path.join(golden_model_folder, 'quantization', f'quantized_{model_name}.tflite')
-                
-                tflite_model_path = tflite_quantization(
-                    golden_model_path, 
-                    quantized_model_path,
-                    example_samples,
-                    quantization_param['quantize_input'],
-                    quantization_param['quantize_output']
-                )
-                
-                if test_Datagenerator is not None:  
-                    accuracy_of_the_keras_golden_model = evaluate_model(golden_model_path,test_Datagenerator,golden_model_folder)
-                    tflite_quantized_folder = os.path.dirname(tflite_model_path)
-                    accuracy_of_the_tflite_golden_model = evaluate_model(tflite_model_path,test_Datagenerator, tflite_quantized_folder)
-                
-                golden_performance_file_path = os.path.join(golden_model_folder, txt_performance_file_name)
-                with open(golden_performance_file_path, mode='w') as f:
-                    f.write("The golden model's path:{}".format(golden_model_path))
-                    f.write("\nThe keras golden model is trained with the fold " + str(fold_number))
-                    f.write("\nThe accuracy of the golden model: "+ str(best_accuracy))
-                    if test_Datagenerator is not None:
-                        f.write("\nThe accuracy of the quantized tflite golden model on test:{}".format(accuracy_of_the_tflite_golden_model))
-            
-            elif fold == len(kfold_param['split'])-1 and test_Datagenerator is not None:
-                print('\n\nEvaluation on Test set:',best_accuracy,'\n\n')
-                accuracy_of_the_golden_model = evaluate_model(golden_model_path,test_Datagenerator, loss_function)
-                
-            if fold ==len(kfold_param['split'])-1:
-                print('------------------------------------------------------------------------')
-                print('Score per fold')
-                for i in range(0, len(acc_per_fold)):
-                    print('------------------------------------------------------------------------')
-                    print(f'> Fold {i} - Accuracy: {acc_per_fold[i]}%')
-                print('------------------------------------------------------------------------')
-                print('Average scores for all folds:')
-                print(f'> Accuracy: {np.mean(acc_per_fold)} (+- {np.std(acc_per_fold)})')
-
-                print('------------------------------------------------------------------------')
-                global_performance_file_name = "Global statistical info.txt.txt"
-                global_performance_file_path = os.path.join(output_dir, global_performance_file_name)
-                with open(global_performance_file_path, mode='w') as f:
-                    f.write("The average accuracy for all folds:{}".format(np.mean(acc_per_fold)))
-                    f.write("\nThe variance of the accuracies for all folds:{}".format(np.std(acc_per_fold)))
+                results_dict['models_paths'].append(tflite_model_path)
     else:
-        
         if isinstance(validation, list):
             val_datagenerator, train_datagenerator  = train_DataGenerator.split(validation)
         else:
@@ -426,8 +398,6 @@ def training(
                     raise ValueError("For PyTorch models, both `loss_function` and `optimizer` must be provided.")
             train_datagenerator = pytorch_DataGenerator(train_datagenerator, batch_size=batch_size, shuffle=True)
             val_datagenerator = pytorch_DataGenerator(val_datagenerator, batch_size=batch_size, shuffle=True)
-            if test_Datagenerator is not None:
-                test_Datagenerator = pytorch_DataGenerator(test_Datagenerator, batch_size=batch_size, shuffle=True)
 
         print("\n--- Model training ---")
         classification_class_weight = kwargs.get('classification_class_weight', None)
@@ -444,61 +414,18 @@ def training(
             class_weight=classification_class_weight,
             app_callbacks=training_callback
         )
+        results_dict['models_paths'].append(model_path)
         if isinstance(training_model, tf.keras.Model):
             model_folder = os.path.dirname(model_path)
             model_name = os.path.basename(model_path).replace('.keras', '')
             onnx_model_path = os.path.join(model_folder, f'{model_name}.onnx')
             model_proto, keras_model = convert_keras_to_onnx(model_path, onnx_model_path)
+            results_dict['models_paths'].append(onnx_model_path)
             
-            example_samples = np.array([train_datagenerator[i][0] for i in range(50)])
-            example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
-                
             tflite_model_path = os.path.join(model_folder, f'{model_name}.tflite')
-            tflite_model_path = tflite_quantization(
+            tflite_model_path = tflite_conversion(
                 model_path, 
-                tflite_model_path,
-                example_samples,
-                False,
-                False
+                tflite_model_path
             )
-        txt_performance_file_name = "performances.txt"
-        
-        if quantization_param['enable']:
-            if not model_path.endswith('.keras'):
-                raise ValueError("The model is not a keras model. Only keras model is supported for quantization.")
-            model_folder = os.path.dirname(model_path)
-            
-            example_samples = np.array([train_datagenerator[i][0] for i in range(50)])
-            example_samples = np.reshape(example_samples, (example_samples.shape[0] * example_samples.shape[1],   example_samples.shape[2], example_samples.shape[3], example_samples.shape[4]))
-            print("calibration data shape",example_samples.shape)
-            model_name = os.path.basename(model_path)
-            model_name = model_name.split('.')[0]
-            tflite_model_path = os.path.join(model_folder, 'quantization', f'quantized_{model_name}.tflite')
-            tflite_model_path = tflite_quantization(
-                model_path, 
-                tflite_model_path,
-                example_samples,
-                quantization_param['quantize_input'],
-                quantization_param['quantize_output']
-            )
-            if test_Datagenerator is not None:
-                accuracy_of_the_keras_model = evaluate_model(model_path,test_Datagenerator, model_folder)
-            
-                tflite_model_folder = os.path.dirname(tflite_model_path)
-                accuracy_of_the_tflite_model = evaluate_model(tflite_model_path,test_Datagenerator, tflite_model_folder)
-            
-            performance_file_path = os.path.join(model_folder, txt_performance_file_name)
-            # TODO: Generalize to handle Calssification and Object Detection
-            # with open(performance_file_path, mode='w') as f:
-            #     f.write("The model's path:{}".format(model_path))
-                # f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_keras_model))
-                # f.write("\nThe accuracy of the quantized tflite model on test:{}".format(accuracy_of_the_tflite_model))
-        else:
-            if test_Datagenerator is not None:
-                model_folder = os.path.dirname(model_path)
-                accuracy_of_the_model = evaluate_model(model_path,test_Datagenerator, model_folder, loss_function)
-                print('\n\nEvaluation on Test set:',accuracy_of_the_model,'\n\n')
-                performance_file_path = os.path.join(model_folder, txt_performance_file_name)
-                with open(performance_file_path, mode='w') as f:
-                    f.write("The model's path:{}".format(model_path))
-                    f.write("\nThe accuracy of the model: "+ str(accuracy_of_the_model))
+            results_dict['models_paths'].append(tflite_model_path)
+    return results_dict

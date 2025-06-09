@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
-from saltup.ai.utils.keras.to_tflite_quantization import tflite_quantization
+from saltup.ai.utils.keras.quantization import tflite_quantization
 
 def test_tflite_quantization(tmp_path):
     # Create a mock Keras model

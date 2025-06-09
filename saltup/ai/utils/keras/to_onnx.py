@@ -17,27 +17,34 @@ except ImportError:
     # If aliasing fails, proceed; load_model may still work with custom_objects
     pass
 
-def convert_keras_to_onnx(keras_model_path, onnx_path,opset = 16):
+def convert_keras_to_onnx(
+    keras_model_path: str,
+    onnx_path: str,
+    opset: int = 16
+) -> tuple[onnx.ModelProto, tf.keras.Model]:
     """
     Converts a Keras model (.keras) to ONNX format
-    
+
     Args:
         keras_model_path: Path to the .keras model to convert
         onnx_path: Path where to save the ONNX model
+        opset: ONNX opset version to use (default: 16)
+    Returns:
+        Tuple of (ONNX model proto, loaded Keras model)
     """
     # 1. Load Keras model
     # Don't load compiler to avoid issues with custom loss
-    model = load_model(
+    model: tf.keras.Model = load_model(
         keras_model_path,
         compile=False  
     )
-    
+
     # 2. Get input shape
     input_shape = model.input_shape[1:]  # Remove batch size
-    
+
     # 3. Convert to ONNX
     spec = (tf.TensorSpec(shape=(None,) + input_shape, dtype=tf.float32, name="input"),)
-    
+
     # Model conversion
     model_proto, _ = tf2onnx.convert.from_keras(
         model, 
@@ -51,39 +58,43 @@ def convert_keras_to_onnx(keras_model_path, onnx_path,opset = 16):
         extra_opset=None,
         shape_override=None
     )
-    
+
     # 4. Save ONNX model
     onnx.save(model_proto, onnx_path)
     # Return both ONNX and Keras models for testing
     return model_proto, model
 
-def verify_onnx_model(onnx_path, keras_model, test_input=None):
+def verify_onnx_model(
+    onnx_path: str,
+    keras_model: tf.keras.Model,
+    test_input: np.ndarray = None
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Verify that the ONNX model works correctly
-    
+
     Args:
         onnx_path: Path to the ONNX model
         keras_model: Original Keras model for comparison
         test_input: Optional test input (numpy array)
     """
-    
+
     # Create ONNX session
     session = ort.InferenceSession(onnx_path)
-    
+
     # If no test input provided, create one
     if test_input is None:
         input_shape = keras_model.input_shape[1:]
         test_input = np.random.randn(1, *input_shape).astype(np.float32)
-    
+
     # Get input name
     input_name = session.get_inputs()[0].name
-    
+
     # Run inference with both models
-    keras_pred = keras_model.predict(test_input)
-    onnx_pred = session.run(None, {input_name: test_input.astype(np.float32)})[0]
-    
+    keras_pred: np.ndarray = keras_model.predict(test_input)
+    onnx_pred: np.ndarray = session.run(None, {input_name: test_input.astype(np.float32)})[0]
+
     # Verify predictions are similar
     np.testing.assert_allclose(keras_pred, onnx_pred, rtol=1e-5, atol=1e-5)
     print("Verification test completed successfully!")
-    
+
     return keras_pred, onnx_pred
