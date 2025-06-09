@@ -6,6 +6,7 @@ from typing import (
 import time
 from collections import defaultdict
 from abc import ABC, abstractmethod
+import sys, io
 
 from saltup.ai.object_detection.utils.bbox import BBoxFormat, BBox, BBoxClassId, BBoxClassIdScore
 from saltup.ai.object_detection.utils.metrics import compute_ap, compute_map_50_95, compute_ap_for_threshold
@@ -24,13 +25,12 @@ class YoloOutput:
         image: Optional[Image] = None,
     ):
         """
-        Initialize YoloOutput with bounding boxes, scores, and an optional image.
+        Initialize YoloOutput with bounding boxes and an optional image.
 
         Args:
-            boxes: List of BBox objects representing the bounding boxes.
-            scores: List of confidence scores.
+            boxes: List of tuples (BBox, class_id, score) representing the bounding boxes, class IDs, and confidence scores.
             image: Optional image associated with the results.
-image        """
+        """
         self._boxes = boxes  # List of BBox objects
         self._image = image  # Optional image associated with the results
 
@@ -530,6 +530,7 @@ def evaluate(
     dataloader: BaseDataloader,
     iou_threshold: float = 0.5,
     confidence_threshold: float = 0.5,
+    output_streams: Optional[List[io.IOBase]] = None,
 ) -> Tuple[Dict[int, Metric], Metric]:
     """
     Evaluate a YOLO model on a dataset using a dataloader.
@@ -537,9 +538,9 @@ def evaluate(
     Args:
         yolo (BaseYolo): The YOLO model to evaluate.
         dataloader (BaseDataloader): Dataloader yielding (image, label) pairs.
-        preprocess (Callable, optional): Preprocessing function for images. Defaults to identity.
         iou_threshold (float, optional): IoU threshold for matching. Defaults to 0.5.
         confidence_threshold (float, optional): Confidence threshold for predictions. Defaults to 0.5.
+        stdout (Optional[List[io.IOBase]]): List of output streams (e.g., [sys.stdout, file]).
 
     Returns:
         Tuple[Dict[int, Metric], Metric]: 
@@ -547,7 +548,7 @@ def evaluate(
             - Overall Metric object for all classes.
     """
     number_classes = yolo.get_number_class()
-    metrics_per_class = {k:Metric() for k in range(number_classes)}
+    metrics_per_class = {k: Metric() for k in range(number_classes)}
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -566,5 +567,29 @@ def evaluate(
                 metrics_per_class[class_id].addTP(one_shot_metric[class_id].getTP())
                 metrics_per_class[class_id].addFP(one_shot_metric[class_id].getFP())
                 metrics_per_class[class_id].addFN(one_shot_metric[class_id].getFN())
+
+    overall_metric = sum(metrics_per_class.values(), start=Metric())
     
-    return metrics_per_class
+    # Optional: print to all provided streams
+    if output_streams:
+        for stream in output_streams:
+            stream.write(f"{'Images processed:':<20} {len(dataloader)}\n")
+            stream.write(f"\nPer class:\n")
+            stream.write("+"*80 + "\n")
+            for class_id in range(number_classes):
+                if class_id == 0:
+                    stream.write(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}\n")
+                    stream.write("+"*80 + "\n")
+                stream.write(f"    {class_id:<12} | {metrics_per_class[class_id].getPrecision():.4f} {'':<12}| {metrics_per_class[class_id].getRecall():.4f} {'':<12}| {metrics_per_class[class_id].getF1Score():.4f}\n")
+                stream.write("-"*80 + "\n")
+            stream.write("\nOverall:\n")
+            stream.write(f"  - {'True Positives (TP):':<25} {overall_metric.getTP()}\n")
+            stream.write(f"  - {'False Positives (FP):':<25} {overall_metric.getFP()}\n")
+            stream.write(f"  - {'False Negatives (FN):':<25} {overall_metric.getFN()}\n")
+            stream.write(f"  - {'Overall Precision:':<25} {overall_metric.getPrecision():.4f}\n")
+            stream.write(f"  - {'Overall Recall:':<25} {overall_metric.getRecall():.4f}\n")
+            stream.write(f"  - {'Overall F1 Score:':<25} {overall_metric.getF1Score():.4f}\n")
+            stream.write("="*80 + "\n\n")
+            stream.flush()
+    
+    return metrics_per_class, overall_metric
