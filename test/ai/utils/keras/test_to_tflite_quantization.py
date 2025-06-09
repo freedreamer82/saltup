@@ -1,8 +1,9 @@
 import os
 import numpy as np
 import tensorflow as tf
-from saltup.ai.utils.keras.quantization import tflite_quantization
+from saltup.ai.utils.keras.quantization import quantize
 
+# TODO @SonFra: Adjust the method signature to match the actual function
 def test_tflite_quantization(tmp_path):
     # Create a mock Keras model
     model = tf.keras.Sequential([
@@ -21,9 +22,9 @@ def test_tflite_quantization(tmp_path):
 
     # Define output path for the TFLite model
     output_tflite_path = str(tmp_path / "mock_model_quantized.tflite")
-
+    pass
     # Call the tflite_quantization function
-    quantized_model_path = tflite_quantization(
+    quantized_model_path = quantize(
         model_path=golden_model_path,
         output_tflite_path=output_tflite_path,
         x_train=x_train,

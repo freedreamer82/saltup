@@ -5,6 +5,7 @@ import numpy as np
 
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 
+# TODO @S0nFra: Add set/get name method
 class BaseDatagenerator(ABC):
     def __init__(
         self, 

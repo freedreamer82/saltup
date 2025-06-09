@@ -10,6 +10,8 @@ from saltup.ai.object_detection.utils.bbox import nms, convert_matrix_boxes
 TEST_IMAGE_WIDTH = 640
 TEST_IMAGE_HEIGHT = 480
 
+#TODO SonFra: Add test for check normalization of BBox coordinates
+
 # Test cases for BBox class
 def test_bbox_initialization():
     # Test initialization with CORNERS format

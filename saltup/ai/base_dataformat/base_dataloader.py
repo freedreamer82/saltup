@@ -19,7 +19,7 @@ class StorageFormat(Enum):
     PICKLE = 'pkl'
     PARQUET = 'parquet'
 
-
+# TODO @S0nFra: Add set/get name method
 class BaseDataloader(ABC):
     """Base interface for dataset loaders.
 
