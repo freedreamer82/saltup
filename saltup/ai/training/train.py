@@ -145,7 +145,8 @@ def _train_model(
         saved_models_folder_path = os.path.join(output_dir, "saved_models")
         os.makedirs(saved_models_folder_path, exist_ok=True)
 
-        # TODO: Check saved models. Only best and last epoch models must be saved
+        # TODO @marc: Check saved models. Only best and last epoch models must be saved
+        # TODO @marc: Review pytorch callbacks according to new implementation
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
         b_train_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
