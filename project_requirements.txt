@@ -11,7 +11,7 @@ seaborn
 Pillow
 
 # Machine Learning and Deep Learning
-tensorflow
+tensorflow==2.18.0
 tf2onnx
 scikit-learn
 onnxruntime-gpu

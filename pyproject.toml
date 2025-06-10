@@ -23,7 +23,7 @@ dependencies = [
     "boto3",
     "onnx",
     "onnxruntime-gpu",
-    "tensorflow",
+    "tensorflow==2.18.0",
     "tf_keras",
     "torch",
     "torchvision",
