@@ -121,7 +121,9 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_loss=logs.get('val_loss', None),
             accuracy=logs.get('accuracy', None),
             val_accuracy=logs.get('val_accuracy', None),
-            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']}
+            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
+            best_model=self.best_model,
+            best_epoch=self.best_epoch
         )
         self.cb.on_train_end(context)
 
