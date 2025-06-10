@@ -8,44 +8,47 @@ from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, convert_matr
 
 
 def compute_anchors(boxes: np.ndarray, num_anchors: int) -> np.ndarray:
-   """
-   Compute optimal anchor boxes using K-means clustering.
-   
-   Args:
-       boxes: Array of shape (N, 2) containing width and height of bounding boxes
-       num_anchors: Number of anchor boxes to generate
-       
-   Returns:
-       np.ndarray: Array of shape (num_anchors, 2) containing the computed anchor boxes
-                  in format (width, height)
-                  
-   Raises:
-       ValueError: If boxes is empty or has wrong shape
-       ValueError: If num_anchors is less than 1 or greater than number of boxes
-       TypeError: If boxes is not a numpy array
-   """
-   # Input validation
-   if not isinstance(boxes, np.ndarray):
-       raise TypeError("boxes must be a numpy array")
-       
-   if len(boxes.shape) != 2 or boxes.shape[1] != 2:
-       raise ValueError("boxes must have shape (N, 2) where N is number of boxes")
-       
-   if boxes.shape[0] == 0:
-       raise ValueError("boxes array is empty")
-       
-   if num_anchors < 1:
-       raise ValueError("num_anchors must be greater than 0")
-       
-   if num_anchors > boxes.shape[0]:
-       raise ValueError(f"num_anchors ({num_anchors}) cannot be greater than number of boxes ({boxes.shape[0]})")
+    """
+    Compute optimal anchor boxes using K-means clustering.
 
-   # Perform K-means clustering
-   kmeans = KMeans(n_clusters=num_anchors, random_state=0)
-   kmeans.fit(boxes)
+    Args:
+        boxes: Array of shape (N, 2) containing width and height of bounding boxes
+        num_anchors: Number of anchor boxes to generate
 
-   # Return cluster centroids (optimal anchors)
-   return kmeans.cluster_centers_
+    Returns:
+        np.ndarray: Array of shape (num_anchors, 2) containing the computed anchor boxes
+                   in format (width, height)
+
+    Raises:
+        ValueError: If boxes is empty or has wrong shape
+        ValueError: If num_anchors is less than 1 or greater than number of boxes
+        TypeError: If boxes is not a numpy array
+    """
+    # Input validation
+    if not isinstance(boxes, np.ndarray):
+        raise TypeError("boxes must be a numpy array")
+
+    if len(boxes.shape) != 2 or boxes.shape[1] != 2:
+        raise ValueError("boxes must have shape (N, 2) where N is number of boxes")
+
+    if boxes.shape[0] == 0:
+        raise ValueError("boxes array is empty")
+
+    if num_anchors < 1:
+        raise ValueError("num_anchors must be greater than 0")
+
+    if num_anchors > boxes.shape[0]:
+        raise ValueError(f"num_anchors ({num_anchors}) cannot be greater than number of boxes ({boxes.shape[0]})")
+
+    # Perform K-means clustering
+    kmeans = KMeans(n_clusters=num_anchors, random_state=0, n_init=10)
+    kmeans.fit(boxes)
+
+    # Sort anchors by area (width * height) for deterministic order
+    anchors = kmeans.cluster_centers_
+    anchors = anchors[np.argsort(anchors[:, 0] * anchors[:, 1])]
+
+    return anchors
 
 
 def compute_anchor_iou(wh1: np.ndarray, wh2: np.ndarray) -> float:

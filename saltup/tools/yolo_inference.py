@@ -386,14 +386,14 @@ def main(args=None):
             if class_id == 0:
                 print(f"     {'label':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
                 print("+"*80)
-            print(f"  o {class_label:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f} {'':<12}")
+            print(f"  {class_label:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f} {'':<12}")
             print("-"*80)
     else:
         for class_id in range(args.num_class):
             if class_id == 0:
                 print(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
                 print("+"*80)
-            print(f"  o {class_id:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f}")
+            print(f"  {class_id:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f}")
             print("-"*80)
     
     print("\nOverall:")

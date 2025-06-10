@@ -176,7 +176,7 @@ class YoloAnchorsBased(BaseYolo):
             if all(coord >= 0 for coord in box):
                 box_object = BBox(
                     coordinates=box, 
-                    fmt=BBoxFormat.CORNERS_ABSOLUTE,
+                    fmt=BBoxFormat.CORNERS_NORMALIZED,
                     img_height=image_height, 
                     img_width=image_width
                 )
