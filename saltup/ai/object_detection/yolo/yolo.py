@@ -549,6 +549,7 @@ def evaluate(
     """
     number_classes = yolo.get_number_class()
     metrics_per_class = {k: Metric() for k in range(number_classes)}
+    image_count = 0
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -567,29 +568,33 @@ def evaluate(
                 metrics_per_class[class_id].addTP(one_shot_metric[class_id].getTP())
                 metrics_per_class[class_id].addFP(one_shot_metric[class_id].getFP())
                 metrics_per_class[class_id].addFN(one_shot_metric[class_id].getFN())
+        image_count += 1
 
     overall_metric = sum(metrics_per_class.values(), start=Metric())
-    
     # Optional: print to all provided streams
     if output_streams:
+        output_text = []
+        output_text.append(f"{'Images processed:':<20} {image_count}\n")
+        output_text.append(f"\nPer class:\n")
+        output_text.append("+"*80 + "\n")
+        for class_id in range(number_classes):
+            if class_id == 0:
+                output_text.append(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}\n")
+                output_text.append("+"*80 + "\n")
+            output_text.append(f"    {class_id:<12} | {metrics_per_class[class_id].getPrecision():.4f} {'':<12}| {metrics_per_class[class_id].getRecall():.4f} {'':<12}| {metrics_per_class[class_id].getF1Score():.4f}\n")
+            output_text.append("-"*80 + "\n")
+        output_text.append("\nOverall:\n")
+        output_text.append(f"  - {'True Positives (TP):':<25} {overall_metric.getTP()}\n")
+        output_text.append(f"  - {'False Positives (FP):':<25} {overall_metric.getFP()}\n")
+        output_text.append(f"  - {'False Negatives (FN):':<25} {overall_metric.getFN()}\n")
+        output_text.append(f"  - {'Overall Precision:':<25} {overall_metric.getPrecision():.4f}\n")
+        output_text.append(f"  - {'Overall Recall:':<25} {overall_metric.getRecall():.4f}\n")
+        output_text.append(f"  - {'Overall F1 Score:':<25} {overall_metric.getF1Score():.4f}\n")
+        output_text.append("="*80 + "\n\n")
+        output_str = ''.join(output_text)
         for stream in output_streams:
-            stream.write(f"{'Images processed:':<20} {len(dataloader)}\n")
-            stream.write(f"\nPer class:\n")
-            stream.write("+"*80 + "\n")
-            for class_id in range(number_classes):
-                if class_id == 0:
-                    stream.write(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}\n")
-                    stream.write("+"*80 + "\n")
-                stream.write(f"    {class_id:<12} | {metrics_per_class[class_id].getPrecision():.4f} {'':<12}| {metrics_per_class[class_id].getRecall():.4f} {'':<12}| {metrics_per_class[class_id].getF1Score():.4f}\n")
-                stream.write("-"*80 + "\n")
-            stream.write("\nOverall:\n")
-            stream.write(f"  - {'True Positives (TP):':<25} {overall_metric.getTP()}\n")
-            stream.write(f"  - {'False Positives (FP):':<25} {overall_metric.getFP()}\n")
-            stream.write(f"  - {'False Negatives (FN):':<25} {overall_metric.getFN()}\n")
-            stream.write(f"  - {'Overall Precision:':<25} {overall_metric.getPrecision():.4f}\n")
-            stream.write(f"  - {'Overall Recall:':<25} {overall_metric.getRecall():.4f}\n")
-            stream.write(f"  - {'Overall F1 Score:':<25} {overall_metric.getF1Score():.4f}\n")
-            stream.write("="*80 + "\n\n")
-            stream.flush()
-    
+            if stream is not None and hasattr(stream, "write"):
+                stream.write(output_str)
+                if hasattr(stream, "flush"):
+                    stream.flush()
     return metrics_per_class, overall_metric
