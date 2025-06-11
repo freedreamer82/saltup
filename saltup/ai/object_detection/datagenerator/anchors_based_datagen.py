@@ -108,61 +108,16 @@ class AnchorsBasedDatagen(BaseDatagenerator):
         
         for i, idx in enumerate(batch_indexes):
             try:
-                # Get image and labels from dataset loader
-                image, annotation_data = self.dataloader[idx]
-                
-                # Extract boxes and class labels
-                if len(annotation_data) > 0:
-                    # Check type and extract data
-                    if isinstance(annotation_data[0], BBoxClassId):
-                        boxes, class_labels = map(np.array, zip(*[
-                            [item.get_coordinates(fmt=BBoxFormat.YOLO), item.class_id]
-                            for item in annotation_data
-                        ]))
-                    elif isinstance(annotation_data[0], np.ndarray):
-                        boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
-                    else:
-                        raise TypeError(
-                            f"Annotation data type '{type(annotation_data[0])}' not supported. "
-                            "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
-                        )
-                else:
-                    # No annotations case - create empty arrays with correct shapes
-                    boxes = np.empty((0, 4), dtype=np.float32)
-                    class_labels = np.empty(0, dtype=np.int32)
-        
-                # Preprocess image
-                image = self._preprocess(image, self.target_height, self.target_width, apply_padding=False)
+                # Load image and annotations
+                image, boxes, class_labels = self._process_image_dataloader(idx)
                 
                 # Apply augmentations
                 if len(boxes) > 0 and self.do_augment:
-                    try:
-                        transformed = self.transform(
-                            image=image.squeeze(),
-                            bboxes=boxes.tolist(),
-                            class_labels=class_labels
-                        )
-                        
-                        if transformed['bboxes']:
-                            new_boxes = np.array(transformed['bboxes'])
-                            
-                            # Check that the transformed boxes are valid
-                            valid_mask = (
-                                (new_boxes[:, 0] >= 0) & (new_boxes[:, 0] <= 1) &  # x_center
-                                (new_boxes[:, 1] >= 0) & (new_boxes[:, 1] <= 1) &  # y_center
-                                (new_boxes[:, 2] > 0) & (new_boxes[:, 2] < 1) &    # width
-                                (new_boxes[:, 3] > 0) & (new_boxes[:, 3] < 1)      # height
-                            )
-                            
-                            if np.any(valid_mask):
-                                image = np.expand_dims(transformed['image'], axis=-1)
-                                boxes = new_boxes[valid_mask]
-                                class_labels = np.array(transformed['class_labels'])[valid_mask]
-                            else:
-                                pass
-                        
-                    except Exception as e:
-                        self._logger.error(f"Error in augmenting: {e}")
+                    image, boxes, class_labels = self._augument(
+                        image=image,
+                        boxes=boxes,
+                        class_labels=class_labels
+                    )
                 
                 # Convert labels to grid format
                 if len(boxes) > 0:
@@ -182,11 +137,101 @@ class AnchorsBasedDatagen(BaseDatagenerator):
                 continue
             
         return images, labels
+    
+    def _process_image_dataloader(self, idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Retrieves and processes an image and its annotations from the dataloader at the specified index.
+        Args:
+            idx (int): Index of the sample to retrieve from the dataloader.
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray]:
+                - image (np.ndarray): The preprocessed image array with shape (target_height, target_width, channels).
+                - boxes (np.ndarray): Array of bounding boxes with shape (N, 4), where N is the number of objects. 
+                    Each box is in YOLO format (x_center, y_center, width, height).
+                - class_labels (np.ndarray): Array of class labels with shape (N,), where N is the number of objects.
+        Raises:
+            TypeError: If the annotation data type is not supported. Supported types are 'saltup.BBoxClassId' and 'np.ndarray'.
+        Notes:
+            - If there are no annotations for the image, empty arrays for boxes and class_labels are returned.
+            - The image is preprocessed to the target height and width without padding.
+        """
+        # Get image and labels from dataset loader
+        image, annotation_data = self.dataloader[idx]
+        
+        # Extract boxes and class labels
+        if len(annotation_data) > 0:
+            # Check type and extract data
+            if isinstance(annotation_data[0], BBoxClassId):
+                boxes, class_labels = map(np.array, zip(*[
+                    [item.get_coordinates(fmt=BBoxFormat.YOLO), item.class_id]
+                    for item in annotation_data
+                ]))
+            elif isinstance(annotation_data[0], np.ndarray):
+                boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
+            else:
+                raise TypeError(
+                    f"Annotation data type '{type(annotation_data[0])}' not supported. "
+                    "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
+                )
+        else:
+            # No annotations case - create empty arrays with correct shapes
+            boxes = np.empty((0, 4), dtype=np.float32)
+            class_labels = np.empty(0, dtype=np.int32)
+
+        # Preprocess image
+        image = self._preprocess(image, self.target_height, self.target_width, apply_padding=False)
+
+        return image, boxes, class_labels
+    
+    def _augument(
+        self, 
+        image: np.ndarray, 
+        boxes: np.ndarray, 
+        class_labels: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Apply augmentations to the image and bounding boxes.
+        Args:
+            image: Input image as numpy array
+            boxes: Bounding boxes as numpy array of shape (N, 4)
+            class_labels: Class labels as numpy array of shape (N,)
+        Returns:
+            Tuple of (augmented_image, augmented_boxes, augmented_class_labels)
+        """
+        try:
+            transformed = self.transform(
+                image=image.squeeze(),
+                bboxes=boxes.tolist(),
+                class_labels=class_labels
+            )
+            
+            if transformed['bboxes']:
+                new_boxes = np.array(transformed['bboxes'])
+                
+                # Check that the transformed boxes are valid
+                valid_mask = (
+                    (new_boxes[:, 0] >= 0) & (new_boxes[:, 0] <= 1) &  # x_center
+                    (new_boxes[:, 1] >= 0) & (new_boxes[:, 1] <= 1) &  # y_center
+                    (new_boxes[:, 2] > 0) & (new_boxes[:, 2] < 1) &    # width
+                    (new_boxes[:, 3] > 0) & (new_boxes[:, 3] < 1)      # height
+                )
+                
+                if np.any(valid_mask):
+                    image = np.expand_dims(transformed['image'], axis=-1)
+                    boxes = new_boxes[valid_mask]
+                    class_labels = np.array(transformed['class_labels'])[valid_mask]
+                else:
+                    pass
+            
+        except Exception as e:
+            self._logger.error(f"Error in augmenting: {e}")
+        
+        return image, boxes, class_labels
         
     def on_epoch_end(self):
         self._rng.shuffle(self._indexes)
 
-    def visualize_sample(self, idx, show_grid=True, show_anchors=False):
+    def visualize_sample(self, idx, show_grid=True, show_anchors=False, augmented=False):
         """
         Visualize a dataset sample with annotations.
         
@@ -212,58 +257,43 @@ class AnchorsBasedDatagen(BaseDatagenerator):
         import matplotlib.patches as patches
         
         try:
-            image, annotation_data = self.dataloader[idx]
             
-            # Extract boxes and class labels
-            if len(annotation_data) > 0:
-                # Check type and extract data
-                if isinstance(annotation_data[0], BBoxClassId):
-                    boxes, class_labels = map(np.array, zip(*[
-                        [item.get_coordinates(fmt=BBoxFormat.YOLO), item.class_id]
-                        for item in annotation_data
-                    ]))
-                elif isinstance(annotation_data[0], np.ndarray):
-                    boxes, class_labels = annotation_data[:,:4], annotation_data[:,4]
-                else:
-                    raise TypeError(
-                        f"Annotation data type '{type(annotation_data[0])}' not supported. "
-                        "Please provide annotations in 'saltup.BBoxClassId' or 'np.ndarray'."
-                    )
-            else:
-                # No annotations case - create empty arrays with correct shapes
-                boxes = np.empty((0, 4), dtype=np.float32)
-                class_labels = np.empty(0, dtype=np.int32)
-
-            # Get image data and dimensions
-            if isinstance(image, Image):
-                image_data = image.get_data()
-                img_width, img_height = image.get_width(), image.get_height()
-            else:
-                image_data = image
-                img_height, img_width = image.shape[:2]
+            # Get image and labels from dataset loader
+            orig_image, orig_annotation_data = self.dataloader[idx]
 
             # Preprocess image
-            processed_image = self._preprocess(
-                image, self.target_height, self.target_width, apply_padding=False
-            )
+            processed_image, origin_boxes, class_labels = self._process_image_dataloader(idx)
             
+            if augmented and self.do_augment:                
+                # Applica augmentation
+                augmented_image, augmented_boxes, class_labels = self._augument(
+                    image=processed_image,
+                    boxes=origin_boxes,
+                    class_labels=class_labels
+                )
+                # Aggiorna image per il resto della funzione
+                processed_image = augmented_image
+                boxes = augmented_boxes
+            else:
+                boxes = origin_boxes
+
             # Create subplot
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
             
             # Plot original image
-            ax1.imshow(image_data, cmap='gray' if image_data.shape[-1] == 1 else None)
-            ax1.set_title(f'Original Image ({img_width}x{img_height})')
+            ax1.imshow(orig_image.get_data(), cmap='gray' if orig_image.get_number_channel() == 1 else None)
+            ax1.set_title(f'Original Image ({orig_image.get_width()}x{orig_image.get_height()})')
             
             # Draw original boxes
-            if len(boxes) > 0:
-                for box, class_id in zip(boxes, class_labels):
+            if len(origin_boxes) > 0:
+                for box, class_id in zip(origin_boxes, class_labels):
                     x_center, y_center, width, height = box
                     
                     # Convert normalized coordinates to pixels
-                    x1 = int((x_center - width/2) * img_width)
-                    y1 = int((y_center - height/2) * img_height)
-                    x2 = int((x_center + width/2) * img_width)
-                    y2 = int((y_center + height/2) * img_height)
+                    x1 = int((x_center - width/2) * orig_image.get_width())
+                    y1 = int((y_center - height/2) * orig_image.get_height())
+                    x2 = int((x_center + width/2) * orig_image.get_width())
+                    y2 = int((y_center + height/2) * orig_image.get_height())
                     
                     # Draw rectangle
                     rect = patches.Rectangle(
