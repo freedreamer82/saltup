@@ -159,7 +159,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
     
 
 class MQTTCallback(BaseCallback):
-    def __init__(self, broker, port, topic, client_id="keras-metrics", username=None, password=None, notebook_id=None):
+    def __init__(self, broker, port, topic, client_id="keras-metrics", username=None, password=None, id=None):
         """
         Callback to send training metrics via MQTT.
 
@@ -170,30 +170,42 @@ class MQTTCallback(BaseCallback):
             client_id (str, optional): MQTT client ID. Default is "keras-metrics".
             username (str, optional): Username for authentication. Default is None.
             password (str, optional): Password for authentication. Default is None.
-            notebook_id (str, optional): Identifier for the notebook. Default is None.
+            id (str, optional): Identifier string. Default is None.
         """
         super().__init__()
         self.broker = broker
         self.port = port
-        self.notebookid = notebook_id
+        self.id = id
         self.topic = topic
         self.client_id = client_id
         self.client = mqtt.Client(client_id=client_id)
+        self.custom_data = {}
         if username and password:
             self.client.username_pw_set(username, password)
         # Connect to the MQTT broker
         self.client.connect(self.broker, self.port)
         self.client.loop_start()  # Start the background loop to handle the connection
 
+    def set_custom_data(self, custom_data: dict):
+        """
+        Set custom data to be merged into the metrics sent via MQTT.
+        Args:
+            custom_data (dict): Custom key-value pairs to include in the message.
+        """
+        self.custom_data = custom_data or {}
+
     def on_epoch_end(self, epoch, context: CallbackContext):
         """
         Method called at the end of each epoch.
         """        
         message = {
-            "notebook": self.notebookid if self.notebookid is not None else "",
+            "id": self.id if self.id is not None else "",
             "epoch": epoch + 1,
+            "datetime": datetime.datetime.now().isoformat(),
             "metrics": {k: round(v, 4) for k, v in context.to_dict().items() if isinstance(v, float)},
         }
+        if self.custom_data:
+            message.update(self.custom_data)
         self.client.publish(self.topic, str(message))
 
     def on_train_end(self, context: CallbackContext):
