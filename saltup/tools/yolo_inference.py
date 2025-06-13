@@ -279,7 +279,7 @@ def main(args=None):
     postprocess_times = []
 
     pbar = tqdm(image_paths, desc="Processing images", position=0, leave=True, dynamic_ncols=True)
-    for image_path in pbar:
+    for i, image_path in enumerate(pbar):
         try:
             # Process the image
             image = BaseYolo.load_image(image_path, ColorMode.GRAY if yolo.get_number_image_channel() == 1 else ColorMode.RGB)
@@ -334,6 +334,7 @@ def main(args=None):
                     # Update progress bar with current metrics
                     pbar.set_postfix(**metric.get_metrics())
             else:
+                print(f"Image {i+1}:{image_path}")
                 print_bbox_info(boxes, class_ids, scores, class_labels_dict)
 
             if args.gui:               
@@ -365,6 +366,7 @@ def main(args=None):
     print("="*80)
     print("\n")
     print(f"Model path: {args.model}")
+    print(f"Model type: {yolotype.name}")
     print(f"Total execution time: {total_time:.2f} seconds")
     print(f"Average time per image: {avg_time_per_image:.2f} seconds")
 
@@ -373,37 +375,38 @@ def main(args=None):
     print(f"  - {'Inference:':<25} {avg_inference_time:.2f} ms")
     print(f"  - {'Post-processing:':<25} {avg_postprocess_time:.2f} ms")
     
-    print("\n")
-    print("="*80)
-    print(f"{'METRICS SUMMARY':^80}")
-    print("="*80)
-    print("\n")
-    print(f"{'Images processed:':<20} {num_images}")
-    print(f"\nPer class:")
-    print("+"*80)
-    if args.cls_name:
-        for class_id, class_label in enumerate(class_labels):
-            if class_id == 0:
-                print(f"     {'label':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
-                print("+"*80)
-            print(f"  {class_label:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f} {'':<12}")
-            print("-"*80)
-    else:
-        for class_id in range(args.num_class):
-            if class_id == 0:
-                print(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
-                print("+"*80)
-            print(f"  {class_id:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f}")
-            print("-"*80)
-    
-    print("\nOverall:")
-    print(f"  - {'True Positives (TP):':<25} {metric.getTP()}")
-    print(f"  - {'False Positives (FP):':<25} {metric.getFP()}")
-    print(f"  - {'False Negatives (FN):':<25} {metric.getFN()}")
-    print(f"  - {'Overall Precision:':<25} {metric.getPrecision():.4f}")
-    print(f"  - {'Overall Recall:':<25} {metric.getRecall():.4f}")
-    print(f"  - {'Overall F1 Score:':<25} {metric.getF1Score():.4f}")
-    print("="*80)
+    if args.label:
+        print("\n")
+        print("="*80)
+        print(f"{'METRICS SUMMARY':^80}")
+        print("="*80)
+        print("\n")
+        print(f"{'Images processed:':<20} {num_images}")
+        print(f"\nPer class:")
+        print("+"*80)
+        if args.cls_name:
+            for class_id, class_label in enumerate(class_labels):
+                if class_id == 0:
+                    print(f"     {'label':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
+                    print("+"*80)
+                print(f"  {class_label:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f} {'':<12}")
+                print("-"*80)
+        else:
+            for class_id in range(args.num_class):
+                if class_id == 0:
+                    print(f"     {'id':<12} | {'Precision':<12} {'':>12} {'Recall':<12} {'':>6}{'F1 Score':<12}")
+                    print("+"*80)
+                print(f"  {class_id:<12} | {dict_class_metric[class_id].getPrecision():.4f} {'':<12}| {dict_class_metric[class_id].getRecall():.4f} {'':<12}| {dict_class_metric[class_id].getF1Score():.4f}")
+                print("-"*80)
+        
+        print("\nOverall:")
+        print(f"  - {'True Positives (TP):':<25} {metric.getTP()}")
+        print(f"  - {'False Positives (FP):':<25} {metric.getFP()}")
+        print(f"  - {'False Negatives (FN):':<25} {metric.getFN()}")
+        print(f"  - {'Overall Precision:':<25} {metric.getPrecision():.4f}")
+        print(f"  - {'Overall Recall:':<25} {metric.getRecall():.4f}")
+        print(f"  - {'Overall F1 Score:':<25} {metric.getF1Score():.4f}")
+        print("="*80)
     
 if __name__ == "__main__":
     main()
