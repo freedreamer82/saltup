@@ -1035,6 +1035,7 @@ class BBox:
             to_fmt = BBOX_INNER_FORMAT, 
             img_shape = (img_height, img_width)
         )
+        self.fmt = BBOX_INNER_FORMAT
         self.img_width = img_width
         self.img_height = img_height
 
