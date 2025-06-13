@@ -525,6 +525,7 @@ def evaluate_image(
     return metrics_per_class
 
 
+
 def evaluate(
     yolo: BaseYolo,
     dataloader: BaseDataloader,
@@ -574,6 +575,8 @@ def evaluate(
     # Optional: print to all provided streams
     if output_streams:
         output_text = []
+        output_text.append(f"{'IoU threshold:':<20} {iou_threshold}\n")
+        output_text.append(f"{'Confidence threshold:':<20} {confidence_threshold}\n")
         output_text.append(f"{'Images processed:':<20} {image_count}\n")
         output_text.append(f"\nPer class:\n")
         output_text.append("+"*80 + "\n")
