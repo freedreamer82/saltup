@@ -201,6 +201,7 @@ class MQTTCallback(BaseCallback):
         message = {
             "id": self.id if self.id is not None else "",
             "epoch": epoch + 1,
+            "total_epochs": context.epochs,
             "datetime": datetime.datetime.now().isoformat(),
             "metrics": {k: round(v, 4) for k, v in context.to_dict().items() if isinstance(v, float)},
         }
