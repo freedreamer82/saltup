@@ -354,7 +354,7 @@ def main(args=None):
     
     end_time = time.time()
     total_time = end_time - start_time
-    avg_time_per_image = total_time / len(image_paths) if len(image_paths) > 0 else 0
+    avg_time_per_image = total_time * 1000 / len(image_paths) if len(image_paths) > 0 else 0
 
     avg_preprocess_time = robust_mean(preprocess_times)
     avg_inference_time = robust_mean(inference_times)
@@ -368,7 +368,7 @@ def main(args=None):
     print(f"Model path: {args.model}")
     print(f"Model type: {yolotype.name}")
     print(f"Total execution time: {total_time:.2f} seconds")
-    print(f"Average time per image: {avg_time_per_image:.2f} seconds")
+    print(f"Average time per image: {avg_time_per_image:.2f} ms")
 
     print("Timings (per image, robust mean):")
     print(f"  - {'Pre-processing:':<25} {avg_preprocess_time:.2f} ms")
