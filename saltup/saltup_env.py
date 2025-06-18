@@ -9,7 +9,7 @@ except ImportError:
         "Please upgrade to Python 3.8 or later."
     )
     
-def get_version_from_metadata():
+def _get_version_from_metadata():
     try:
         return version("saltup")
     except PackageNotFoundError:
@@ -26,7 +26,7 @@ class _SaltupEnv:
 
     @property
     def VERSION(self):
-        return get_version_from_metadata()
+        return _get_version_from_metadata()
     
     @property
     def SALTUP_KERAS_TRAIN_SHUFFLE(self):
