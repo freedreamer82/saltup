@@ -376,7 +376,7 @@ def training(
             if isinstance(fold_model, tf.keras.Model):
                 golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
                 onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
-                onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path)
+                onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path,SaltupEnv.SALTUP_ONNX_OPSET)
                 results_dict['models_paths'].append(onnx_model_path)
                 
                 tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')

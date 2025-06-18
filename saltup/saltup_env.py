@@ -15,6 +15,7 @@ def get_version_from_metadata():
     except PackageNotFoundError:
         return "unknown"
 
+ 
 class _SaltupEnv:
     _instance = None
 
@@ -47,5 +48,9 @@ class _SaltupEnv:
     def SALTUP_BBOX_FLOAT_PRECISION(self):
         return int(os.getenv("SALTUP_BBOX_FLOAT_PRECISION", "4"))
 
+    @property
+    def SALTUP_ONNX_OPSET(self):
+            return int(os.getenv("SALTUP_ONNX_OPSET", 16))
+    
 # Create a singleton instance for easy access
 SaltupEnv = _SaltupEnv()
