@@ -7,6 +7,8 @@ import paho.mqtt.client as mqtt
 import tensorflow as tf
 import torch
 
+from saltup.ai.classification.datagenerator import BaseDatagenerator
+from saltup.ai.classification.evaluate import evaluate_model
 
 @dataclass
 class CallbackContext:
@@ -286,3 +288,82 @@ class FileLogger(BaseCallback):
                             f"{self.best_metrics['val_accuracy']}\n")
             except Exception as e:
                 print(f"❌ Error while writing best statistics: {e}")
+                    
+class ClassificationEvaluationsCallback(BaseCallback):
+    def __init__(
+        self,
+        datagen: BaseDatagenerator, 
+        end_of_train_datagen: BaseDatagenerator = None,
+        every_epoch: int = 1,
+        output_file: str = None,
+        class_names: dict = None
+    ):
+        super().__init__()
+        self.datagen = datagen
+        self.end_of_train_datagen = end_of_train_datagen
+        self.every_epoch = every_epoch
+        self.output_file = output_file
+        self.class_names = class_names
+
+    def _print(self, msg):
+        if self.output_file is not None:
+            with open(self.output_file, "a") as f:
+                print(msg, file=f)
+        print(msg)
+
+    def on_train_end(self, context: CallbackContext):
+        model=context.best_model
+        print("\n\n")
+        self._print("=" * 80)
+        self._print(f"{f'METRICS ON TRAIN END':^80}")
+        self._print("=" * 80)
+        if self.class_names is not None:
+            self._print(f"class_names: {self.class_names}")
+
+        global_metric, metric_per_class = evaluate_model(model, self.end_of_train_datagen)
+        self._print(f"{'Images processed:':<20} {len(self.datagen.dataset) if hasattr(self.datagen, 'dataset') else len(self.datagen)}")
+
+        self._print("\nPer class:")
+        self._print("+" * 50)
+        self._print(f"{'Label':<18} | {'Accuracy':<10}")
+        self._print("-" * 50)
+        for class_id, class_label in enumerate(self.class_names):
+            metrics = metric_per_class[class_id]
+            self._print(f"{class_label:<18} | {metrics.getAccuracy():<10.4f}")
+
+        self._print("\nOverall:")
+        self._print(f"{'True Positives (TP):':<25} {global_metric.getTP()}")
+        self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
+        self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
+        self._print("=" * 80)
+        super().on_train_end(context)
+
+    def on_epoch_end(self, epoch: int, context: CallbackContext):
+        model=context.best_model
+        if (epoch + 1) % self.every_epoch == 0:
+            print("\n\n")
+            self._print("=" * 80)
+            self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch + 1}':^80}")
+            self._print("=" * 80)
+
+            self._print(f"Best model epoch: {context.best_epoch}")
+            if self.class_names is not None:
+                self._print(f"class_names: {self.class_names}")
+                
+            global_metric, metric_per_class = evaluate_model(model, self.datagen)
+            self._print(f"{'Images processed:':<20} {len(self.datagen.dataset) if hasattr(self.datagen, 'dataset') else len(self.datagen)}")
+
+            self._print("\nPer class:")
+            self._print("+" * 50)
+            self._print(f"{'Label':<18} | {'Accuracy':<10}")
+            self._print("-" * 50)
+            for class_id, class_label in enumerate(self.class_names):
+                metrics = metric_per_class[class_id]
+                self._print(f"{class_label:<18} | {metrics.getAccuracy():<10.4f}")
+
+            self._print("\nOverall:")
+            self._print(f"{'True Positives (TP):':<25} {global_metric.getTP()}")
+            self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
+            self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
+            self._print("=" * 80)
+        super().on_epoch_end(epoch, context)
