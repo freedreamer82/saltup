@@ -290,6 +290,21 @@ class FileLogger(BaseCallback):
                 print(f"❌ Error while writing best statistics: {e}")
                     
 class ClassificationEvaluationsCallback(BaseCallback):
+    """
+    Callback for evaluating classification metrics during and after model training.
+    Args:
+        datagen (BaseDatagenerator): Data generator used for evaluation during training (e.g., validation set).
+        end_of_train_datagen (BaseDatagenerator, optional): Data generator used for evaluation at the end of training.
+            If None, the main datagen is used.
+        every_epoch (int, optional): Frequency (in epochs) at which to perform evaluation and print metrics.
+            Defaults to 1 (every epoch).
+        output_file (str, optional): Path to a file where metrics will be appended. If None, only prints to stdout.
+        class_names (dict, optional): Mapping of class indices to class names for display in metrics output.
+    Methods:
+        on_train_end(context): Called at the end of training to evaluate and print/save metrics.
+        on_epoch_end(epoch, context): Called at the end of each epoch (or every N epochs) to evaluate and print/save metrics.
+    """
+    
     def __init__(
         self,
         datagen: BaseDatagenerator, 

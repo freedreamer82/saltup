@@ -38,17 +38,22 @@ def _train_model(
 ) -> str:
     """
     Train the model.
+
     Args:
-        model (Union[tf.keras.models.Sequential, torch.nn.Module]): model to be trained.
-        train_gen (Union[keras_ClassificationDataGenerator, DataLoader]): training data generator
-        val_gen (Union[keras_ClassificationDataGenerator, DataLoader]): validation data generator
-        output_dir (str): folder to save the model
-        epochs (int): number of epochs for training
-        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module]): loss function for training
-        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]): optimizer for training
-        scheduler (Union[torch.optim.lr_scheduler._LRScheduler, None]): scheduler for the optimizer
-        model_output_name (str, optional): name of the model. Defaults to None.
-        app_callbacks (list, optional): list of callbacks for training. Defaults to [].
+        model (Union[tf.keras.models.Sequential, torch.nn.Module]): Model to be trained.
+        train_gen (BaseDatagenerator): Training data generator.
+        val_gen (BaseDatagenerator): Validation data generator.
+        output_dir (str): Directory to save the model.
+        epochs (int): Number of epochs for training.
+        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module]): Loss function for training.
+        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]): Optimizer for training.
+        scheduler (Union[torch.optim.lr_scheduler._LRScheduler, None]): Scheduler for the optimizer.
+        model_output_name (str, optional): Name of the model. Defaults to None.
+        class_weight (dict, optional): Class weights for training. Defaults to None.
+        app_callbacks (list, optional): List of callbacks for training. Defaults to [].
+
+    Returns:
+        str: Path to the best saved model.
     """
     if model_output_name is None:
         model_output_name = 'model'

@@ -24,20 +24,27 @@ def evaluate_model(
     loss_function: callable = None,
     confusion_matrix: bool = False
 ) -> float:
-    """function to evaluate the model on the test set.
+    """
+    Evaluate a classification model on the test set.
 
     Args:
-        model (Union[str, tf.keras.Model, torch.nn.Module, tf.lite.Interpreter]): model instance or path to the model
-        test_gen (Union[keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator]): test data generator
-        output_dir (str, optional): folder to save outputs
-        loss_function (callable, optional): loss_function for evaluation. Only used when evaluating a PyTorch model. Defaults to None.
+        model (Union[str, tf.keras.Model, torch.nn.Module, tf.lite.Interpreter]):
+            Model instance or path to the model file.
+        test_gen (Union[keras_ClassificationDataGenerator, pytorch_DataGenerator]):
+            Test data generator.
+        output_dir (str, optional):
+            Directory to save output files such as confusion matrix images.
+        loss_function (callable, optional):
+            Loss function for evaluation (used only for PyTorch models).
+        confusion_matrix (bool, optional):
+            Whether to compute and save the confusion matrix plot.
 
     Raises:
-        ValueError: if the model is not a keras or pytorch model
-        ValueError: if the model is not a keras model and loss_function is None
+        ValueError: If the model type or test generator is unsupported.
 
     Returns:
-        float: Accuracy of the model on the test set
+        Tuple[Metric, Dict[int, Metric]]:
+            Global metric and per-class metrics.
     """
     global_metric = Metric()
     if isinstance(test_gen, keras_ClassificationDataGenerator):
