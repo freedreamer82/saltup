@@ -14,7 +14,7 @@ from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 from saltup.utils.data.image import Image
 
 
-def generate_quantization_config(sensitivity_results: dict) -> dict:
+def _generate_quantization_config(sensitivity_results: dict) -> dict:
     """
     Generates a quantization configuration based on sensitivity analysis results.
 
@@ -47,7 +47,7 @@ def generate_quantization_config(sensitivity_results: dict) -> dict:
 
     return config
 
-def print_sensitivity_report(results):
+def _print_layer_sensitivity_report(results):
     print("\nQuantization Sensitivity Report:")
     print("-" * 80)
 
@@ -60,6 +60,20 @@ def print_sensitivity_report(results):
         print(f"Safe to Quantize: {'Yes' if metrics['safe_to_quantize'] else 'No'}")
         print("-" * 40)
 
+class SensitivityReport:
+    def __init__(self, config, raw_results):
+        self.config = config
+        self.raw_results = raw_results
+
+    def print_report(self):
+        _print_layer_sensitivity_report(self.raw_results)
+
+    def get_config(self):
+        return self.config
+
+    def get_raw_results(self):
+        return self.raw_results
+
 def analyze_layer_sensitivity(
     model_path: str,
     calibration_dataloader: BaseDataloader,
@@ -69,8 +83,9 @@ def analyze_layer_sensitivity(
     skip_ops=None,
     mse_threshold: float = 1e-3,
     max_diff_threshold: float = 0.1,
-    cosine_sim_threshold: float = 0.99
-) -> dict:
+    cosine_sim_threshold: float = 0.99,
+    verbose: bool = False
+) -> SensitivityReport:
     """
         Analyzes the sensitivity of each layer in an ONNX model to quantization.
 
@@ -89,7 +104,7 @@ def analyze_layer_sensitivity(
             cosine_sim_threshold (float, optional): Threshold for cosine similarity to consider quantization safe.
 
         Returns:
-            dict: Dictionary mapping node names to sensitivity metrics and quantization safety.
+            SensitivityReport: Report object containing quantization config and raw results.
     """
     print("Analyzing model...")
     model, session = print_model_info(model_path)
@@ -134,16 +149,19 @@ def analyze_layer_sensitivity(
 
     for i, node in enumerate(model.graph.node, 1):
         if node.name in exclude_nodes or node.op_type in skip_ops:
-            print(f"Skipping node: {node.name} ({node.op_type})")
+            if verbose:
+                print(f"Skipping node: {node.name} ({node.op_type})")
             continue
 
         # Check if node has any initializer among its inputs
         has_initializer = any(init.name in node.input for init in model.graph.initializer)
         if not has_initializer:
-            print(f"Skipping node: {node.name} ({node.op_type}) (no initializer)")
+            if verbose:
+                print(f"Skipping node: {node.name} ({node.op_type}) (no initializer)")
             continue
 
-        print(f"Analyzing layer {i}/{total_nodes}: {node.name} ({node.op_type})")
+        if verbose:        
+            print(f"Analyzing layer {i}/{total_nodes}: {node.name} ({node.op_type})")
         test_model = deepcopy(model)
 
         # Simulate INT8 quantization for the layer's initializers
@@ -185,4 +203,5 @@ def analyze_layer_sensitivity(
             print(f"Error analyzing node {node.name}: {str(e)}")
             continue
 
-    return results
+    config = _generate_quantization_config(results)
+    return SensitivityReport(config, results)
