@@ -5,28 +5,13 @@ import gc
 
 from typing import Iterator, Tuple, Any, List, Union
 
-import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
-from glob import glob
-from tqdm import tqdm
-
-from sklearn.model_selection import KFold
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-
-import albumentations as A
 
 import torch
 from torch.utils.data import DataLoader as pytorch_DataGenerator
 
 import tensorflow as tf
-
-from saltup.ai.classification.datagenerator import (
-    keras_ClassificationDataGenerator,
-    ClassificationDataloader,
-    pytorch_ClassificationDataGenerator
-)
 
 from saltup.saltup_env import SaltupEnv
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
@@ -34,9 +19,8 @@ from saltup.ai.classification.evaluate import evaluate_model
 from saltup.ai.utils.keras.to_onnx import *
 from saltup.ai.utils.keras.to_tflite import tflite_conversion
 from saltup.ai.training.callbacks import *
-from saltup.utils.data.image.image_utils import Image, ColorMode
-from saltup.ai.object_detection.utils.metrics import Metric
 from saltup.ai.training.callbacks import _KerasCallbackAdapter
+from tqdm import tqdm
 
 
 def _train_model(
@@ -68,6 +52,8 @@ def _train_model(
     """
     if model_output_name is None:
         model_output_name = 'model'
+    saved_models_folder_path = os.path.join(output_dir, "saved_models")
+    os.makedirs(saved_models_folder_path, exist_ok=True)
     if isinstance(model, tf.keras.Model):
         # === Keras model ===
         if optimizer is None or loss_function is None:
@@ -89,9 +75,6 @@ def _train_model(
         )
         
         keras_callbacks = [_KerasCallbackAdapter(cb) for cb in app_callbacks]
-        
-        saved_models_folder_path = os.path.join(output_dir, "saved_models")
-        os.makedirs(saved_models_folder_path, exist_ok=True)
         
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.keras')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.keras')
@@ -149,6 +132,8 @@ def _train_model(
                                   misc={})
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.pt')
+        last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.pt')
         for callback in app_callbacks:
             callback.on_train_begin(context)
 
@@ -160,16 +145,18 @@ def _train_model(
                 correct = 0
                 total = 0
 
-                for inputs, targets in train_gen:
+                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                    train_iter = tqdm(train_gen, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False)
+                else:
+                    train_iter = train_gen
+
+                for inputs, targets in train_iter:
                     inputs, targets = inputs.to(device), targets.to(device)
                     
-                    # Handle both one-hot encoded and non-one-hot encoded labels
-                    if targets.ndim == 1:  # If labels are not one-hot encoded
-                        targets = targets
-                    elif targets.ndim == 2:  # If labels are one-hot encoded
+                    # For classification, convert one-hot to class indices; for others, leave as is.
+                    if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
+                        # Likely one-hot encoded classification
                         targets = torch.argmax(targets, dim=1)
-                    else:
-                        raise ValueError(f"Unexpected label shape: {targets.shape}")
                     
                     optimizer.zero_grad()
                     outputs = model(inputs)
@@ -181,6 +168,9 @@ def _train_model(
                     _, predicted = torch.max(outputs, 1)
                     correct += (predicted == targets).sum().item()
                     total += targets.size(0)
+
+                    if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                        train_iter.set_postfix(loss=loss.item())
 
                 epoch_loss = running_loss / total
                 epoch_accuracy = correct / total
@@ -196,12 +186,10 @@ def _train_model(
                         inputs, targets = inputs.to(device), targets.to(device)
                         
                         # Handle both one-hot encoded and non-one-hot encoded labels
-                        if targets.ndim == 1:  # If labels are not one-hot encoded
-                            targets = targets
-                        elif targets.ndim == 2:  # If labels are one-hot encoded
+                        # For classification, convert one-hot to class indices; for others, leave as is.
+                        if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
+                            # Likely one-hot encoded classification
                             targets = torch.argmax(targets, dim=1)
-                        else:
-                            raise ValueError(f"Unexpected label shape: {targets.shape}")
                         
                         outputs = model(inputs)
                         loss = loss_function(outputs, targets)
@@ -213,6 +201,10 @@ def _train_model(
 
                 epoch_val_loss = val_loss / val_total
                 epoch_val_accuracy = val_correct / val_total
+
+                # Print summary at end of epoch if verbose
+                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                    print(f"Epoch {epoch+1}/{epochs} - loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f}")
 
                 # Update context
                 context.loss = epoch_loss
@@ -233,7 +225,7 @@ def _train_model(
             scripted = torch.jit.script(model.cpu())
             scripted.save(last_epoch_model)
 
-    return best_model_path         
+        return best_model_path         
             
 def training(
     train_DataGenerator:BaseDatagenerator,

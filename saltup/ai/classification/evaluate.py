@@ -64,8 +64,6 @@ def evaluate_model(
             model_extension = "keras"
         elif model.endswith('.pt'):
             print("\n--- Evaluate PyTorch model ---")
-            if loss_function is None:
-                raise ValueError("The model is not a keras model, please provide a loss_function.")
             loaded_model = torch.jit.load(model) if model.endswith(".pt") else torch.load(model)
             loaded_model.eval()
             loaded_model.to(device)
@@ -83,8 +81,6 @@ def evaluate_model(
         model_extension = "keras"
     elif isinstance(model, torch.nn.Module):
         print("\n--- Evaluate PyTorch model (instance) ---")
-        if loss_function is None:
-            raise ValueError("The model is not a keras model, please provide a loss_function.")
         loaded_model = model
         loaded_model.eval()
         loaded_model.to(device)
@@ -116,7 +112,6 @@ def evaluate_model(
                     raise ValueError(f"Unexpected label shape: {y_batch.shape}")
 
                 outputs = loaded_model(X_batch)
-                loss = loss_function(outputs, true_labels)
                 predictions = outputs.cpu().numpy()
                 labels = true_labels.cpu().numpy()
         elif model_extension == "tflite":
@@ -165,8 +160,15 @@ def evaluate_model(
                 # Add both to global (because per-class metrics sum to global)
                 global_metric.addFP(1)
                 global_metric.addFN(1)
+                
+        dict_tqdm = {
+            "tp": global_metric.getTP(),
+            "fp": global_metric.getFP(),
+            "fn": global_metric.getFN(),
+            "accuracy": global_metric.getAccuracy()
+        }
 
-        pbar.set_postfix(**global_metric.get_metrics())
+        pbar.set_postfix(**dict_tqdm)
         
     
     # ==== Confusion Matrix ====
