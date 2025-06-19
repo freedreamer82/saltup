@@ -56,7 +56,6 @@ class BaseCallback():
     def on_epoch_end(self, epoch, context: CallbackContext):
         pass
 
-
 class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
     """
     Adapter class to bridge a custom callback implementing the BaseCallback interface with the Keras Callback API.

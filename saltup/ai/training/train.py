@@ -140,135 +140,100 @@ def _train_model(
         return best_model_path
 
     elif isinstance(model, torch.nn.Module):
-        # === PyTorch model ===
-        pytorch_callbacks = [cb for cb in app_callbacks if isinstance(cb, BaseCallback)]
-        saved_models_folder_path = os.path.join(output_dir, "saved_models")
-        os.makedirs(saved_models_folder_path, exist_ok=True)
-
-        # TODO @marc: Check saved models. Only best and last epoch models must be saved
-        # TODO @marc: Review pytorch callbacks according to new implementation
-        best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
-        b_train_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
-        last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
-
-        best_val_loss = float('inf')
-        best_train_loss = float('inf')
-
-        history = {
-            'loss': [],
-            'val_loss': [],
-            'accuracy': [],
-            'val_accuracy': []
-        }
+        
+        context = CallbackContext(model,
+                                  epochs=epochs,
+                                  batch_size=train_gen.dataset.batch_size,
+                                  best_model=None,
+                                  best_epoch=0,
+                                  misc={})
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model.to(device)
-        
-        for epoch in range(epochs):
-            model.train()
-            running_loss, correct, total = 0, 0, 0
-            for x_batch, y_batch in train_gen:
-                x_batch, y_batch = x_batch.to(device).float(), y_batch.to(device)
-                
-                # Handle both one-hot encoded and non-one-hot encoded labels
-                if y_batch.ndim == 1:  # If labels are not one-hot encoded
-                    labels = y_batch
-                elif y_batch.ndim == 2:  # If labels are one-hot encoded
-                    labels = torch.argmax(y_batch, dim=1)
-                else:
-                    raise ValueError(f"Unexpected label shape: {y_batch.shape}")
+        for callback in app_callbacks:
+            callback.on_train_begin(context)
 
-                optimizer.zero_grad()
-                outputs = model(x_batch)
-                loss = loss_function(outputs, labels)
-                loss.backward()
-                optimizer.step()
+            best_val_loss = float('inf')
 
-                running_loss += loss.item()
-                _, predicted = torch.max(outputs, 1)
-                correct += (predicted == labels).sum().item()
-                total += labels.size(0)
+            for epoch in range(epochs):
+                model.train()
+                running_loss = 0.0
+                correct = 0
+                total = 0
 
-            train_loss = running_loss / len(train_gen.dataset)
-            train_acc = correct / len(train_gen.dataset)
-            
-            # Validation
-            model.eval()
-            val_loss, val_correct = 0, 0
-            with torch.no_grad():
-                for x_batch, y_batch in val_gen:
-                    x_batch, y_batch = x_batch.to(device).float(), y_batch.to(device)
+                for inputs, targets in train_gen:
+                    inputs, targets = inputs.to(device), targets.to(device)
                     
                     # Handle both one-hot encoded and non-one-hot encoded labels
-                    if y_batch.ndim == 1:  # If labels are not one-hot encoded
-                        labels = y_batch
-                    elif y_batch.ndim == 2:  # If labels are one-hot encoded
-                        labels = torch.argmax(y_batch, dim=1)
+                    if targets.ndim == 1:  # If labels are not one-hot encoded
+                        targets = targets
+                    elif targets.ndim == 2:  # If labels are one-hot encoded
+                        targets = torch.argmax(targets, dim=1)
                     else:
-                        raise ValueError(f"Unexpected label shape: {y_batch.shape}")
+                        raise ValueError(f"Unexpected label shape: {targets.shape}")
+                    
+                    optimizer.zero_grad()
+                    outputs = model(inputs)
+                    loss = loss_function(outputs, targets)
+                    loss.backward()
+                    optimizer.step()
 
-                    outputs = model(x_batch)
-                    loss = loss_function(outputs, labels)
-                    val_loss += loss.item()
-                    val_correct += (torch.argmax(outputs, 1) == labels).sum().item()
+                    running_loss += loss.item() * inputs.size(0)
+                    _, predicted = torch.max(outputs, 1)
+                    correct += (predicted == targets).sum().item()
+                    total += targets.size(0)
 
-            val_loss /= len(val_gen.dataset)
-            val_acc = val_correct / len(val_gen.dataset)
-                
-            history['loss'].append(train_loss)
-            history['val_loss'].append(val_loss)
-            history['accuracy'].append(train_acc)
-            history['val_accuracy'].append(val_acc)
+                epoch_loss = running_loss / total
+                epoch_accuracy = correct / total
 
-            # TODO: Give possibility to use custom metrics
-            print(f"Epoch {epoch+1}/{epochs} - "
-                  f"Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
-                  f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
+                # Validation
+                model.eval()
+                val_loss = 0.0
+                val_correct = 0
+                val_total = 0
 
-            for cb in pytorch_callbacks:
-                cb.on_epoch_end(epoch, metrics={
-                'loss': round(train_loss, 4),
-                'val_loss': round(val_loss, 4),
-                'accuracy': round(train_acc, 4),
-                'val_accuracy': round(val_acc, 4)
-            })
-            
-            # Save best models (JIT)
-            if val_loss < best_val_loss:
-                scripted = torch.jit.script(model.cpu())
-                scripted.save(best_model_path)
-                model.to(device)
-                best_val_loss = val_loss
+                with torch.no_grad():
+                    for inputs, targets in val_gen:
+                        inputs, targets = inputs.to(device), targets.to(device)
+                        
+                        # Handle both one-hot encoded and non-one-hot encoded labels
+                        if targets.ndim == 1:  # If labels are not one-hot encoded
+                            targets = targets
+                        elif targets.ndim == 2:  # If labels are one-hot encoded
+                            targets = torch.argmax(targets, dim=1)
+                        else:
+                            raise ValueError(f"Unexpected label shape: {targets.shape}")
+                        
+                        outputs = model(inputs)
+                        loss = loss_function(outputs, targets)
 
-            if train_loss < best_train_loss:
-                scripted = torch.jit.script(model.cpu())
-                scripted.save(b_train_model_path)
-                model.to(device)
-                best_train_loss = train_loss
+                        val_loss += loss.item() * inputs.size(0)
+                        _, predicted = torch.max(outputs, 1)
+                        val_correct += (predicted == targets).sum().item()
+                        val_total += targets.size(0)
 
-            if scheduler:
-                scheduler.step(val_loss)
+                epoch_val_loss = val_loss / val_total
+                epoch_val_accuracy = val_correct / val_total
 
-        # Save last epoch model
-        scripted = torch.jit.script(model.cpu())
-        scripted.save(last_epoch_model)
-        model.to(device)
+                # Update context
+                context.loss = epoch_loss
+                context.accuracy = epoch_accuracy
+                context.val_loss = epoch_val_loss
+                context.val_accuracy = epoch_val_accuracy
 
-        def save_plot(data_key, filename, ylabel):
-            fig = plt.figure(figsize=(10, 10))
-            plt.plot(history[data_key], '.-', label='train')
-            plt.plot(history[f'val_{data_key}'], '.-', label='val')
-            plt.ylabel(ylabel)
-            plt.xlabel('epoch')
-            plt.legend(loc='upper right')
-            plt.savefig(os.path.join(saved_models_folder_path, filename + '_plot.png'), bbox_inches='tight')
-            plt.close(fig)
+                if epoch_val_loss < best_val_loss:
+                    best_val_loss = epoch_val_loss
+                    context.best_model = copy.deepcopy(model)
+                    context.best_epoch = epoch
+                    scripted = torch.jit.script(model.cpu())
+                    scripted.save(best_model_path)
 
-        save_plot('loss', 'history_loss', 'Loss')
-        save_plot('accuracy', 'history_accuracy', 'Accuracy')
+                callback.on_epoch_end(epoch, context)
 
-        print(f"Saved scripted model at {last_epoch_model}")
-        return last_epoch_model         
+            callback.on_train_end(context)
+            scripted = torch.jit.script(model.cpu())
+            scripted.save(last_epoch_model)
+
+    return best_model_path         
             
 def training(
     train_DataGenerator:BaseDatagenerator,
