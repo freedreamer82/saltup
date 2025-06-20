@@ -55,10 +55,13 @@ class MQTTCallback(BaseCallback):
         message = {
             "id": self.id if self.id is not None else "",
             "epoch": epoch + 1,
-            "total_epochs": context.epochs,
             "datetime": datetime.datetime.now().isoformat(),
-            "metrics": {k: round(v, 4) for k, v in context.to_dict().items() if isinstance(v, float)},
         }
+        message.update({
+            k: (round(v, 4) if isinstance(v, float) else v)
+            for k, v in context.to_dict().items()
+            if isinstance(v, (float, int))
+        })
         if self.data:
             message.update(self.data)
         self.client.publish(self.topic, str(message))
@@ -208,10 +211,7 @@ class YoloEvaluationsCallback(BaseCallback):
 
         metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.end_of_train_datagen)
         custom_data = {
-            "best_model": {
-                "epoch": context.best_epoch,
-                "per_class": metrics_dict["per_class"]
-            }
+            "best_model_per_class": metrics_dict["per_class"]
         }
         self.update_data(custom_data)
         super().on_train_end(context)
@@ -259,10 +259,7 @@ class YoloEvaluationsCallback(BaseCallback):
             metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.datagen)
 
             custom_data = {
-                "best_model": {
-                    "epoch": context.best_epoch,
-                    "per_class": metrics_dict["per_class"]
-                }
+               "best_model_per_class": metrics_dict["per_class"]
             }
             self.update_data(custom_data)
         super().on_epoch_end(epoch, context)

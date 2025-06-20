@@ -1,8 +1,8 @@
-from saltup.saltup_env import _SaltupEnv
+from saltup.saltup_env import SaltupEnv
 
 def print_saltup_info():
     print("=== Saltup Framework Info ===")
-    print("Version: 0.8")
+    print(f"Version: {SaltupEnv.VERSION}")
     print("Description: add flavor to your AI projects")
     print("Main features:")
     print(" - Neural network model management")

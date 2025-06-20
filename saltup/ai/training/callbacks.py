@@ -21,23 +21,57 @@ class CallbackContext:
     misc: dict = None
     best_model: Union[tf.keras.Model, torch.nn.Module] = None
     best_epoch: int = None
+    best_loss: float = None
+    best_val_loss: float = None
 
     def to_dict(self):
         tmp = {
             'model': type(self.model),
-            'epochs': self.epochs,
+            'total_epochs': self.epochs,
             'batch_size': self.batch_size,
             'loss': self.loss,
             'val_loss': self.val_loss,
             'accuracy': self.accuracy,
             'val_accuracy': self.val_accuracy,
-            'best_model': type(self.best_model) if self.best_model else None,  # opzionale
-            'best_epoch': self.best_epoch
+            'best_model': type(self.best_model) if self.best_model else None,
+            'best_epoch': self.best_epoch,
+            'best_loss': self.best_loss,
+            'best_val_loss': self.best_val_loss
         }
         return tmp | (self.misc if self.misc else {})
 
 
+
 class BaseCallback:
+    """
+    BaseCallback is an abstract base class for creating custom training callbacks.
+
+    This class provides a standard interface for managing callback data and handling
+    training events such as the beginning and end of training, as well as the end of each epoch.
+    Subclasses can override the event methods to implement custom behavior.
+
+    Attributes:
+        data (dict): A dictionary to store callback-specific data.
+
+    Methods:
+        set_data(data: dict) -> None:
+            Sets the internal data dictionary to the provided data.
+
+        get_data() -> dict:
+            Returns the current internal data dictionary.
+
+        update_data(data: dict) -> None:
+            Updates the internal data dictionary with the provided data.
+
+        on_train_begin(context: CallbackContext) -> None:
+            Called at the beginning of training. Can be overridden by subclasses.
+
+        on_train_end(context: CallbackContext) -> None:
+            Called at the end of training. Can be overridden by subclasses.
+
+        on_epoch_end(epoch: int, context: CallbackContext) -> None:
+            Called at the end of each epoch. Can be overridden by subclasses.
+    """
     def __init__(self):
         self.data: dict = {}
 
@@ -111,7 +145,11 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_loss=logs.get('val_loss', None),
             accuracy=logs.get('accuracy', None),
             val_accuracy=logs.get('val_accuracy', None),
-            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']}
+            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
+            best_model=self.best_model,
+            best_epoch=self.best_epoch,
+            best_loss=self.best_value if self.mode == "min" else None,
+            best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_train_begin(context)
     
@@ -127,7 +165,9 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_accuracy=logs.get('val_accuracy', None),
             misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
             best_model=self.best_model,
-            best_epoch=self.best_epoch
+            best_epoch=self.best_epoch,
+            best_loss=self.best_value if self.mode == "min" else None,
+            best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_train_end(context)
 
@@ -157,7 +197,9 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_accuracy=logs.get('val_accuracy', None),
             misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
             best_model=self.best_model,
-            best_epoch=self.best_epoch
+            best_epoch=self.best_epoch,
+            best_loss=self.best_value if self.mode == "min" else None,
+            best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_epoch_end(epoch, context)
      
