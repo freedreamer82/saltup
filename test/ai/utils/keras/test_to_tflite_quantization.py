@@ -3,7 +3,11 @@ import numpy as np
 import tensorflow as tf
 from saltup.ai.utils.keras.quantization import quantize
 
-# TODO @SonFra: Adjust the method signature to match the actual function
+def representative_data_gen(x_train):
+    # Generator yielding batches of input data for calibration
+    for i in range(len(x_train)):
+        yield [x_train[i:i+1]]
+
 def test_tflite_quantization(tmp_path):
     # Create a mock Keras model
     model = tf.keras.Sequential([
@@ -22,14 +26,14 @@ def test_tflite_quantization(tmp_path):
 
     # Define output path for the TFLite model
     output_tflite_path = str(tmp_path / "mock_model_quantized.tflite")
-    pass
-    # Call the tflite_quantization function
+
+    # Call the quantize function with the new signature
     quantized_model_path = quantize(
         model_path=golden_model_path,
-        output_tflite_path=output_tflite_path,
-        x_train=x_train,
-        quantizing_input=True,
-        quantizing_output=True
+        output_quantize_path=output_tflite_path,
+        representative_data_gen_fnct=lambda: representative_data_gen(x_train),
+        input_type=tf.uint8,
+        output_type=tf.float32
     )
 
     # Assertions
@@ -41,4 +45,4 @@ def test_tflite_quantization(tmp_path):
     input_type = interpreter.get_input_details()[0]['dtype']
     output_type = interpreter.get_output_details()[0]['dtype']
     assert input_type == np.uint8, "Input type is not quantized to uint8"
-    assert output_type == np.uint8, "Output type is not quantized to uint8"
+    assert output_type == np.float32, "Output type is not quantized to float32"

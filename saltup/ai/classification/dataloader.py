@@ -6,6 +6,7 @@ from typing import List, Tuple, Union
 from glob import glob
 import os
 import random
+import numpy as np
 
 class ClassificationDataloader(BaseDataloader):
     def __init__(self, source:Union[str,List[List]], classes_dict:dict={}, img_size:Tuple=(), extensions:str='jpg'):

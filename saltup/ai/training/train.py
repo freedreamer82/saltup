@@ -129,12 +129,16 @@ def _train_model(
 
     elif isinstance(model, torch.nn.Module):
         
-        context = CallbackContext(model,
-                                  epochs=epochs,
-                                  batch_size=train_gen.dataset.batch_size,
-                                  best_model=None,
-                                  best_epoch=0,
-                                  misc={})
+        context = CallbackContext(
+            model=model,
+            epochs=epochs,
+            batch_size=train_gen.dataset.batch_size,
+            best_model=None,
+            best_epoch=1,
+            misc={},
+            best_loss=None,
+            best_val_loss=None
+        )
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.pt')
@@ -143,6 +147,7 @@ def _train_model(
             callback.on_train_begin(context)
 
             best_val_loss = float('inf')
+            best_loss = float('inf')
 
             for epoch in range(epochs):
                 model.train()
@@ -157,12 +162,11 @@ def _train_model(
 
                 for inputs, targets in train_iter:
                     inputs, targets = inputs.to(device), targets.to(device)
-                    
+
                     # For classification, convert one-hot to class indices; for others, leave as is.
                     if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
-                        # Likely one-hot encoded classification
                         targets = torch.argmax(targets, dim=1)
-                    
+
                     optimizer.zero_grad()
                     outputs = model(inputs)
                     loss = loss_function(outputs, targets)
@@ -189,16 +193,10 @@ def _train_model(
                 with torch.no_grad():
                     for inputs, targets in val_gen:
                         inputs, targets = inputs.to(device), targets.to(device)
-                        
-                        # Handle both one-hot encoded and non-one-hot encoded labels
-                        # For classification, convert one-hot to class indices; for others, leave as is.
                         if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
-                            # Likely one-hot encoded classification
                             targets = torch.argmax(targets, dim=1)
-                        
                         outputs = model(inputs)
                         loss = loss_function(outputs, targets)
-
                         val_loss += loss.item() * inputs.size(0)
                         _, predicted = torch.max(outputs, 1)
                         val_correct += (predicted == targets).sum().item()
@@ -207,11 +205,7 @@ def _train_model(
                 epoch_val_loss = val_loss / val_total
                 epoch_val_accuracy = val_correct / val_total
 
-                # Print summary at end of epoch if verbose
-                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
-                    print(f"Epoch {epoch+1}/{epochs} - loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f}")
-
-                # Update context
+                # Update context with new best_loss and best_val_loss
                 context.loss = epoch_loss
                 context.accuracy = epoch_accuracy
                 context.val_loss = epoch_val_loss
@@ -219,18 +213,29 @@ def _train_model(
 
                 if epoch_val_loss < best_val_loss:
                     best_val_loss = epoch_val_loss
+                    context.best_val_loss = best_val_loss
+                    best_loss = epoch_loss
+                    context.best_loss = best_loss
                     context.best_model = copy.deepcopy(model)
                     context.best_epoch = epoch
                     scripted = torch.jit.script(model.cpu())
                     scripted.save(best_model_path)
 
-                callback.on_epoch_end(epoch, context)
+                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                    print(
+                    f"Epoch {epoch+1}/{epochs} - "
+                    f"loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f} - "
+                    f"best_epoch: {context.best_epoch+1 if context.best_epoch is not None else '-'} - "
+                    f"best_loss: {context.best_loss:.4f} - best_val_loss: {context.best_val_loss:.4f}"
+                    )
+
+                callback.on_epoch_end(epoch , context)
 
             callback.on_train_end(context)
             scripted = torch.jit.script(model.cpu())
             scripted.save(last_epoch_model)
 
-        return best_model_path         
+        return best_model_path
             
 def training(
     train_DataGenerator:BaseDatagenerator,

@@ -6,9 +6,8 @@ import paho.mqtt.client as mqtt
 
 import tensorflow as tf
 import torch
-
-from saltup.ai.classification.datagenerator import BaseDatagenerator
-from saltup.ai.classification.evaluate import evaluate_model
+from typing import List, Optional
+ 
 
 @dataclass
 class CallbackContext:
@@ -22,41 +21,79 @@ class CallbackContext:
     misc: dict = None
     best_model: Union[tf.keras.Model, torch.nn.Module] = None
     best_epoch: int = None
+    best_loss: float = None
+    best_val_loss: float = None
 
     def to_dict(self):
         tmp = {
             'model': type(self.model),
-            'epochs': self.epochs,
+            'total_epochs': self.epochs,
             'batch_size': self.batch_size,
             'loss': self.loss,
             'val_loss': self.val_loss,
             'accuracy': self.accuracy,
             'val_accuracy': self.val_accuracy,
-            'best_model': type(self.best_model) if self.best_model else None,  # opzionale
-            'best_epoch': self.best_epoch
+            'best_model': type(self.best_model) if self.best_model else None,
+            'best_epoch': self.best_epoch,
+            'best_loss': self.best_loss,
+            'best_val_loss': self.best_val_loss
         }
         return tmp | (self.misc if self.misc else {})
 
 
-class BaseCallback():
-    def __init__(self, metric_keys: list = None):
-        self.metric_keys = metric_keys  # If None, show all keys
 
-    def filter_metrics(self, metrics):
-        if metrics is None:
-            return {}
-        if self.metric_keys is None:
-            return metrics
-        return {k: v for k, v in metrics.items() if k in self.metric_keys}
-    
-    def on_train_begin(self, context: CallbackContext):
+class BaseCallback:
+    """
+    BaseCallback is an abstract base class for creating custom training callbacks.
+
+    This class provides a standard interface for managing callback data and handling
+    training events such as the beginning and end of training, as well as the end of each epoch.
+    Subclasses can override the event methods to implement custom behavior.
+
+    Attributes:
+        data (dict): A dictionary to store callback-specific data.
+
+    Methods:
+        set_data(data: dict) -> None:
+            Sets the internal data dictionary to the provided data.
+
+        get_data() -> dict:
+            Returns the current internal data dictionary.
+
+        update_data(data: dict) -> None:
+            Updates the internal data dictionary with the provided data.
+
+        on_train_begin(context: CallbackContext) -> None:
+            Called at the beginning of training. Can be overridden by subclasses.
+
+        on_train_end(context: CallbackContext) -> None:
+            Called at the end of training. Can be overridden by subclasses.
+
+        on_epoch_end(epoch: int, context: CallbackContext) -> None:
+            Called at the end of each epoch. Can be overridden by subclasses.
+    """
+    def __init__(self):
+        self.data: dict = {}
+
+    def set_data(self, data: dict) -> None:
+        self.data = data or {}
+
+    def get_data(self) -> dict:
+        return self.data
+
+    def update_data(self, data: dict) -> None:
+        if data:
+            self.data.update(data)
+
+    def on_train_begin(self, context: CallbackContext) -> None:
         pass
 
-    def on_train_end(self, context: CallbackContext):
+    def on_train_end(self, context: CallbackContext) -> None:
         pass
-    
-    def on_epoch_end(self, epoch, context: CallbackContext):
+
+    def on_epoch_end(self, epoch: int, context: CallbackContext) -> None:
         pass
+
 
 class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
     """
@@ -108,7 +145,11 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_loss=logs.get('val_loss', None),
             accuracy=logs.get('accuracy', None),
             val_accuracy=logs.get('val_accuracy', None),
-            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']}
+            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
+            best_model=self.best_model,
+            best_epoch=self.best_epoch,
+            best_loss=self.best_value if self.mode == "min" else None,
+            best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_train_begin(context)
     
@@ -124,7 +165,9 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_accuracy=logs.get('val_accuracy', None),
             misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
             best_model=self.best_model,
-            best_epoch=self.best_epoch
+            best_epoch=self.best_epoch,
+            best_loss=self.best_value if self.mode == "min" else None,
+            best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_train_end(context)
 
@@ -154,231 +197,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             val_accuracy=logs.get('val_accuracy', None),
             misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
             best_model=self.best_model,
-            best_epoch=self.best_epoch
+            best_epoch=self.best_epoch,
+            best_loss=self.best_value if self.mode == "min" else None,
+            best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_epoch_end(epoch, context)
-    
-
-class MQTTCallback(BaseCallback):
-    def __init__(self, broker, port, topic, client_id="keras-metrics", username=None, password=None, id=None):
-        """
-        Callback to send training metrics via MQTT.
-
-        Args:
-            broker (str): MQTT broker address.
-            port (int): MQTT broker port.
-            topic (str): MQTT topic to publish messages.
-            client_id (str, optional): MQTT client ID. Default is "keras-metrics".
-            username (str, optional): Username for authentication. Default is None.
-            password (str, optional): Password for authentication. Default is None.
-            id (str, optional): Identifier string. Default is None.
-        """
-        super().__init__()
-        self.broker = broker
-        self.port = port
-        self.id = id
-        self.topic = topic
-        self.client_id = client_id
-        self.client = mqtt.Client(client_id=client_id)
-        self.custom_data = {}
-        if username and password:
-            self.client.username_pw_set(username, password)
-        # Connect to the MQTT broker
-        self.client.connect(self.broker, self.port)
-        self.client.loop_start()  # Start the background loop to handle the connection
-
-    def set_custom_data(self, custom_data: dict):
-        """
-        Set custom data to be merged into the metrics sent via MQTT.
-        Args:
-            custom_data (dict): Custom key-value pairs to include in the message.
-        """
-        self.custom_data = custom_data or {}
-
-    def on_epoch_end(self, epoch, context: CallbackContext):
-        """
-        Method called at the end of each epoch.
-        """        
-        message = {
-            "id": self.id if self.id is not None else "",
-            "epoch": epoch + 1,
-            "total_epochs": context.epochs,
-            "datetime": datetime.datetime.now().isoformat(),
-            "metrics": {k: round(v, 4) for k, v in context.to_dict().items() if isinstance(v, float)},
-        }
-        if self.custom_data:
-            message.update(self.custom_data)
-        self.client.publish(self.topic, str(message))
-
-    def on_train_end(self, context: CallbackContext):
-        """
-        Method called at the end of training.
-        """
-        self.client.loop_stop()  # Stop the MQTT loop
-        self.client.disconnect()  # Disconnect from the broker
-
-
-class FileLogger(BaseCallback):
-    _instance = None  # Prevent accidental multiple instances
-
-    def __init__(self, log_file, best_stats_file):
-        if FileLogger._instance is not None:
-            raise RuntimeError("FileLogger has already been initialized!")  # Prevent duplicates
-        FileLogger._instance = self  # Save the instance
-
-        super().__init__()
-        self.log_file = log_file
-        self.best_stats_file = best_stats_file
-        self.best_val_loss = float('inf')
-        self.best_metrics = None
-        self.total_epochs = None  # Initialize total number of epochs
-
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # If the file does not exist, create the header
-        if not os.path.exists(self.log_file):
-            with open(self.log_file, "w") as f:
-                f.write(f"# Training logs started at: {now}\n")
-                f.write("epoch,total_epochs,loss,accuracy,val_loss,val_accuracy\n")
-
-        if not os.path.exists(self.best_stats_file):
-            with open(self.best_stats_file, "w") as f:
-                f.write("# Best model statistics\n")
-                f.write(f"# Last updated: {now}\n")
-                f.write("epoch,loss,accuracy,val_loss,val_accuracy\n")
-
-    def on_train_begin(self, context: CallbackContext):
-        """Automatically retrieve the total number of epochs."""
-        self.total_epochs = context.epochs
-        print(f"🔹 Training will have {self.total_epochs} total epochs.")
-
-    def on_epoch_end(self, epoch, context: CallbackContext):
-        # Ensure values are not None
-        loss = context.loss
-        accuracy = context.accuracy
-        val_loss = context.val_loss
-        val_accuracy = context.val_accuracy
-
-        # General logging with error handling
-        try:
-            with open(self.log_file, "a") as f:
-                f.write(f"{epoch+1},{self.total_epochs},{loss},{accuracy},{val_loss},{val_accuracy}\n")
-        except Exception as e:
-            print(f"❌ Error while writing log: {e}")
-
-        # Check if this is the best model so far
-        if isinstance(val_loss, (int, float)) and val_loss < self.best_val_loss:
-            self.best_val_loss = val_loss
-            self.best_metrics = {
-                'epoch': epoch + 1,
-                'loss': loss,
-                'accuracy': accuracy,
-                'val_loss': val_loss,
-                'val_accuracy': val_accuracy
-            }
-
-            # Safely write the new best statistics
-            try:
-                with open(self.best_stats_file, "w") as f:
-                    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    f.write(f"# Best model statistics - Updated: {now}\n")
-                    f.write("epoch,loss,accuracy,val_loss,val_accuracy\n")
-                    f.write(f"{self.best_metrics['epoch']},{self.best_metrics['loss']},"
-                            f"{self.best_metrics['accuracy']},{self.best_metrics['val_loss']},"
-                            f"{self.best_metrics['val_accuracy']}\n")
-            except Exception as e:
-                print(f"❌ Error while writing best statistics: {e}")
-                    
-class ClassificationEvaluationsCallback(BaseCallback):
-    """
-    Callback for evaluating classification metrics during and after model training.
-    Args:
-        datagen (BaseDatagenerator): Data generator used for evaluation during training (e.g., validation set).
-        end_of_train_datagen (BaseDatagenerator, optional): Data generator used for evaluation at the end of training.
-            If None, the main datagen is used.
-        every_epoch (int, optional): Frequency (in epochs) at which to perform evaluation and print metrics.
-            Defaults to 1 (every epoch).
-        output_file (str, optional): Path to a file where metrics will be appended. If None, only prints to stdout.
-        class_names (dict, optional): Mapping of class indices to class names for display in metrics output.
-    Methods:
-        on_train_end(context): Called at the end of training to evaluate and print/save metrics.
-        on_epoch_end(epoch, context): Called at the end of each epoch (or every N epochs) to evaluate and print/save metrics.
-    """
-    
-    def __init__(
-        self,
-        datagen: BaseDatagenerator, 
-        end_of_train_datagen: BaseDatagenerator = None,
-        every_epoch: int = 1,
-        output_file: str = None,
-        class_names: dict = None
-    ):
-        super().__init__()
-        self.datagen = datagen
-        self.end_of_train_datagen = end_of_train_datagen
-        self.every_epoch = every_epoch
-        self.output_file = output_file
-        self.class_names = class_names
-
-    def _print(self, msg):
-        if self.output_file is not None:
-            with open(self.output_file, "a") as f:
-                print(msg, file=f)
-        print(msg)
-
-    def on_train_end(self, context: CallbackContext):
-        model=context.best_model
-        print("\n\n")
-        self._print("=" * 80)
-        self._print(f"{f'METRICS ON TRAIN END':^80}")
-        self._print("=" * 80)
-        if self.class_names is not None:
-            self._print(f"class_names: {self.class_names}")
-
-        global_metric, metric_per_class = evaluate_model(model, self.end_of_train_datagen)
-        self._print(f"{'Images processed:':<20} {len(self.datagen.dataset) if hasattr(self.datagen, 'dataset') else len(self.datagen)}")
-
-        self._print("\nPer class:")
-        self._print("+" * 50)
-        self._print(f"{'Label':<18} | {'Accuracy':<10}")
-        self._print("-" * 50)
-        for class_id, class_label in enumerate(self.class_names):
-            metrics = metric_per_class[class_id]
-            self._print(f"{class_label:<18} | {metrics.getAccuracy():<10.4f}")
-
-        self._print("\nOverall:")
-        self._print(f"{'True Positives (TP):':<25} {global_metric.getTP()}")
-        self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
-        self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
-        self._print("=" * 80)
-        super().on_train_end(context)
-
-    def on_epoch_end(self, epoch: int, context: CallbackContext):
-        model=context.best_model
-        if (epoch + 1) % self.every_epoch == 0:
-            print("\n\n")
-            self._print("=" * 80)
-            self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch + 1}':^80}")
-            self._print("=" * 80)
-
-            self._print(f"Best model epoch: {context.best_epoch}")
-            if self.class_names is not None:
-                self._print(f"class_names: {self.class_names}")
-                
-            global_metric, metric_per_class = evaluate_model(model, self.datagen)
-            self._print(f"{'Images processed:':<20} {len(self.datagen.dataset) if hasattr(self.datagen, 'dataset') else len(self.datagen)}")
-
-            self._print("\nPer class:")
-            self._print("+" * 50)
-            self._print(f"{'Label':<18} | {'Accuracy':<10}")
-            self._print("-" * 50)
-            for class_id, class_label in enumerate(self.class_names):
-                metrics = metric_per_class[class_id]
-                self._print(f"{class_label:<18} | {metrics.getAccuracy():<10.4f}")
-
-            self._print("\nOverall:")
-            self._print(f"{'True Positives (TP):':<25} {global_metric.getTP()}")
-            self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
-            self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
-            self._print("=" * 80)
-        super().on_epoch_end(epoch, context)
