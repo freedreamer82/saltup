@@ -154,16 +154,17 @@ if __name__ == "__main__":
 
 # TODO
 @contextmanager
-def LogFile(filename):
-   stdout = sys.stdout
-   with open(filename, 'a') as f:
-       class TeeStdout:
-           def write(self, data):
-               f.write(data)
-               stdout.write(data)
-           def flush(self):
-               f.flush()
-               stdout.flush()
-       sys.stdout = TeeStdout()
-       yield
-       sys.stdout = stdout
+def LogFile(filename, append=True):
+    stdout = sys.stdout
+    mode = 'a' if append else 'w'
+    with open(filename, mode) as f:
+        class TeeStdout:
+            def write(self, data):
+                f.write(data)
+                stdout.write(data)
+            def flush(self):
+                f.flush()
+                stdout.flush()
+        sys.stdout = TeeStdout()
+        yield
+        sys.stdout = stdout

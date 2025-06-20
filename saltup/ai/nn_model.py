@@ -2,6 +2,7 @@ from typing import List, Tuple, Any
 import torch
 import os
 import onnxruntime as ort
+import numpy as np
 
 import tensorflow as tf
 from tf_keras.saving import load_model
@@ -22,6 +23,8 @@ class NeuralNetworkModel:
         self._is_loaded = False
         self.input_shape = None
         self.output_shape = None
+        self.model_size_bytes = None
+        self.num_parameters = None
 
         # Accept either a path or an already loaded model
         if isinstance(model_or_path, str):
@@ -35,12 +38,18 @@ class NeuralNetworkModel:
                 self.input_shape = self.model.input_shape
             if hasattr(self.model, 'output_shape'):
                 self.output_shape = self.model.output_shape
+            # PyTorch: count parameters
+            self.num_parameters = sum(p.numel() for p in self.model.parameters())
+            self.model_size_bytes = None  # Not available if loaded from instance
         elif hasattr(model_or_path, 'predict') and hasattr(model_or_path, 'input_shape'):
             # Assume Keras model
             self.model = model_or_path
             self.input_shape = self.model.input_shape
             self.output_shape = self.model.output_shape
             self._is_loaded = True
+            # Keras: count parameters
+            self.num_parameters = self.model.count_params()
+            self.model_size_bytes = None  # Not available if loaded from instance
         else:
             raise ValueError("model_or_path must be a file path or a valid PyTorch/Keras model instance")
         
@@ -87,6 +96,9 @@ class NeuralNetworkModel:
                         output = self.model(example_input)
                     self.output_shape =  output.shape[1:]  # Exclude batch size
                 self._is_loaded = True
+                # Model size and parameters
+                self.model_size_bytes = os.path.getsize(self.model_path)
+                self.num_parameters = sum(p.numel() for p in self.model.parameters())
                 return self.model, self.input_shape, self.output_shape
                 
             elif self.model_path.endswith(".keras") or self.model_path.endswith(".h5"):
@@ -98,6 +110,9 @@ class NeuralNetworkModel:
                 self.input_shape = self.model.input_shape  # Exclude the batch size
                 self.output_shape = self.model.output_shape  # Exclude the batch size
                 self._is_loaded = True
+                # Model size and parameters
+                self.model_size_bytes = os.path.getsize(self.model_path)
+                self.num_parameters = self.model.count_params()
                 return self.model, self.input_shape, self.output_shape
 
             
@@ -112,13 +127,19 @@ class NeuralNetworkModel:
                 
                 # Load ONNX model with specified providers
                 self.model = ort.InferenceSession(self.model_path, providers=providers)
-                # Load ONNX model
-                #self.model = ort.InferenceSession(model_path)
                 input_metadata = self.model.get_inputs()[0]
                 self.input_shape = tuple(input_metadata.shape)
                 output_metadata = self.model.get_outputs()[0]
                 self.output_shape = tuple(output_metadata.shape)
                 self._is_loaded = True
+                # Model size and parameters
+                self.model_size_bytes = os.path.getsize(self.model_path)
+                # Count ONNX parameters (sum all initializers)
+                import onnx
+                model_proto = onnx.load(self.model_path)
+                self.num_parameters = sum(
+                    int(np.prod(init.dims)) for init in model_proto.graph.initializer
+                )
                 return self.model, self.input_shape, self.output_shape
 
             elif self.model_path.endswith(".tflite"):
@@ -132,12 +153,21 @@ class NeuralNetworkModel:
                 output_details = self.model.get_output_details()[0]
                 self.output_shape =  tuple(output_details['shape'])
                 self._is_loaded = True
+                # Model size (parameters not easily available)
+                self.model_size_bytes = os.path.getsize(self.model_path)
+                self.num_parameters = None
                 return self.model, self.input_shape, self.output_shape
 
-                
             else:
                 raise ValueError(f"Unsupported model format. Supported formats are: {self.supported_formats}")
 
+    def get_model_size_bytes(self) -> int:
+        """Return the model size in bytes."""
+        return self.model_size_bytes
+
+    def get_num_parameters(self) -> int:
+        """Return the number of parameters in the model."""
+        return self.num_parameters
 
     def model_inference(self, input_data: Any) -> Any:
         """
@@ -162,16 +192,13 @@ class NeuralNetworkModel:
                 # PyTorch inference
                 with torch.no_grad():
                     output = self.model(input_data)
-    #        elif isinstance(self.model, tf.keras.Model):  #not working...
             elif type(self.model).__name__ == 'Functional':  
                 # TensorFlow/Keras inference
                 output = self.model.predict(input_data)
-                
             elif isinstance(self.model, ort.InferenceSession):
                 # ONNX inference
                 input_name = self.model.get_inputs()[0].name
                 output = self.model.run(None, {input_name: input_data})
-                
             elif isinstance(self.model, tf.lite.Interpreter):
                 # TensorFlow Lite inference
                 input_details = self.model.get_input_details()
@@ -185,7 +212,6 @@ class NeuralNetworkModel:
 
                 # Get output tensor
                 output = self.model.get_tensor(output_details[0]['index'])
-                
             else:
                 raise RuntimeError("Unsupported model type.")
 

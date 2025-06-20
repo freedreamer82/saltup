@@ -20,6 +20,7 @@ from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import BaseYolo
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import BaseDatagenerator
 from saltup.ai.classification.evaluate import evaluate_model
 
+
  
 class MQTTCallback(BaseCallback):
     def __init__(self, broker, port, topic, client_id="keras-metrics", username=None, password=None, id=None):

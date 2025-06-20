@@ -187,6 +187,10 @@ class BaseYolo():
             self._input_model_width = self.get_input_info()[0][2]  
             self._input_model_channel = self.get_input_info()[0][0]
 
+    def get_model(self) -> NeuralNetworkModel:
+        """Get the underlying neural network model."""
+        return self._model
+    
     def get_input_model_height(self) -> int:
         return self._input_model_height
 

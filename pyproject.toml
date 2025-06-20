@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saltup"
-version = "0.7"
+version = "0.8.3"
 description = "add flavor to your AI projects"
 readme = "README.md"
 requires-python = ">=3.6"
@@ -36,4 +36,6 @@ saltup_yolo_simlink_per_classes = "saltup.tools.yolo_simlink_per_classes:main"
 saltup_yolo_image_inference = "saltup.tools.yolo_inference:main"
 saltup_yolo_video_inference = "saltup.tools.yolo_video:main"
 saltup_yolo_s3_inference = "saltup.tools.yolo_s3_inference:main"
-
+saltup_info = "saltup.tools.saltup_info:main"
+saltup_keras2onnx = "saltup.tools.keras2onnx:main"
+saltup_onnx_quantization = "saltup.tools.onnx_quantization:main"
