@@ -369,6 +369,16 @@ def main(args=None):
     print(f"Model type: {yolotype.name}")
     print(f"Total execution time: {total_time:.2f} seconds")
     print(f"Average time per image: {avg_time_per_image:.2f} ms")
+    num_params = yolo.get_model().get_num_parameters()
+    if num_params >= 1_000_000:
+        num_params_str = f"{num_params:,} ({num_params/1_000_000:.1f}M)"
+    elif num_params >= 1_000:
+        num_params_str = f"{num_params:,} ({num_params/1_000:.1f}k)"
+    else:
+        num_params_str = f"{num_params}"
+    print(f"Number of model parameters : {num_params_str}")
+    print(f"Size of model : { yolo.get_model().get_model_size_bytes() / (1024 * 1024):.2f} MB")
+
 
     print("Timings (per image, robust mean):")
     print(f"  - {'Pre-processing:':<25} {avg_preprocess_time:.2f} ms")
