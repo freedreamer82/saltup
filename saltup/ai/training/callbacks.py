@@ -124,7 +124,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         self.best_value = float('inf') if mode == "min" else -float('inf')
         self.best_model = None
         self.best_epoch = None
-    
+        self.best_logs = None 
+
     def _implements_train_batch_hooks(self):
         return False
 
@@ -182,10 +183,14 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
                 is_better = True
         if is_better:
             self.best_value = current
-            # Save a copy of the best model
             self.best_model = tf.keras.models.clone_model(self.model)
             self.best_model.set_weights(self.model.get_weights())
             self.best_epoch = epoch + 1
+            self.best_logs = logs.copy()  # <--- save the best
+
+        # Use the best logs for best_loss/best_val_loss
+        best_loss = self.best_logs.get('loss') if self.best_logs else None
+        best_val_loss = self.best_logs.get('val_loss') if self.best_logs else None
 
         context = CallbackContext(
             model=self.model,
@@ -198,8 +203,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
             best_model=self.best_model,
             best_epoch=self.best_epoch,
-            best_loss=self.best_value if self.mode == "min" else None,
-            best_val_loss=self.best_value if self.mode == "min" else None
+            best_loss=best_loss,
+            best_val_loss=best_val_loss
         )
         self.cb.on_epoch_end(epoch, context)
      
