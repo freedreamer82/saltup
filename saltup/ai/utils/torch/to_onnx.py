@@ -2,7 +2,7 @@ import torch
 import torch.onnx
 import numpy as np
 
-def convert_pytorch_to_onnx(model, input_shape, output_path, model_name="model"):
+def convert_torch_to_onnx(model, input_shape, output_path, model_name="model"):
     """
     Convert a PyTorch model to ONNX format.
     

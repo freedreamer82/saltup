@@ -18,6 +18,7 @@ from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGener
 from saltup.ai.classification.evaluate import evaluate_model
 from saltup.ai.utils.keras.to_onnx import *
 from saltup.ai.utils.keras.to_tflite import tflite_conversion
+from saltup.ai.utils.torch.to_onnx import convert_torch_to_onnx
 from saltup.ai.training.callbacks import *
 from saltup.ai.training.callbacks import _KerasCallbackAdapter
 from tqdm import tqdm
@@ -396,4 +397,28 @@ def training(
                 tflite_model_path
             )
             results_dict['models_paths'].append(tflite_model_path)
+        elif isinstance(training_model, torch.nn.Module):
+            model_folder = os.path.dirname(model_path)
+            model_name = os.path.basename(model_path).replace('.pt', '')
+            onnx_model_path = os.path.join(model_folder, f'{model_name}.onnx')
+
+            # Use the shape of a real batch from the validation dataloader as input shape for ONNX conversion
+            try:
+                train_batch = next(iter(train_datagenerator))
+                if isinstance(train_batch, (list, tuple)):
+                    sample_input = train_batch[0]
+                else:
+                    sample_input = train_batch
+                if hasattr(sample_input, 'shape'):
+                    input_shape = tuple(sample_input.shape)
+                else:
+                    raise RuntimeError("Cannot determine input shape from training datagenerator.")
+            except Exception as e:
+                raise RuntimeError(f"Failed to get input shape from training datagenerator: {e}")
+            convert_torch_to_onnx(
+                training_model, 
+                input_shape=input_shape,
+                output_path=onnx_model_path,
+            )
+            results_dict['models_paths'].append(onnx_model_path)
     return results_dict
