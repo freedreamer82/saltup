@@ -200,10 +200,26 @@ def plot_anchors(
    plt.show()
    
 
-def postprocess_decode(yolo_output, anchors, num_classes, input_shape, calc_loss=False):
+def postprocess_decode(
+    yolo_output: np.ndarray,
+    anchors: list[tuple[float, float]],
+    num_classes: int,
+    input_shape: tuple[int, int]
+) -> tuple:
     """
     Decode YOLO output derived from loss function logic.
-    Returns box coordinates, dimensions, confidence, and class probabilities.
+
+    Args:
+        yolo_output (np.ndarray): Raw output from the YOLO model.
+        anchors (list[tuple[float, float]]): List of anchor box dimensions.
+        num_classes (int): Number of classes.
+        input_shape (tuple[int, int]): Input image shape (height, width)
+    
+    Returns:
+        If calc_loss is True:
+            tuple: (grid, yolo_output, box_xy, box_wh)
+        Else:
+            tuple: (box_xy, box_wh, box_confidence, box_class_probs)
     """
     stride = input_shape[0] / yolo_output.shape[1]
     grid_h = int(input_shape[0] // stride)
@@ -231,8 +247,6 @@ def postprocess_decode(yolo_output, anchors, num_classes, input_shape, calc_loss
     anchors_tensor = np.array(anchors, dtype=np.float32).reshape(1, 1, 1, num_anchors, 2)
     box_wh = box_wh * anchors_tensor
 
-    if calc_loss:
-        return grid, yolo_output, box_xy, box_wh
     return box_xy, box_wh, box_confidence, box_class_probs
 
 
