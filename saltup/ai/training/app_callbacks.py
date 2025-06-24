@@ -338,7 +338,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
             self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch + 1}':^80}")
             self._print("=" * 80)
 
-            self._print(f"Best model epoch: {context.best_epoch + 1}")
+            self._print(f"Best model epoch: {context.best_epoch + 1} | Best loss: {context.best_loss:.4f} | Best val_loss: {context.best_val_loss:.4f}")
             if self.class_names is not None:
                 self._print(f"class_names: {self.class_names}")
                 
