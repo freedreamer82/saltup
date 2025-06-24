@@ -579,6 +579,22 @@ def evaluate(
     # Optional: print to all provided streams
     if output_streams:
         output_text = []
+
+        output_text.append(f"Model type: {yolo.getYoloType().name}\n")
+        num_params = yolo.get_model().get_num_parameters()
+        if num_params >= 1_000_000:
+            num_params_str = f"{num_params:,} ({num_params/1_000_000:.1f}M)"
+        elif num_params >= 1_000:
+            num_params_str = f"{num_params:,} ({num_params/1_000:.1f}k)"
+        else:
+            num_params_str = f"{num_params}"
+        output_text.append(f"Number of model parameters : {num_params_str}\n")
+        model_size_bytes = yolo.get_model().get_model_size_bytes()
+        if model_size_bytes is not None:
+            output_text.append(f"Size of model : {model_size_bytes / (1024 * 1024):.2f} MB\n")
+        else:
+            output_text.append("Size of model : N/A\n")
+
         output_text.append(f"{'IoU threshold:':<20} {iou_threshold}\n")
         output_text.append(f"{'Confidence threshold:':<20} {confidence_threshold}\n")
         output_text.append(f"{'Images processed:':<20} {image_count}\n")
