@@ -251,7 +251,7 @@ def training(
     batch_size:int,           
     output_dir:str,
     validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
-    kfold_param:dict = {'enable':False, 'split':[0.2, 0.8], "task_type":'classification',"monitor":'val_loss'},
+    kfold_param:dict = {'enable':False, 'split':[0.2, 0.8]},
     scheduler:callable=None,
     model_output_name:str=None,
     training_callback:list=[],
@@ -356,6 +356,29 @@ def training(
                 tflite_golden_model_path
             )
             results_dict['models_paths'].append(tflite_model_path)
+        elif isinstance(fold_model, torch.nn.Module):
+            model_name = os.path.basename(golden_model_path).replace('.pt', '')
+            onnx_model_path = os.path.join(golden_model_folder, f'{model_name}.onnx')
+
+            # Use the shape of a real batch from the validation dataloader as input shape for ONNX conversion
+            try:
+                train_batch = next(iter(train_generator))
+                if isinstance(train_batch, (list, tuple)):
+                    sample_input = train_batch[0]
+                else:
+                    sample_input = train_batch
+                if hasattr(sample_input, 'shape'):
+                    input_shape = tuple(sample_input.shape)
+                else:
+                    raise RuntimeError("Cannot determine input shape from training datagenerator.")
+            except Exception as e:
+                raise RuntimeError(f"Failed to get input shape from training datagenerator: {e}")
+            convert_torch_to_onnx(
+                fold_model, 
+                input_shape=input_shape,
+                output_path=onnx_model_path,
+            )
+            results_dict['models_paths'].append(onnx_model_path)
     else:
         if isinstance(validation, list):
             val_datagenerator, train_datagenerator  = train_DataGenerator.split(validation)
