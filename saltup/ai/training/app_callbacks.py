@@ -85,6 +85,94 @@ class MQTTCallback(BaseCallback):
         self.client.disconnect()  # Disconnect from the broker
 
 
+class MLflowCallback(BaseCallback):
+    """Class dedicated to managing MLflow logic during training."""
+    
+    def __init__(self, mlflow_client: MlflowClient = None, mlflow_run_id: str = None):
+        """
+        Initializes the MLflow callback.
+        
+        Args:
+            mlflow_client: MLflow client for logging
+            mlflow_run_id: MLflow run ID
+        """
+        self.mlflow_client = mlflow_client
+        self.mlflow_run_id = mlflow_run_id
+        self.is_enabled = mlflow_client is not None and mlflow_run_id is not None
+    
+    def log_param(self, key, value):
+        """Log a parameter to MLflow."""
+        if not self.is_enabled:
+            return
+            
+        try:
+            self.mlflow_client.log_param(
+                run_id=self.mlflow_run_id,
+                key=key,
+                value=value
+            )
+        except Exception as e:
+            print(f"[MLflow] log_param error {key}: {e}")
+    
+    def log_metric(self, key, value, step=None):
+        """Log a metric to MLflow."""
+        if not self.is_enabled or value is None:
+            return
+            
+        try:
+            self.mlflow_client.log_metric(
+                run_id=self.mlflow_run_id,
+                key=key,
+                value=float(value),
+                step=step
+            )
+        except Exception as e:
+            print(f"[MLflow] log_metric error {key}: {e}")
+    
+    def log_metrics_dict(self, metrics_dict, step=None):
+        """Log a dictionary of metrics to MLflow."""
+        if not self.is_enabled:
+            return
+            
+        for key, value in metrics_dict.items():
+            self.log_metric(key, value, step)
+    
+    def on_train_begin(self, context: CallbackContext):
+        """Called at the beginning of training."""
+        self.log_param("total_epochs", context.epochs)
+    
+    def on_epoch_end(self, epoch, context: CallbackContext):
+        """Called at the end of each epoch."""
+        # Collect standard metrics
+        metrics = {
+            "loss": getattr(context, 'loss', None),
+            "val_loss": getattr(context, 'val_loss', None),
+            "accuracy": getattr(context, 'accuracy', None),
+            "val_accuracy": getattr(context, 'val_accuracy', None),
+        }
+        
+        # Add any additional metrics
+        if context.misc:
+            metrics.update(context.misc)
+        
+        # Log metrics
+        self.log_metrics_dict(metrics, step=epoch)
+        
+    def on_train_end(self, context: CallbackContext):
+        """Called at the end of training."""
+        # Log final metrics
+        final_metrics = {
+            "final_loss": getattr(context, 'final_loss', None),
+            "final_accuracy": getattr(context, 'final_accuracy', None),
+        }
+        
+        self.log_metrics_dict(final_metrics)
+        
+        # Optionally close the MLflow run
+        if self.is_enabled:
+            self.mlflow_client.set_terminated(self.mlflow_run_id)
+
+
 class FileLogger(BaseCallback):
     _instance = None  # Prevent accidental multiple instances
 
