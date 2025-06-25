@@ -1,27 +1,36 @@
 import os
-import datetime
-from dataclasses import dataclass, asdict
-from typing import Union
-import paho.mqtt.client as mqtt
-
-import tensorflow as tf
-import torch
-from typing import List, Optional
 import sys
 import io
-from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
-from saltup.ai.object_detection.yolo.yolo_type import YoloType
-from saltup.ai.object_detection.yolo.yolo_type import YoloType
-from saltup.ai.object_detection.utils.metrics import Metric
+import datetime
+from typing import List, Optional, Union
+from dataclasses import dataclass, asdict
+
+import paho.mqtt.client as mqtt
+
 from saltup.ai.training.callbacks import BaseCallback, CallbackContext
 from saltup.ai.nn_model import NeuralNetworkModel
-from saltup.ai.object_detection.yolo import yolo 
+
+import mlflow
+from mlflow.tracking import MlflowClient
+
+from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
+from saltup.ai.object_detection.yolo.yolo_type import YoloType
+from saltup.ai.object_detection.yolo import yolo
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import BaseYolo
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import BaseDatagenerator
 
  
 class MQTTCallback(BaseCallback):
-    def __init__(self, broker, port, topic, client_id="keras-metrics", username=None, password=None, id=None):
+    def __init__(
+        self,
+        broker: str,
+        port: int,
+        topic: str,
+        client_id: str = "keras-metrics",
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        id: Optional[str] = None
+    ):
         """
         Callback to send training metrics via MQTT.
 
@@ -79,7 +88,22 @@ class MQTTCallback(BaseCallback):
 class FileLogger(BaseCallback):
     _instance = None  # Prevent accidental multiple instances
 
-    def __init__(self, log_file, best_stats_file):
+    def __init__(self, log_file: str, best_stats_file: str):
+        """
+        Initializes the FileLogger singleton instance.
+
+        Args:
+            log_file (str): Path to the file where training logs will be written.
+            best_stats_file (str): Path to the file where the best model statistics will be saved.
+
+        Raises:
+            RuntimeError: If an instance of FileLogger has already been initialized.
+
+        Side Effects:
+            - Creates the log file and writes a header if it does not exist.
+            - Creates the best stats file and writes a header if it does not exist.
+            - Sets up initial values for tracking best validation loss and metrics.
+        """
         if FileLogger._instance is not None:
             raise RuntimeError("FileLogger has already been initialized!")  # Prevent duplicates
         FileLogger._instance = self  # Save the instance
@@ -148,8 +172,8 @@ class FileLogger(BaseCallback):
                 print(f"❌ Error while writing best statistics: {e}")
 
 
-
 class YoloEvaluationsCallback(BaseCallback):
+    
     def __init__(
         self,
         yolo_type: YoloType, 
@@ -162,6 +186,19 @@ class YoloEvaluationsCallback(BaseCallback):
         class_names: dict = None,
         yolo_factory_kwargs: dict = None
     ):
+        """
+        Initializes the callback for YOLO model training evaluation.
+
+            yolo_type (YoloType): The type or version of YOLO model to use for evaluation.
+            datagen (BaseDatagenerator): Data generator providing validation or test data during training.
+            end_of_train_datagen (BaseDatagenerator, optional): Data generator used for evaluation at the end of training. Defaults to None.
+            iou_threshold (float, optional): Intersection-over-Union threshold for considering a detection as true positive. Defaults to 0.5.
+            confidence_threshold (float, optional): Minimum confidence score for a detection to be considered valid. Defaults to 0.5.
+            every_epoch (int, optional): Frequency (in epochs) at which evaluation is performed. Defaults to 1 (every epoch).
+            output_file (str, optional): Path to a file where evaluation results will be saved. If None, results are not saved to file. Defaults to None.
+            class_names (dict, optional): Mapping from class indices to class names for reporting results. If None, default class names are used. Defaults to None.
+            yolo_factory_kwargs (dict, optional): Additional keyword arguments to pass to the YOLO model factory. Defaults to empty dict.
+        """
         if yolo_factory_kwargs is None:
             yolo_factory_kwargs = {}
         BaseCallback.__init__(self)
