@@ -207,4 +207,30 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_val_loss=best_val_loss
         )
         self.cb.on_epoch_end(epoch, context)
+        
+class KFoldTrackingCallback(BaseCallback):
+    """
+    Callback to track best model, loss, and val_loss for each fold in k-fold cross-validation.
+    Stores results in a dictionary: {fold_index: {"model": ..., "loss": ..., "val_loss": ...}}
+    """
+    def __init__(self):
+        super().__init__()
 
+        self.fold_results = {}
+        self.current_fold = None
+
+    def set_fold(self, fold_index: int):
+        self.current_fold = fold_index
+
+    def on_train_end(self, context: CallbackContext) -> None:
+        if self.current_fold is None:
+            raise ValueError("Current fold index not set. Call set_fold(fold_index) before training.")
+
+        # Store results
+        self.fold_results[self.current_fold] = {
+            "model": context.best_model,
+            "loss": context.best_loss,
+            "val_loss": context.best_val_loss,
+        }
+    def get_fold_results(self):
+            return self.fold_results     

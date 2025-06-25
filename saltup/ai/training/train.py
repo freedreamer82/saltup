@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 import copy
 import gc
 
@@ -20,8 +21,9 @@ from saltup.ai.utils.keras.to_onnx import *
 from saltup.ai.utils.keras.to_tflite import tflite_conversion
 from saltup.ai.utils.torch.to_onnx import convert_torch_to_onnx
 from saltup.ai.training.callbacks import *
-from saltup.ai.training.callbacks import _KerasCallbackAdapter
-from tqdm import tqdm
+from saltup.utils.data.image.image_utils import Image, ColorMode
+from saltup.ai.object_detection.utils.metrics import Metric
+from saltup.ai.training.callbacks import _KerasCallbackAdapter, KFoldTrackingCallback
 
 
 def _train_model(
@@ -288,10 +290,10 @@ def training(
     
     if kfold_param['enable']:
         kfolds = train_DataGenerator.split(kfold_param['split'])
-        acc_per_fold = []
-        best_accuracy = -1
-        golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
         # TODO @Marc: Add function for validate golden model and add golden model folder to results_dict
+        
+        k_fold_calbck = KFoldTrackingCallback()
+        training_callback.append(k_fold_calbck)
         for fold in range(len(kfolds)):
             print(f"\n--- Fold {fold + 1} ---")
             train_generator, val_generator = kfoldGenerator(kfolds, fold).get_fold_generators()
@@ -308,6 +310,8 @@ def training(
             
             fold_path = os.path.join(output_dir,'k_'+str(fold))
             os.mkdir(fold_path)
+            
+            k_fold_calbck.set_fold(fold)
             print("\n--- Model training ---")
             classification_class_weight = kwargs.get('classification_class_weight', None)
             trained_model_path = _train_model(
@@ -323,36 +327,33 @@ def training(
                 class_weight=classification_class_weight,
                 app_callbacks=training_callback
             )
-            print("\n--- Model fold evaluation ---")
-            current_fold_folder = os.path.dirname(trained_model_path)
-            current_accuracy = evaluate_model(trained_model_path, val_generator, current_fold_folder, loss_function)
-            acc_per_fold.append(current_accuracy)
-            txt_performance_file_name = "performances.txt"
+        golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
+        os.mkdir(golden_model_folder)    
+        k_fold_results = k_fold_calbck.get_fold_results()
+        best_val_loss = sys.float_info.max
+        for i in range((len(kfolds))):
+            if k_fold_results[i]['val_loss'] < best_val_loss:
+                best_val_loss = k_fold_results[i]['val_loss']
+                if isinstance(fold_model, tf.keras.Model):
+                    golden_model_path = os.path.join(golden_model_folder, f'golden_model.keras')
+                    k_fold_results[i]['model'].save(golden_model_path)
+                elif isinstance(fold_model, torch.nn.Module):
+                    golden_model_path = os.path.join(golden_model_folder, f'golden_model.pt')
+                    scripted = torch.jit.script(k_fold_results[i]['model'].cpu())
+                    scripted.save(golden_model_path)
+        
+        if isinstance(fold_model, tf.keras.Model):
+            golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
+            onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
+            onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path,SaltupEnv.SALTUP_ONNX_OPSET)
+            results_dict['models_paths'].append(onnx_model_path)
             
-            txt_performance_file_path = os.path.join(current_fold_folder, txt_performance_file_name)
-            with open(txt_performance_file_path, mode='w') as f:
-                f.write("The accuracy of the test of the fold " + str(fold) + ": "+str(current_accuracy))
-            
-            if  current_accuracy > best_accuracy:
-                best_accuracy = current_accuracy
-                fold_number = fold
-                golden_model_path = trained_model_path
-
-            golden_fold_folder = os.path.dirname(golden_model_path)
-            shutil.copytree(golden_fold_folder, golden_model_folder, dirs_exist_ok=True)
-            
-            if isinstance(fold_model, tf.keras.Model):
-                golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
-                onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
-                onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path,SaltupEnv.SALTUP_ONNX_OPSET)
-                results_dict['models_paths'].append(onnx_model_path)
-                
-                tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
-                tflite_model_path = tflite_conversion(
-                    golden_model_path, 
-                    tflite_golden_model_path
-                )
-                results_dict['models_paths'].append(tflite_model_path)
+            tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
+            tflite_model_path = tflite_conversion(
+                golden_model_path, 
+                tflite_golden_model_path
+            )
+            results_dict['models_paths'].append(tflite_model_path)
     else:
         if isinstance(validation, list):
             val_datagenerator, train_datagenerator  = train_DataGenerator.split(validation)
