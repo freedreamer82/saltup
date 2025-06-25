@@ -3,6 +3,7 @@ import shutil
 import sys
 import copy
 import gc
+from tqdm import tqdm
 
 from typing import Iterator, Tuple, Any, List, Union
 
@@ -24,6 +25,7 @@ from saltup.ai.training.callbacks import *
 from saltup.utils.data.image.image_utils import Image, ColorMode
 from saltup.ai.object_detection.utils.metrics import Metric
 from saltup.ai.training.callbacks import _KerasCallbackAdapter, KFoldTrackingCallback
+from saltup.ai.training.app_callbacks import YoloEvaluationsCallback, ClassificationEvaluationsCallback
 
 
 def _train_model(
@@ -249,7 +251,7 @@ def training(
     batch_size:int,           
     output_dir:str,
     validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
-    kfold_param:dict = {'enable':True, 'split':[0.2, 0.8]},
+    kfold_param:dict = {'enable':False, 'split':[0.2, 0.8], "task_type":'classification',"monitor":'val_loss'},
     scheduler:callable=None,
     model_output_name:str=None,
     training_callback:list=[],

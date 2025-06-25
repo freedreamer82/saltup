@@ -313,7 +313,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
             self._print(f"class_names: {self.class_names}")
 
         global_metric, metric_per_class = evaluate_model(model, self.end_of_train_datagen)
-        self._print(f"{'Images processed:':<20} {len(self.datagen.dataset) if hasattr(self.datagen, 'dataset') else len(self.datagen)}")
+        self._print(f"{'Images processed:':<20} {len(self.end_of_train_datagen.dataset) if hasattr(self.end_of_train_datagen, 'dataset') else len(self.end_of_train_datagen)}")
 
         self._print("\nPer class:")
         self._print("+" * 50)
