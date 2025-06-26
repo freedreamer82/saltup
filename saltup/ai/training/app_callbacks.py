@@ -52,18 +52,20 @@ class MQTTCallback(BaseCallback):
         """
         Method called at the end of each epoch.
         """        
-        message = {
+        metadata = {
             "id": self.id if self.id is not None else "",
             "epoch": epoch + 1,
             "datetime": datetime.datetime.now().isoformat(),
         }
-        message.update({
-            k: (round(v, 4) if isinstance(v, float) else v)
-            for k, v in context.to_dict().items()
-            if isinstance(v, (float, int))
-        })
-        if self.data:
-            message.update(self.data)
+        self.update_metadata(metadata)
+
+        metrics = self.get_metrics()
+        metadata = self.get_metadata()
+        message = {
+            "metadata": metadata,
+            "metrics": metrics
+        }
+
         self.client.publish(self.topic, str(message))
 
     def on_train_end(self, context: CallbackContext):
@@ -213,7 +215,7 @@ class YoloEvaluationsCallback(BaseCallback):
         custom_data = {
             "best_model_per_class": metrics_dict["per_class"]
         }
-        self.update_data(custom_data)
+        self.update_metrics(custom_data)
         super().on_train_end(context)
 
     def _evaluate_metrics(self, model: BaseYolo, datagen: BaseDatagenerator):
@@ -261,5 +263,5 @@ class YoloEvaluationsCallback(BaseCallback):
             custom_data = {
                "best_model_per_class": metrics_dict["per_class"]
             }
-            self.update_data(custom_data)
+            self.update_metrics(custom_data)
         super().on_epoch_end(epoch, context)

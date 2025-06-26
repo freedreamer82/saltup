@@ -51,17 +51,27 @@ class BaseCallback:
     Subclasses can override the event methods to implement custom behavior.
 
     Attributes:
-        data (dict): A dictionary to store callback-specific data.
+        metrics (dict): A dictionary to store callback-specific metrics.
+        metadata (dict): A dictionary to store callback-specific metadata.
 
     Methods:
-        set_data(data: dict) -> None:
-            Sets the internal data dictionary to the provided data.
+        set_metrics(metrics: dict) -> None:
+            Sets the internal metrics dictionary to the provided metrics.
 
-        get_data() -> dict:
-            Returns the current internal data dictionary.
+        get_metrics() -> dict:
+            Returns the current internal metrics dictionary.
 
-        update_data(data: dict) -> None:
-            Updates the internal data dictionary with the provided data.
+        update_metrics(metrics: dict) -> None:
+            Updates the internal metrics dictionary with the provided metrics.
+
+        set_metadata(metadata: dict) -> None:
+            Sets the internal metadata dictionary to the provided metadata.
+
+        get_metadata() -> dict:
+            Returns the current internal metadata dictionary.
+
+        update_metadata(metadata: dict) -> None:
+            Updates the internal metadata dictionary with the provided metadata.
 
         on_train_begin(context: CallbackContext) -> None:
             Called at the beginning of training. Can be overridden by subclasses.
@@ -73,17 +83,28 @@ class BaseCallback:
             Called at the end of each epoch. Can be overridden by subclasses.
     """
     def __init__(self):
-        self.data: dict = {}
+        self.metrics: dict = {}
+        self.metadata: dict = {}
 
-    def set_data(self, data: dict) -> None:
-        self.data = data or {}
+    def set_metrics(self, metrics: dict) -> None:
+        self.metrics = metrics or {}
 
-    def get_data(self) -> dict:
-        return self.data
+    def get_metrics(self) -> dict:
+        return self.metrics
+    
+    def set_metadata(self, metadata: dict) -> None:
+        self.metadata = metadata or {}
 
-    def update_data(self, data: dict) -> None:
-        if data:
-            self.data.update(data)
+    def get_metadata(self) -> dict:
+        return self.metadata
+
+    def update_metadata(self, metadata: dict) -> None:
+        if metadata:
+            self.metadata.update(metadata)
+
+    def update_metrics(self, metrics: dict) -> None:
+        if metrics:
+            self.metrics.update(metrics)
 
     def on_train_begin(self, context: CallbackContext) -> None:
         pass
@@ -154,6 +175,24 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         )
         self.cb.on_train_begin(context)
     
+    def _update_metrics_and_metadata(self, logs):
+            # Add all logs items if they are not None
+            for k in ["loss", "val_loss", "accuracy", "val_accuracy", "best_loss", "best_val_loss"]:
+                v = logs.get(k, None)
+                if v is not None:
+                    self.cb.update_metrics({k: v})
+            meta = {
+                "epochs": self.params.get('epochs', None),
+                "batch_size": self.params.get('batch_size', None),
+                "monitor": self.monitor,
+                "mode": self.mode
+            }
+            # Only include keys where value is not None
+            filtered_meta = {k: v for k, v in meta.items() if v is not None}
+            if filtered_meta:
+                self.cb.update_metadata(filtered_meta)
+
+
     def on_train_end(self, logs=None):
         logs = logs or {}
         context = CallbackContext(
@@ -170,6 +209,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_loss=self.best_value if self.mode == "min" else None,
             best_val_loss=self.best_value if self.mode == "min" else None
         )
+        self._update_metrics_and_metadata(logs)
         self.cb.on_train_end(context)
 
     def on_epoch_end(self, epoch, logs=None):
@@ -206,5 +246,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_loss=best_loss,
             best_val_loss=best_val_loss
         )
+
+        self._update_metrics_and_metadata(logs)
         self.cb.on_epoch_end(epoch, context)
      
