@@ -2,7 +2,7 @@ import os
 import sys
 import io
 import datetime
-from typing import List, Optional, Union
+from typing import Optional, Set
 from dataclasses import dataclass, asdict
 
 import paho.mqtt.client as mqtt
@@ -88,17 +88,19 @@ class MQTTCallback(BaseCallback):
 class MLflowCallback(BaseCallback):
     """Class dedicated to managing MLflow logic during training."""
     
-    def __init__(self, mlflow_client: MlflowClient = None, mlflow_run_id: str = None):
+    def __init__(self, mlflow_client: MlflowClient = None, mlflow_run_id: str = None, metrics_filter: Set = None):
         """
         Initializes the MLflow callback.
-        
+
         Args:
-            mlflow_client: MLflow client for logging
-            mlflow_run_id: MLflow run ID
+            mlflow_client (MlflowClient, optional): MLflow client for logging metrics.
+            mlflow_run_id (str, optional): MLflow run ID.
+            metrics_filter (Set, optional): Set of metrics to push to MLflow, if present in self.get_metrics. Acts as a filter to select only specific metrics to log.
         """
         self.mlflow_client = mlflow_client
         self.mlflow_run_id = mlflow_run_id
         self.is_enabled = mlflow_client is not None and mlflow_run_id is not None
+        self.metrics_filter = metrics_filter
     
     def log_param(self, key, value):
         """Log a parameter to MLflow."""
@@ -142,21 +144,35 @@ class MLflowCallback(BaseCallback):
         self.log_param("total_epochs", context.epochs)
     
     def on_epoch_end(self, epoch, context: CallbackContext):
-        """Called at the end of each epoch."""
-        # Collect standard metrics
-        metrics = {
-            "loss": getattr(context, 'loss', None),
-            "val_loss": getattr(context, 'val_loss', None),
-            "accuracy": getattr(context, 'accuracy', None),
-            "val_accuracy": getattr(context, 'val_accuracy', None),
-        }
+        if not self.is_enabled:
+            return
         
-        # Add any additional metrics
-        if context.misc:
-            metrics.update(context.misc)
-        
-        # Log metrics
-        self.log_metrics_dict(metrics, step=epoch)
+        metrics = self.get_metrics()
+        for key, value in metrics.items():
+            if value is not None and (self.metrics_filter is None or key in self.metrics_filter):
+                # If value is a dict, log each subkey separately
+                if isinstance(value, dict):
+                    for subkey, subvalue in value.items():
+                        if subvalue is not None:
+                            try:
+                                self.mlflow_client.log_metric(
+                                    run_id=self.mlflow_run_id,
+                                    key=f"{key}.{subkey}",
+                                    value=float(subvalue),
+                                    step=epoch
+                                )
+                            except Exception as e:
+                                print(f"[MLflow] Errore log_metric {key}.{subkey}: {e}")
+                else:
+                    try:
+                        self.mlflow_client.log_metric(
+                            run_id=self.mlflow_run_id,
+                            key=key,
+                            value=float(value),
+                            step=epoch
+                        )
+                    except Exception as e:
+                        print(f"[MLflow] Errore log_metric {key}: {e}")
         
     def on_train_end(self, context: CallbackContext):
         """Called at the end of training."""
