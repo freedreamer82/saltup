@@ -3,7 +3,7 @@ import sys
 import io
 import datetime
 from typing import Optional, Set
-from dataclasses import dataclass, asdict
+from fnmatch import fnmatch
 
 import paho.mqtt.client as mqtt
 
@@ -18,7 +18,7 @@ from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.yolo import yolo
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import BaseYolo
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import BaseDatagenerator
-
+from saltup.utils.misc import PathDict
  
 class MQTTCallback(BaseCallback):
     def __init__(
@@ -88,19 +88,29 @@ class MQTTCallback(BaseCallback):
 class MLflowCallback(BaseCallback):
     """Class dedicated to managing MLflow logic during training."""
     
-    def __init__(self, mlflow_client: MlflowClient = None, mlflow_run_id: str = None, metrics_filter: Set = None):
+    def __init__(self, mlflow_client: MlflowClient = None, mlflow_run_id: str = None, metrics_filter: Set = None, close_on_train_end: bool = False):
         """
         Initializes the MLflow callback.
 
         Args:
             mlflow_client (MlflowClient, optional): MLflow client for logging metrics.
             mlflow_run_id (str, optional): MLflow run ID.
-            metrics_filter (Set, optional): Set of metrics to push to MLflow, if present in self.get_metrics. Acts as a filter to select only specific metrics to log.
+            metrics_filter (Set, optional): Set of patterns (with wildcards) to select which metrics to log to MLflow. 
+                    If None, all metrics are logged.
+            close_on_train_end (bool, optional): Whether to close the MLflow run at the end of training. Default is False.
         """
         self.mlflow_client = mlflow_client
         self.mlflow_run_id = mlflow_run_id
         self.is_enabled = mlflow_client is not None and mlflow_run_id is not None
-        self.metrics_filter = metrics_filter
+        # Ensure all patterns in metrics_filter start with '/'
+        if metrics_filter is not None:
+            self.metrics_filter = set(
+            pattern if pattern.startswith('/') else '/' + pattern
+            for pattern in metrics_filter
+            )
+        else:
+            self.metrics_filter = None
+        self.close_on_train_end = close_on_train_end
     
     def log_param(self, key, value):
         """Log a parameter to MLflow."""
@@ -147,9 +157,14 @@ class MLflowCallback(BaseCallback):
         if not self.is_enabled:
             return
         
-        metrics = self.get_metrics()
+        metrics = PathDict(self.get_metrics())
         for key, value in metrics.items():
-            if value is not None and (self.metrics_filter is None or key in self.metrics_filter):
+            should_log = value is not None
+            if self.metrics_filter is not None:
+                should_log = should_log and any(fnmatch(key, pattern) for pattern in self.metrics_filter)
+                # Replace slashes with underscores for MLflow compatibility
+                key = key.replace('/', '_')[1:]
+            if should_log:
                 # If value is a dict, log each subkey separately
                 if isinstance(value, dict):
                     for subkey, subvalue in value.items():
@@ -185,7 +200,7 @@ class MLflowCallback(BaseCallback):
         self.log_metrics_dict(final_metrics)
         
         # Optionally close the MLflow run
-        if self.is_enabled:
+        if self.is_enabled and self.close_on_train_end:
             self.mlflow_client.set_terminated(self.mlflow_run_id)
 
 
