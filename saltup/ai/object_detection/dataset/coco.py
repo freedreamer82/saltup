@@ -23,12 +23,12 @@ Key functions:
 import os
 import json
 import shutil
+import random
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from typing import Dict, List, Tuple, Optional, Union
-import random
 
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
@@ -712,9 +712,10 @@ def count_annotations(
 
     Returns:
         Tuple of:
-            Dict mapping category ID/name to count of annotations
+            Dict mapping category ID/name to count of annotations (ordered by key)
             Number of unique annotated images
     """
+
     with open(coco_json, 'r') as f:
         data = json.load(f)
 
@@ -739,6 +740,18 @@ def count_annotations(
             for cat_id, count in category_counts.items()
             if cat_id in categories
         }
-
-    return dict(category_counts), len(annotated_images)
+        # Order by class_names order
+        ordered_counts = OrderedDict()
+        for name in class_names:
+            if name in category_counts:
+                ordered_counts[name] = category_counts[name]
+        return ordered_counts, len(annotated_images)
+    else:
+        # Order by category id
+        ordered_counts = OrderedDict()
+        for cat in sorted(data['categories'], key=lambda x: x['id']):
+            cat_id = cat['id']
+            if cat_id in category_counts:
+                ordered_counts[cat_id] = category_counts[cat_id]
+        return ordered_counts, len(annotated_images)
 

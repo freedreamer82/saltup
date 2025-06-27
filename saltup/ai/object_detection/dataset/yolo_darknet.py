@@ -6,7 +6,7 @@ import shutil
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, OrderedDict
 from typing import Iterable, Union, List, Dict, Optional, Tuple, Set
 
 from saltup.utils.data.image.image_utils import Image
@@ -178,8 +178,8 @@ class YoloDataset(Dataset):
             images_dir (str): Directory containing image files.
             labels_dir (str): Directory containing label files.
             refresh_each (int): Number of operations before refreshing image IDs cache.
-                If -1, refreshes only on explicit calls. Defaults to -1.
-                
+            If -1, refreshes only on explicit calls. Defaults to -1.
+            
         Raises:
             FileNotFoundError: If images_dir or labels_dir don't exist.
             RuntimeError: If dataset integrity check fails.
@@ -1103,7 +1103,7 @@ def count_objects(
 
     Returns:
         Tuple of:
-            Dict mapping class ID/name to labels count
+            Dict mapping class ID/name to labels count (ordered by key)
             Number of annotated images
     """
     label_counts = Counter()
@@ -1122,12 +1122,17 @@ def count_objects(
             label_counts[class_id] += 1
 
     if class_names:
-        label_counts = {
-            class_names[class_id]: count 
-            for class_id, count in label_counts.items()
-        }
+        ordered_keys = range(len(class_names))
+        label_counts = OrderedDict(
+            (class_names[class_id], label_counts.get(class_id, 0)) for class_id in ordered_keys
+        )
+    else:
+        ordered_keys = sorted(label_counts.keys())
+        label_counts = OrderedDict(
+            (class_id, label_counts[class_id]) for class_id in ordered_keys
+        )
 
-    return dict(label_counts), len(txt_label_files)
+    return dict(label_counts), len(list(txt_label_files))
 
 
 def create_symlinks_by_class(
