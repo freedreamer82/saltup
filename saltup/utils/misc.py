@@ -408,7 +408,7 @@ def copy_or_move_files(source_folder: str, destination_folder: str, move: bool =
                 shutil.copy2(file_path, destination_path)
 
 
-def unify_files(
+def consolidate_files(
     source_dirs: List[str],
     destination: str,
     filters: Optional[List[str]] = None,

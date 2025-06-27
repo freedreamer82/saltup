@@ -3,7 +3,7 @@ import sys
 import argparse
 
 from saltup.utils import configure_logging
-from saltup.utils.misc import unify_files
+from saltup.utils.misc import consolidate_files
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -52,7 +52,7 @@ def main():
         logger = configure_logging.get_logger(__name__)
         
         # Execute file unification
-        processed, failed = unify_files(
+        processed, failed = consolidate_files(
             source_dirs=args.sources,
             destination=args.destination,
             filters=args.filters,
