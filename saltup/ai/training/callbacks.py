@@ -102,8 +102,22 @@ class BaseCallback:
             self.metadata.update(metadata)
 
     def update_metrics(self, metrics: dict) -> None:
+        def _truncate_floats(d: dict, precision: int = 4) -> dict:
+            """Truncate float values in a dictionary to a specified precision, recursively."""
+            result = {}
+            for k, v in d.items():
+                if isinstance(v, float):
+                    result[k] = round(v, precision)
+                elif isinstance(v, dict):
+                    result[k] = _truncate_floats(v, precision)
+                else:
+                    result[k] = v
+            return result
+        
         if metrics:
-            self.metrics.update(metrics)
+            self.metrics.update(metrics)                        
+            # Truncate float values in metrics
+            self.metrics = _truncate_floats(self.metrics, precision=4)
 
     def on_train_begin(self, context: CallbackContext) -> None:
         pass

@@ -354,10 +354,10 @@ class YoloEvaluationsCallback(BaseCallback):
 
         metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.end_of_train_datagen)
         custom_data = {
-            "best_model_per_class": metrics_dict["per_class"]
+            "best_model_per_class": metrics_dict["per_class"],
+            "overall": metrics_dict["overall"]
         }
         self.update_metrics(custom_data)
-        super().on_train_end(context)
 
     def _evaluate_metrics(self, model: BaseYolo, datagen: BaseDatagenerator):
         output_stream = io.StringIO()
@@ -378,6 +378,7 @@ class YoloEvaluationsCallback(BaseCallback):
         per_class_metrics = self.extract_per_class_metrics(results, number_classes)
         metrics_dict = {
             "per_class": per_class_metrics,
+            "overall": metrics.get_metrics()
         }
         return metrics_dict
 
@@ -402,7 +403,7 @@ class YoloEvaluationsCallback(BaseCallback):
             metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.datagen)
 
             custom_data = {
-               "best_model_per_class": metrics_dict["per_class"]
+               "best_model_per_class": metrics_dict["per_class"],
+               "overall": metrics_dict["overall"]
             }
             self.update_metrics(custom_data)
-        super().on_epoch_end(epoch, context)
