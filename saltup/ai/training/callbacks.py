@@ -7,7 +7,7 @@ import paho.mqtt.client as mqtt
 import tensorflow as tf
 import torch
 from typing import List, Optional
- 
+
 
 @dataclass
 class CallbackContext:
@@ -39,7 +39,6 @@ class CallbackContext:
             'best_val_loss': self.best_val_loss
         }
         return tmp | (self.misc if self.misc else {})
-
 
 
 class BaseCallback:
@@ -103,8 +102,22 @@ class BaseCallback:
             self.metadata.update(metadata)
 
     def update_metrics(self, metrics: dict) -> None:
+        def _truncate_floats(d: dict, precision: int = 4) -> dict:
+            """Truncate float values in a dictionary to a specified precision, recursively."""
+            result = {}
+            for k, v in d.items():
+                if isinstance(v, float):
+                    result[k] = round(v, precision)
+                elif isinstance(v, dict):
+                    result[k] = _truncate_floats(v, precision)
+                else:
+                    result[k] = v
+            return result
+        
         if metrics:
-            self.metrics.update(metrics)
+            self.metrics.update(metrics)                        
+            # Truncate float values in metrics
+            self.metrics = _truncate_floats(self.metrics, precision=4)
 
     def on_train_begin(self, context: CallbackContext) -> None:
         pass
