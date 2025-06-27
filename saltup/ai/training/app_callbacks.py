@@ -58,6 +58,13 @@ class MQTTCallback(BaseCallback):
         self.client.loop_start()  # Start the background loop to handle the connection
 
     def on_epoch_end(self, epoch, context: CallbackContext):
+        # Check if the MQTT client is connected before publishing
+        if not self.client.is_connected():
+            print("[MQTTCallback] Client is not connected. Attempting to reconnect...")
+            try:
+                self.client.reconnect()
+            except Exception as e:
+                print(f"[MQTTCallback] Reconnection failed: {e}")
         """
         Method called at the end of each epoch.
         """        

@@ -187,23 +187,25 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_val_loss=self.best_value if self.mode == "min" else None
         )
         self.cb.on_train_begin(context)
-    
-    def _update_metrics_and_metadata(self, logs):
-            # Add all logs items if they are not None
-            for k in ["loss", "val_loss", "accuracy", "val_accuracy", "best_loss", "best_val_loss"]:
-                v = logs.get(k, None)
-                if v is not None:
-                    self.cb.update_metrics({k: v})
-            meta = {
-                "epochs": self.params.get('epochs', None),
-                "batch_size": self.params.get('batch_size', None),
-                "monitor": self.monitor,
-                "mode": self.mode
-            }
-            # Only include keys where value is not None
-            filtered_meta = {k: v for k, v in meta.items() if v is not None}
-            if filtered_meta:
-                self.cb.update_metadata(filtered_meta)
+
+    def _update_metrics_and_metadata(self, context):
+        metrics = {}
+        for k in ["loss", "val_loss", "accuracy", "val_accuracy", "best_loss", "best_val_loss","best_epoch"]:
+            v = getattr(context, k, None)
+            if v is not None:
+                metrics[k] = v
+        if metrics:
+            self.cb.update_metrics(metrics)
+
+        meta = {
+            "epochs": context.epochs,
+            "batch_size": context.batch_size,
+            "monitor": self.monitor,
+            "mode": self.mode,
+        }
+        filtered_meta = {k: v for k, v in meta.items() if v is not None}
+        if filtered_meta:
+            self.cb.update_metadata(filtered_meta)
 
 
     def on_train_end(self, logs=None):
@@ -222,7 +224,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_loss=self.best_value if self.mode == "min" else None,
             best_val_loss=self.best_value if self.mode == "min" else None
         )
-        self._update_metrics_and_metadata(logs)
+        self._update_metrics_and_metadata(context)
         self.cb.on_train_end(context)
 
     def on_epoch_end(self, epoch, logs=None):
@@ -260,6 +262,6 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_val_loss=best_val_loss
         )
 
-        self._update_metrics_and_metadata(logs)
+        self._update_metrics_and_metadata(context)
         self.cb.on_epoch_end(epoch, context)
      
