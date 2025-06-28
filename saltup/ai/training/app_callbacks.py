@@ -70,8 +70,6 @@ class MQTTCallback(BaseCallback):
         """        
         metadata = {
             "id": self.id if self.id is not None else "",
-            "epoch": epoch + 1,
-            "datetime": datetime.datetime.now().isoformat(),
         }
         self.update_metadata(metadata)
 

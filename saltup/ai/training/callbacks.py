@@ -202,6 +202,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             "batch_size": context.batch_size,
             "monitor": self.monitor,
             "mode": self.mode,
+            "datetime": datetime.datetime.now().isoformat(),
         }
         filtered_meta = {k: v for k, v in meta.items() if v is not None}
         if filtered_meta:
@@ -263,5 +264,6 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         )
 
         self._update_metrics_and_metadata(context)
+        self.cb.update_metrics({"epoch": epoch + 1})
         self.cb.on_epoch_end(epoch, context)
      
