@@ -22,7 +22,7 @@ dependencies = [
     "opencv-python",
     "boto3",
     "onnx",
-    "onnxruntime-gpu",
+    "onnxruntime",
     "tensorflow==2.18.0",
     "tf_keras",
     "torch",
