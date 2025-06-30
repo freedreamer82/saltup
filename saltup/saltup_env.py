@@ -50,7 +50,7 @@ class _SaltupEnv:
     
     @property
     def SALTUP_BBOX_NORMALIZATION_TOLERANCE(self):
-        return float(os.getenv("SALTUP_BBOX_NORMALIZATION_TOLERANCE", 1e-3))
+        return float(os.getenv("SALTUP_BBOX_NORMALIZATION_TOLERANCE", 1e-2))
 
     @property
     def SALTUP_ONNX_OPSET(self):
