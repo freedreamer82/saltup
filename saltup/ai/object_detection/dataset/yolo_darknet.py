@@ -10,7 +10,7 @@ from collections import defaultdict, Counter, OrderedDict
 from typing import Iterable, Union, List, Dict, Optional, Tuple, Set
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxClassId, BBoxFormat
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
 from saltup.ai.base_dataformat.base_dataset import Dataset
 from saltup.utils import configure_logging
@@ -881,7 +881,6 @@ def convert_to_coco_annotations(image_dir: str, label_dir: str, classes: list[st
         classes (list[str]): List of class names matching YOLO Darknet indices
         output_json (str): Path for output COCO JSON file
     """
-    from saltup.ai.object_detection.utils.bbox import yolo_to_coco_bbox
     
     images = []
     annotations = []
@@ -923,8 +922,14 @@ def convert_to_coco_annotations(image_dir: str, label_dir: str, classes: list[st
                 
                 for yolo_box in yolo_boxes:
                     x, y, w, h, class_id = yolo_box
+
                     # Convert YOLO Darknet bbox to COCO bbox
-                    coco_bbox = yolo_to_coco_bbox([x, y, w, h], img_width, img_height)
+                    coco_bbox = BBox.converter(
+                        coordinates=[x, y, w, h],
+                        from_fmt=BBoxFormat.YOLO,
+                        to_fmt=BBoxFormat.COCO,
+                        img_shape=(img_width, img_height)
+                    )
                     area = coco_bbox[2] * coco_bbox[3]  # width * height
 
                     annotations.append({

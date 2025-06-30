@@ -31,7 +31,7 @@ from collections import defaultdict, OrderedDict
 from typing import Dict, List, Tuple, Optional, Union
 
 from saltup.utils.data.image.image_utils import Image
-from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox, BBoxClassId, BBoxFormat
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
 from saltup.utils.configure_logging import logging
 
@@ -512,7 +512,6 @@ def convert_coco_to_yolo_labels(
     Returns:
         Dict mapping image filenames to YOLO annotations
     """
-    from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
     
     with open(coco_json, 'r') as f:
         coco_data = json.load(f)
