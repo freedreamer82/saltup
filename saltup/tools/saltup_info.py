@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from saltup.saltup_env import SaltupEnv
 
 def print_saltup_info():
