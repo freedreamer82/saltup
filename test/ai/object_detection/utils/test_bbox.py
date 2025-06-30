@@ -164,7 +164,7 @@ def test_bbox_to_coco():
 
 def test_bbox_to_pascal_voc():
     bbox = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
-    pascal_coords = bbox.get_coordinates(fmt=BBoxFormat.PASCALVOC)
+    pascal_coords = bbox.get_coordinates(fmt=BBoxFormat.VOC)
     expected_pascal_coords = (100, 150, 200, 250)
     assert pascal_coords == pytest.approx(expected_pascal_coords, rel=1e-4, abs=1)
 
@@ -267,9 +267,9 @@ class TestBBoxFromFile:
 
         # Verify bounding box coordinates in Pascal VOC format
         xmin0, ymin0, xmax0, ymax0 = 100, 150, 300, 400
-        assert bboxes[0].get_coordinates(fmt=BBoxFormat.PASCALVOC) == pytest.approx([xmin0, ymin0, xmax0, ymax0], rel=1e-4, abs=1)
+        assert bboxes[0].get_coordinates(fmt=BBoxFormat.VOC) == pytest.approx([xmin0, ymin0, xmax0, ymax0], rel=1e-4, abs=1)
         xmin1, ymin1, xmax1, ymax1 = 350, 200, 500, 350
-        assert bboxes[1].get_coordinates(fmt=BBoxFormat.PASCALVOC) == pytest.approx([xmin1, ymin1, xmax1, ymax1], rel=1e-4, abs=1)
+        assert bboxes[1].get_coordinates(fmt=BBoxFormat.VOC) == pytest.approx([xmin1, ymin1, xmax1, ymax1], rel=1e-4, abs=1)
         
     def test_empty_files(self, tmp_path):
         # Test empty YOLO file

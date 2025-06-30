@@ -82,7 +82,6 @@ Pascal VOC to YOLO:
 import json
 import xml.etree.ElementTree as ET
 import cv2
-import os
 import numpy as np
 from copy import deepcopy
 from enum import auto, IntEnum
@@ -114,7 +113,7 @@ class BBoxFormat(IntEnum):
     # Common Notations
     YOLO = 2
     COCO = 6
-    PASCALVOC = 4
+    VOC = 4
     
     def to_coordinate_format(self):
         """Convert the BBoxFormat enum to a CoordinateFormat enum."""
@@ -154,13 +153,14 @@ class BBoxFormat(IntEnum):
             return "YOLO (normalized center-x, center-y, width, height)"
         elif self == BBoxFormat.COCO:
             return "COCO (absolute x1, y1, width, height)"
-        elif self == BBoxFormat.PASCALVOC:
+        elif self == BBoxFormat.VOC:
             return "PASCAL VOC (absolute x1, y1, x2, y2)"
         else:
             raise ValueError(f"Unknown BBoxFormat: {self}")
         
 BBOX_INNER_FORMAT = BBoxFormat(SaltupEnv.SALTUP_BBOX_INNER_FORMAT)
 FLOAT_PRECISION = SaltupEnv.SALTUP_BBOX_FLOAT_PRECISION
+NORMALIZATION_TOLERANCE = SaltupEnv.SALTUP_BBOX_NORMALIZATION_TOLERANCE  # Tolerance for normalized coordinates
 
 class IoUType(IntEnum):
     IOU = auto()
@@ -242,12 +242,13 @@ class BBox:
         return deepcopy(self)
 
     @classmethod
-    def is_normalized(cls, coordinates: Union[List, Tuple, 'BBox'], eps: float = 5e-3) -> bool:
+    def is_normalized(cls, coordinates: Union[List, Tuple, 'BBox'], eps: float = NORMALIZATION_TOLERANCE) -> bool:
         """
         Check if the bounding box coordinates are normalized.
+
         Args:
             coordinates: The bounding box coordinates or a BBox object.
-            eps: Tolerance for floating point comparison (default: 5e-3).
+            eps: Tolerance for floating point comparison. If not provided, uses SALTUP_BBOX_NORMALIZATION_TOLERANCE.
 
         Returns:
             bool: True if the coordinates are normalized, False otherwise.
@@ -497,7 +498,7 @@ class BBox:
                      BBoxFormat.TOPLEFT_NORMALIZED, BBoxFormat.YOLO]:
             return bbox
 
-        if fmt == BBoxFormat.CORNERS_ABSOLUTE or fmt == BBoxFormat.PASCALVOC:
+        if fmt == BBoxFormat.CORNERS_ABSOLUTE or fmt == BBoxFormat.VOC:
             x1, y1, x2, y2 = bbox
 
             # Validate coordinates
@@ -632,7 +633,7 @@ class BBox:
 
         # Check if format is already absolute
         if fmt in [BBoxFormat.CORNERS_ABSOLUTE, BBoxFormat.CENTER_ABSOLUTE,
-                     BBoxFormat.TOPLEFT_ABSOLUTE, BBoxFormat.COCO, BBoxFormat.PASCALVOC]:
+                     BBoxFormat.TOPLEFT_ABSOLUTE, BBoxFormat.COCO, BBoxFormat.VOC]:
             return bbox
 
         bbox = [float(x) for x in bbox]
@@ -887,7 +888,7 @@ class BBox:
             ymax = int(bndbox.find('ymax').text)
             bbox = cls(
                 coordinates=[xmin, ymin, xmax, ymax],
-                fmt=BBoxFormat.PASCALVOC,
+                fmt=BBoxFormat.VOC,
                 img_height=img_height,
                 img_width=img_width
             )

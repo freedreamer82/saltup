@@ -47,6 +47,10 @@ class _SaltupEnv:
     @property
     def SALTUP_BBOX_FLOAT_PRECISION(self):
         return int(os.getenv("SALTUP_BBOX_FLOAT_PRECISION", "4"))
+    
+    @property
+    def SALTUP_BBOX_NORMALIZATION_TOLERANCE(self):
+        return float(os.getenv("SALTUP_BBOX_NORMALIZATION_TOLERANCE", 1e-3))
 
     @property
     def SALTUP_ONNX_OPSET(self):
