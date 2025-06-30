@@ -178,25 +178,28 @@ class TestYOLODarknet:
     def test_split_dataset(self, sample_dataset):
         """Test splitting dataset while maintaining class distribution."""
         root_dir, dirs = sample_dataset
-        
+
         # Get class distribution
         class_to_images = _image_per_class_id(
             str(dirs['labels']['train']),
             str(dirs['images']['train'])
         )
-        
+
         # Test splitting
         train, val, test = split_dataset(
             class_to_images,
-            split_ratio=0.8,
-            split_val_ratio=0.5
+            train_ratio=0.7,
+            val_ratio=0.2,
+            test_ratio=0.1
         )
-        
+
         # Verify splits
         total_images = sum(len(imgs) for imgs in class_to_images.values())
         total_split = len(train) + len(val) + len(test)
+        # The total number of images in splits may be less than or equal to the total images
+        # due to overlaps or per-class limits in the split logic.
         assert total_split <= total_images
-        
+
         # Check no overlap between splits
         train_set = set(str(x) for x in train)
         val_set = set(str(x) for x in val)
@@ -212,15 +215,16 @@ class TestYOLODarknet:
             str(dirs['labels']['train']),
             str(dirs['images']['train'])
         )
-        
+
         max_images = 1
         train, val, test = split_dataset(
             class_to_images,
-            split_ratio=0.6,
-            split_val_ratio=0.2,
-            max_images_per_class=max_images
+            max_images_per_class=max_images,
+            train_ratio=0.6,
+            val_ratio=0.2,
+            test_ratio=0.2
         )
-        
+
         # Count images per class in training set
         class_counts = defaultdict(int)
         for img_path, _ in train:
@@ -229,7 +233,7 @@ class TestYOLODarknet:
                 for line in f:
                     class_id = int(line.split()[0])
                     class_counts[class_id] += 1
-                    
+
         # Verify limits
         assert all(count <= max_images for count in class_counts.values())
 
@@ -430,6 +434,22 @@ class TestYOLODarknetLoader:
             assert isinstance(img2, SaltupImage)
             assert np.array_equal(img1.get_data(), img2.get_data())
 
+    def test_yolo_darknet_loader_merge(self, sample_dataset):
+        """Test merging two YoloDarknetLoader instances."""
+        root_dir, dirs = sample_dataset
+
+        loader1 = YoloDarknetLoader(
+            images_dir=str(dirs['images']['train']),
+            labels_dir=str(dirs['labels']['train'])
+        )
+
+        loader2 = YoloDarknetLoader(
+            images_dir=str(dirs['images']['val']),
+            labels_dir=str(dirs['labels']['val'])
+        )
+
+        with pytest.raises(NotImplementedError):
+            YoloDarknetLoader.merge(loader1, loader2)
 
 class TestYoloDataset:
     @pytest.fixture
@@ -623,6 +643,57 @@ class TestYoloDataset:
         # Test annotazioni invalide
         with pytest.raises(TypeError):
             dataset.save_annotations("invalid", "img1")
+    
+    def test_yolo_dataset_save_image_annotations(self, sample_dataset):
+        """Test saving both image and annotations."""
+        root_dir, dirs = sample_dataset
+        dataset = YoloDataset(
+            images_dir=str(dirs['images']['train']),
+            labels_dir=str(dirs['labels']['train'])
+        )
+
+        image_id = "test_image"
+        dummy_image = np.zeros((10, 10, 3), dtype=np.uint8)
+        annotations = [
+            [0, 0.5, 0.5, 0.2, 0.3],
+            [1, 0.3, 0.4, 0.1, 0.2]
+        ]
+
+        dataset.save_image_annotations(
+            image=dummy_image,
+            image_id=image_id,
+            annotations=annotations,
+            overwrite=True
+        )
+
+        # Verify saved image and annotations
+        image_path = Path(dirs['images']['train']) / f"{image_id}.jpg"
+        label_path = Path(dirs['labels']['train']) / f"{image_id}.txt"
+
+        assert image_path.exists()
+        assert label_path.exists()
+
+        saved_annotations = read_label(str(label_path))
+        assert len(saved_annotations) == len(annotations)
+
+    def test_yolo_dataset_check_integrity(self, sample_dataset):
+        """Test dataset integrity check."""
+        root_dir, dirs = sample_dataset
+        dataset = YoloDataset(
+            images_dir=str(dirs['images']['train']),
+            labels_dir=str(dirs['labels']['train'])
+        )
+
+        stats = {
+            'missing_images': [],
+            'missing_labels': [],
+            'invalid_annotations': []
+        }
+
+        assert dataset.check_integrity(stats=stats)
+        assert not stats['missing_images']
+        assert not stats['missing_labels']
+        assert not stats['invalid_annotations']
 
 
 if __name__ == '__main__':

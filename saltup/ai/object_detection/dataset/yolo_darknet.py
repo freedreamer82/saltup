@@ -959,69 +959,65 @@ def convert_to_coco_annotations(image_dir: str, label_dir: str, classes: list[st
 
 
 def split_dataset(
-    class_to_images: Dict[int, List], 
-    split_ratio: float = 0.8, 
-    split_val_ratio: float = 0.5,
-    max_images_per_class: Optional[int] = None
+    class_to_images: Dict[int, List],
+    max_images_per_class: int = 0,
+    train_ratio: float = 0.7,
+    val_ratio: float = 0.2,
+    test_ratio: float = 0.1
 ) -> Tuple[List, List, List]:
     """Split dataset into train, validation and test sets.
 
-    First splits data into training and remaining sets using split_ratio.
-    Then divides remaining data into validation/test using split_val_ratio.
-    Images are randomly selected up to optional max_images_per_class limit.
-
     Args:
         class_to_images: Dict mapping class IDs to lists of (image_path, label_path) tuples
-        split_ratio: Proportion for training set (0.0-1.0) 
-        split_val_ratio: Proportion for validation vs test split (0.0-1.0)
-        max_images_per_class: Max images per class (None = no limit)
+        max_images_per_class: Max images per class (0 = no limit)
+        train_ratio: Proportion for training set (0.0-1.0)
+        val_ratio: Proportion for validation set (0.0-1.0)
+        test_ratio: Proportion for test set (0.0-1.0)
 
     Returns:
         Tuple of (train, validation, test) lists containing (image_path, label_path) pairs
 
     Raises:
-        ValueError: If ratios not in [0,1] or max_images_per_class negative
-   
-    Examples:
-        >>> class_data = {0: ['img1.jpg', 'img2.jpg'], 1: ['img3.jpg', 'img4.jpg']}
-        >>> train, val, test = split_dataset(class_data, min_images_per_class=2)
+        ValueError: If ratios do not sum to 1.0 or are not in [0,1]
     """
-    # Validate input ratios
-    if not (0.0 <= split_ratio <= 1.0 and 0.0 <= split_val_ratio <= 1.0):
-        raise ValueError("Split ratios must be in range [0, 1]")
+    if not (0.0 <= train_ratio <= 1.0 and 0.0 <= val_ratio <= 1.0 and 0.0 <= test_ratio <= 1.0):
+        raise ValueError("All split ratios must be in range [0, 1]")
+    if not abs((train_ratio + val_ratio + test_ratio) - 1.0) < 1e-6:
+        raise ValueError("train_ratio + val_ratio + test_ratio must sum to 1.0")
     if max_images_per_class is not None and max_images_per_class < 0:
-        raise ValueError("max_images_per_class must be positive or None")
+        raise ValueError("max_images_per_class must be positive or zero")
 
-    # Track which split each image belongs to
     image_to_split = {}
 
     for class_id, images in class_to_images.items():
         random.shuffle(images)
         limit = min(max_images_per_class, len(images)) if max_images_per_class else len(images)
+        selected_images = images[:limit]
 
-        # Assign images to train set
-        train_count = int(limit * split_ratio)
-        for image in images[:train_count]:
+        n = len(selected_images)
+        n_train = int(n * train_ratio)
+        n_val = int(n * val_ratio)
+        n_test = n - n_train - n_val  # Ensure all images are assigned
+
+        idx = 0
+        for image in selected_images[:n_train]:
             if image not in image_to_split:
                 image_to_split[image] = "train"
-
-        # Assign remaining images to val/test set
-        val_test_images = images[train_count:limit]
-        random.shuffle(val_test_images)
-        mid_point = int(len(val_test_images) * split_val_ratio)
-        for image in val_test_images[:mid_point]:
+            idx += 1
+        for image in selected_images[idx:idx + n_val]:
             if image not in image_to_split:
                 image_to_split[image] = "val"
-        for image in val_test_images[mid_point:]:
+            idx += 1
+        for image in selected_images[idx:]:
             if image not in image_to_split:
                 image_to_split[image] = "test"
 
-    # Create final splits
     train_set = [image for image, split in image_to_split.items() if split == "train"]
     val_set = [image for image, split in image_to_split.items() if split == "val"]
     test_set = [image for image, split in image_to_split.items() if split == "test"]
 
     return train_set, val_set, test_set
+
 
 def split_and_organize_dataset(
     labels_dir: str,
@@ -1029,12 +1025,18 @@ def split_and_organize_dataset(
     max_images_per_class: int = 0,
     train_ratio: float = 0.7,
     val_ratio: float = 0.2,
-    test_ratio: float = 0.1
+    test_ratio: float = 0.1,
+    output_dir: Optional[str] = None,
+    verbose: bool = False
 ) -> None:
     """Split YOLO dataset into train/val/test directories.
 
     Randomly splits dataset according to provided ratios and organizes files
-    into standard YOLO directory structure.
+    into standard YOLO directory structure:
+
+        images/train, labels/train
+        images/val,   labels/val
+        images/test,  labels/test
 
     Args:
         labels_dir: YOLO label files directory (.txt)
@@ -1043,11 +1045,22 @@ def split_and_organize_dataset(
         train_ratio: Training set proportion (e.g. 0.7)
         val_ratio: Validation set proportion (e.g. 0.2) 
         test_ratio: Test set proportion (e.g. 0.1)
+        output_dir: Root directory for the output dataset structure (default: current directory)
+        verbose: Enable progress bar output
 
     Note:
-        - Moves files to train/val/test subdirs (not copied)
+        - Copies files to train/val/test subdirs in output_dir
         - train_ratio + val_ratio + test_ratio should equal 1.0
     """
+    def _copy_file(src, dst):
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(src, dst)
+
+    if output_dir is None:
+        root_dir = os.getcwd()
+    else:
+        root_dir = os.path.abspath(output_dir)
+
     class_to_images = _image_per_class_id(labels_dir, images_dir)
     
     # Split dataset
@@ -1059,39 +1072,39 @@ def split_and_organize_dataset(
         test_ratio
     )
 
-    print(f"Training set size: {len(train_set)} images")
-    print(f"Validation set size: {len(val_set)} images")
-    print(f"Test set size: {len(test_set)} images")
+    total_images = len(train_set) + len(val_set) + len(test_set)
+    print(f"Total images: {total_images}")
+    print(f"  - Training set: {len(train_set)}")
+    print(f"  - Validation set: {len(val_set)}")
+    print(f"  - Test set: {len(test_set)}")
 
-    # Create subfolders
-    subdirs = {
-        "train": {"images": os.path.join(images_dir, 'train'), 
-                 "labels": os.path.join(labels_dir, 'train')},
-        "val": {"images": os.path.join(images_dir, 'val'),
-                "labels": os.path.join(labels_dir, 'val')},
-        "test": {"images": os.path.join(images_dir, 'test'),
-                 "labels": os.path.join(labels_dir, 'test')}
+    # Create YOLO directory structure in output_dir
+    images_subdirs = {
+        "train": os.path.join(root_dir, "images", "train"),
+        "val": os.path.join(root_dir, "images", "val"),
+        "test": os.path.join(root_dir, "images", "test"),
+    }
+    labels_subdirs = {
+        "train": os.path.join(root_dir, "labels", "train"),
+        "val": os.path.join(root_dir, "labels", "val"),
+        "test": os.path.join(root_dir, "labels", "test"),
     }
 
-    for paths in subdirs.values():
-        os.makedirs(paths["images"], exist_ok=True)
-        os.makedirs(paths["labels"], exist_ok=True)
+    for split in ["train", "val", "test"]:
+        os.makedirs(images_subdirs[split], exist_ok=True)
+        os.makedirs(labels_subdirs[split], exist_ok=True)
 
-    # Move files
-    moved_files = set()
-    for dataset, split_name in [(train_set, "train"), 
-                              (val_set, "val"), 
-                              (test_set, "test")]:
-        for image_path, label_path in dataset:
-            if image_path not in moved_files and label_path not in moved_files:
-                image_dest = os.path.join(subdirs[split_name]["images"], 
-                                        os.path.basename(image_path))
-                label_dest = os.path.join(subdirs[split_name]["labels"], 
-                                        os.path.basename(label_path))
-
-                shutil.move(image_path, image_dest)
-                shutil.move(label_path, label_dest)
-                moved_files.update([image_path, label_path])
+    # Copy files to the correct folders
+    copied_files = set()
+    for dataset, split_name in [(train_set, "train"), (val_set, "val"), (test_set, "test")]:
+        for image_path, label_path in tqdm(dataset, desc=f"Copying {split_name}", leave=False, disable=not verbose):
+            if (image_path, label_path) in copied_files:
+                raise RuntimeError(f"Duplicate image-label pair detected: {image_path}, {label_path}")
+            image_dest = os.path.join(images_subdirs[split_name], os.path.basename(image_path))
+            label_dest = os.path.join(labels_subdirs[split_name], os.path.basename(label_path))
+            _copy_file(image_path, image_dest)
+            _copy_file(label_path, label_dest)
+            copied_files.add((image_path, label_path))
 
 
 def count_objects(
