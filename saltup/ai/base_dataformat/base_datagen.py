@@ -5,7 +5,7 @@ import numpy as np
 
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 
-# TODO @S0nFra: Add set/get name method
+
 class BaseDatagenerator(ABC):
     def __init__(
         self, 
@@ -44,6 +44,8 @@ class BaseDatagenerator(ABC):
         self._do_augment = True if transform else False
         
         self._preprocess = preprocess
+        
+        self._name = self.dataloader.get_name()
     
     @abstractmethod
     def __len__(self):
@@ -63,6 +65,21 @@ class BaseDatagenerator(ABC):
     @abstractmethod
     def merge(dg1:'BaseDatagenerator', dg2:'BaseDatagenerator') -> 'BaseDatagenerator':
         raise NotImplementedError
+    
+    def get_name(self):
+        """
+        Returns the name of the datagenerator.
+        """
+        return self._name
+    
+    def set_name(self, name: str):
+        """
+        Sets the name of the datagenerator.
+        
+        Args:
+            name (str): The new name for the datagenerator.
+        """
+        self._name = name
     
     @property
     def preprocess(self):
