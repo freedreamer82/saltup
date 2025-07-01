@@ -1,29 +1,37 @@
 import os
-import datetime
-from dataclasses import dataclass, asdict
-from typing import Union
-import paho.mqtt.client as mqtt
-
-import tensorflow as tf
-import torch
-from typing import List, Optional
 import sys
 import io
-from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
-from saltup.ai.object_detection.yolo.yolo_type import YoloType
-from saltup.ai.object_detection.yolo.yolo_type import YoloType
-from saltup.ai.object_detection.utils.metrics import Metric
+import datetime
+from typing import Optional, Set
+from fnmatch import fnmatch
+
+import paho.mqtt.client as mqtt
+
 from saltup.ai.training.callbacks import BaseCallback, CallbackContext
 from saltup.ai.nn_model import NeuralNetworkModel
-from saltup.ai.object_detection.yolo import yolo 
+
+import mlflow
+from mlflow.tracking import MlflowClient
+
+from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
+from saltup.ai.object_detection.yolo.yolo_type import YoloType
+from saltup.ai.object_detection.yolo import yolo
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import BaseYolo
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import BaseDatagenerator
 from saltup.ai.classification.evaluate import evaluate_model
-
-
+from saltup.utils.misc import PathDict
  
 class MQTTCallback(BaseCallback):
-    def __init__(self, broker, port, topic, client_id="keras-metrics", username=None, password=None, id=None):
+    def __init__(
+        self,
+        broker: str,
+        port: int,
+        topic: str,
+        client_id: str = "keras-metrics",
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        id: Optional[str] = None
+    ):
         """
         Callback to send training metrics via MQTT.
 
@@ -51,21 +59,28 @@ class MQTTCallback(BaseCallback):
         self.client.loop_start()  # Start the background loop to handle the connection
 
     def on_epoch_end(self, epoch, context: CallbackContext):
+        # Check if the MQTT client is connected before publishing
+        if not self.client.is_connected():
+            print("[MQTTCallback] Client is not connected. Attempting to reconnect...")
+            try:
+                self.client.reconnect()
+            except Exception as e:
+                print(f"[MQTTCallback] Reconnection failed: {e}")
         """
         Method called at the end of each epoch.
         """        
-        message = {
+        metadata = {
             "id": self.id if self.id is not None else "",
-            "epoch": epoch + 1,
-            "datetime": datetime.datetime.now().isoformat(),
         }
-        message.update({
-            k: (round(v, 4) if isinstance(v, float) else v)
-            for k, v in context.to_dict().items()
-            if isinstance(v, (float, int))
-        })
-        if self.data:
-            message.update(self.data)
+        self.update_metadata(metadata)
+
+        metrics = self.get_metrics()
+        metadata = self.get_metadata()
+        message = {
+            "metadata": metadata,
+            "metrics": metrics
+        }
+
         self.client.publish(self.topic, str(message))
 
     def on_train_end(self, context: CallbackContext):
@@ -76,10 +91,144 @@ class MQTTCallback(BaseCallback):
         self.client.disconnect()  # Disconnect from the broker
 
 
+class MLflowCallback(BaseCallback):
+    """Class dedicated to managing MLflow logic during training."""
+    
+    def __init__(self, mlflow_client: MlflowClient = None, mlflow_run_id: str = None, metrics_filter: Set = None, close_on_train_end: bool = False):
+        """
+        Initializes the MLflow callback.
+
+        Args:
+            mlflow_client (MlflowClient, optional): MLflow client for logging metrics.
+            mlflow_run_id (str, optional): MLflow run ID.
+            metrics_filter (Set, optional): Set of patterns (with wildcards) to select which metrics to log to MLflow. 
+                    If None, all metrics are logged.
+            close_on_train_end (bool, optional): Whether to close the MLflow run at the end of training. Default is False.
+        """
+        self.mlflow_client = mlflow_client
+        self.mlflow_run_id = mlflow_run_id
+        self.is_enabled = mlflow_client is not None and mlflow_run_id is not None
+        # Ensure all patterns in metrics_filter start with '/'
+        if metrics_filter is not None:
+            self.metrics_filter = set(
+            pattern if pattern.startswith('/') else '/' + pattern
+            for pattern in metrics_filter
+            )
+        else:
+            self.metrics_filter = None
+        self.close_on_train_end = close_on_train_end
+    
+    def log_param(self, key, value):
+        """Log a parameter to MLflow."""
+        if not self.is_enabled:
+            return
+            
+        try:
+            self.mlflow_client.log_param(
+                run_id=self.mlflow_run_id,
+                key=key,
+                value=value
+            )
+        except Exception as e:
+            print(f"[MLflow] log_param error {key}: {e}")
+    
+    def log_metric(self, key, value, step=None):
+        """Log a metric to MLflow."""
+        if not self.is_enabled or value is None:
+            return
+            
+        try:
+            self.mlflow_client.log_metric(
+                run_id=self.mlflow_run_id,
+                key=key,
+                value=float(value),
+                step=step
+            )
+        except Exception as e:
+            print(f"[MLflow] log_metric error {key}: {e}")
+    
+    def log_metrics_dict(self, metrics_dict, step=None):
+        """Log a dictionary of metrics to MLflow."""
+        if not self.is_enabled:
+            return
+            
+        for key, value in metrics_dict.items():
+            self.log_metric(key, value, step)
+    
+    def on_train_begin(self, context: CallbackContext):
+        """Called at the beginning of training."""
+        self.log_param("total_epochs", context.epochs)
+    
+    def on_epoch_end(self, epoch, context: CallbackContext):
+        if not self.is_enabled:
+            return
+        
+        metrics = PathDict(self.get_metrics())
+        for key, value in metrics.items():
+            should_log = value is not None
+            if self.metrics_filter is not None:
+                should_log = should_log and any(fnmatch(key, pattern) for pattern in self.metrics_filter)
+                # Replace slashes with underscores for MLflow compatibility
+                key = key.replace('/', '_')[1:]
+            if should_log:
+                # If value is a dict, log each subkey separately
+                if isinstance(value, dict):
+                    for subkey, subvalue in value.items():
+                        if subvalue is not None:
+                            try:
+                                self.mlflow_client.log_metric(
+                                    run_id=self.mlflow_run_id,
+                                    key=f"{key}.{subkey}",
+                                    value=float(subvalue),
+                                    step=epoch
+                                )
+                            except Exception as e:
+                                print(f"[MLflow] Errore log_metric {key}.{subkey}: {e}")
+                else:
+                    try:
+                        self.mlflow_client.log_metric(
+                            run_id=self.mlflow_run_id,
+                            key=key,
+                            value=float(value),
+                            step=epoch
+                        )
+                    except Exception as e:
+                        print(f"[MLflow] Errore log_metric {key}: {e}")
+        
+    def on_train_end(self, context: CallbackContext):
+        """Called at the end of training."""
+        # Log final metrics
+        final_metrics = {
+            "final_loss": getattr(context, 'final_loss', None),
+            "final_accuracy": getattr(context, 'final_accuracy', None),
+        }
+        
+        self.log_metrics_dict(final_metrics)
+        
+        # Optionally close the MLflow run
+        if self.is_enabled and self.close_on_train_end:
+            self.mlflow_client.set_terminated(self.mlflow_run_id)
+
+
 class FileLogger(BaseCallback):
     _instance = None  # Prevent accidental multiple instances
 
-    def __init__(self, log_file, best_stats_file):
+    def __init__(self, log_file: str, best_stats_file: str):
+        """
+        Initializes the FileLogger singleton instance.
+
+        Args:
+            log_file (str): Path to the file where training logs will be written.
+            best_stats_file (str): Path to the file where the best model statistics will be saved.
+
+        Raises:
+            RuntimeError: If an instance of FileLogger has already been initialized.
+
+        Side Effects:
+            - Creates the log file and writes a header if it does not exist.
+            - Creates the best stats file and writes a header if it does not exist.
+            - Sets up initial values for tracking best validation loss and metrics.
+        """
         if FileLogger._instance is not None:
             raise RuntimeError("FileLogger has already been initialized!")  # Prevent duplicates
         FileLogger._instance = self  # Save the instance
@@ -148,8 +297,8 @@ class FileLogger(BaseCallback):
                 print(f"❌ Error while writing best statistics: {e}")
 
 
-
 class YoloEvaluationsCallback(BaseCallback):
+    
     def __init__(
         self,
         yolo_type: YoloType, 
@@ -162,6 +311,19 @@ class YoloEvaluationsCallback(BaseCallback):
         class_names: dict = None,
         yolo_factory_kwargs: dict = None
     ):
+        """
+        Initializes the callback for YOLO model training evaluation.
+
+            yolo_type (YoloType): The type or version of YOLO model to use for evaluation.
+            datagen (BaseDatagenerator): Data generator providing validation or test data during training.
+            end_of_train_datagen (BaseDatagenerator, optional): Data generator used for evaluation at the end of training. Defaults to None.
+            iou_threshold (float, optional): Intersection-over-Union threshold for considering a detection as true positive. Defaults to 0.5.
+            confidence_threshold (float, optional): Minimum confidence score for a detection to be considered valid. Defaults to 0.5.
+            every_epoch (int, optional): Frequency (in epochs) at which evaluation is performed. Defaults to 1 (every epoch).
+            output_file (str, optional): Path to a file where evaluation results will be saved. If None, results are not saved to file. Defaults to None.
+            class_names (dict, optional): Mapping from class indices to class names for reporting results. If None, default class names are used. Defaults to None.
+            yolo_factory_kwargs (dict, optional): Additional keyword arguments to pass to the YOLO model factory. Defaults to empty dict.
+        """
         if yolo_factory_kwargs is None:
             yolo_factory_kwargs = {}
         BaseCallback.__init__(self)
@@ -213,10 +375,10 @@ class YoloEvaluationsCallback(BaseCallback):
 
         metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.end_of_train_datagen)
         custom_data = {
-            "best_model_per_class": metrics_dict["per_class"]
+            "best_model_per_class": metrics_dict["per_class"],
+            "overall": metrics_dict["overall"]
         }
-        self.update_data(custom_data)
-        super().on_train_end(context)
+        self.update_metrics(custom_data)
 
     def _evaluate_metrics(self, model: BaseYolo, datagen: BaseDatagenerator):
         output_stream = io.StringIO()
@@ -237,6 +399,7 @@ class YoloEvaluationsCallback(BaseCallback):
         per_class_metrics = self.extract_per_class_metrics(results, number_classes)
         metrics_dict = {
             "per_class": per_class_metrics,
+            "overall": metrics.get_metrics()
         }
         return metrics_dict
 
@@ -261,11 +424,11 @@ class YoloEvaluationsCallback(BaseCallback):
             metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.datagen)
 
             custom_data = {
-               "best_model_per_class": metrics_dict["per_class"]
+               "best_model_per_class": metrics_dict["per_class"],
+               "overall": metrics_dict["overall"]
             }
-            self.update_data(custom_data)
-        super().on_epoch_end(epoch, context)
-        
+            self.update_metrics(custom_data)
+
 class ClassificationEvaluationsCallback(BaseCallback):
     """
     Callback for evaluating classification metrics during and after model training.
