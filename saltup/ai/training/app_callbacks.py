@@ -18,8 +18,8 @@ from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.yolo import yolo
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import BaseYolo
 from saltup.ai.object_detection.datagenerator.anchors_based_datagen import BaseDatagenerator
-from saltup.ai.classification.evaluate import evaluate_model
 from saltup.utils.misc import PathDict
+from saltup.ai.classification.evaluate import evaluate_model
  
 class MQTTCallback(BaseCallback):
     def __init__(
