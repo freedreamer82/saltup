@@ -17,7 +17,7 @@ class ClassificationDataloader(BaseDataloader):
             img_size (tuple): Image size (H, W, C) for preallocation (optional)
             extensions (tuple): Allowed image extensions
         """
-        
+        super().__init__()
         if isinstance(source, str):
            self.root_dir = source
         
