@@ -1,4 +1,5 @@
 from enum import IntEnum
+
 from saltup.ai.object_detection.yolo.yolo import BaseYolo
 from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
@@ -6,6 +7,7 @@ from saltup.ai.object_detection.yolo.impl.yolo_damo import YoloDamo
 from saltup.ai.object_detection.yolo.impl.yolo_nas import YoloNas
 from saltup.ai.object_detection.yolo.impl.yolo_ultralytics import YoloUltralytics
 from saltup.ai.nn_model import NeuralNetworkModel
+
 
 class YoloFactory:
     """
