@@ -1,5 +1,5 @@
 import pytest
-from saltup.utils.misc import match_patterns, count_files, unify_files
+from saltup.utils.misc import match_patterns, count_files
 from saltup.utils.configure_logging import LoggerManager, get_logger
 
 class TestMiscUtils:

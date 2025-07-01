@@ -59,4 +59,14 @@ else
     python -m pip install .
 fi
 
+# Install onnxruntime or onnxruntime-gpu based on GPU presence
+echo "Checking for NVIDIA GPU to install appropriate onnxruntime package..."
+if command -v nvidia-smi &> /dev/null && nvidia-smi > /dev/null 2>&1; then
+    echo "NVIDIA GPU detected: installing onnxruntime-gpu"
+    python -m pip install onnxruntime-gpu
+else
+    echo "No NVIDIA GPU detected: installing onnxruntime (CPU version)"
+    python -m pip install onnxruntime
+fi
+
 echo "Package installed successfully!"

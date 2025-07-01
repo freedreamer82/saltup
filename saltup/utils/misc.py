@@ -27,7 +27,168 @@ def suppress_stderr():
             yield
         finally:
             sys.stderr = old_stderr
+
+
+class PathDict(dict):
+    """
+    Dictionary that supports accessing elements via string paths.
+    
+    Examples:
+    - d['a'] or d['/a'] to access key 'a'
+    - d['/a/b/c'] to access nested keys
+    - keys() returns all possible paths
+    """
+    
+    def __init__(self, data=None):
+        if data is None:
+            data = {}
+        super().__init__(data)
+    
+    def __getitem__(self, key):
+        """
+        Access elements via normal key or path.
+        """
+        if isinstance(key, str) and ('/' in key):
+            return self._get_by_path(key)
+        else:
+            # Remove leading '/' if present for simple keys
+            if isinstance(key, str) and key.startswith('/'):
+                key = key[1:]
+            return super().__getitem__(key)
+    
+    def __setitem__(self, key, value):
+        """
+        Set values via normal key or path.
+        """
+        if isinstance(key, str) and ('/' in key):
+            self._set_by_path(key, value)
+        else:
+            # Remove leading '/' if present for simple keys
+            if isinstance(key, str) and key.startswith('/'):
+                key = key[1:]
+            super().__setitem__(key, value)
+    
+    def __contains__(self, key):
+        """
+        Check if a key or path exists.
+        """
+        if isinstance(key, str) and ('/' in key):
+            try:
+                self._get_by_path(key)
+                return True
+            except KeyError:
+                return False
+        else:
+            # Remove leading '/' if present for simple keys
+            if isinstance(key, str) and key.startswith('/'):
+                key = key[1:]
+            return super().__contains__(key)
+    
+    def _get_by_path(self, path):
+        """
+        Get a value following a path like 'a/b/c'.
+        """
+        # Remove leading '/' if present
+        if path.startswith('/'):
+            path = path[1:]
+        
+        keys = path.split('/')
+        current = self
+        
+        for key in keys:
+            if isinstance(current, dict):
+                # Try the key as string first
+                if key in current:
+                    current = current[key]
+                # If not found, try to convert to other types
+                elif key.isdigit():
+                    # Try as integer
+                    int_key = int(key)
+                    if int_key in current:
+                        current = current[int_key]
+                    else:
+                        raise KeyError(f"Path '{path}' not found")
+                elif key.lower() in ('true', 'false'):
+                    # Try as boolean
+                    bool_key = key.lower() == 'true'
+                    if bool_key in current:
+                        current = current[bool_key]
+                    else:
+                        raise KeyError(f"Path '{path}' not found")
+                else:
+                    raise KeyError(f"Path '{path}' not found")
+            else:
+                raise KeyError(f"Path '{path}' not found")
+        
+        return current
+    
+    def _set_by_path(self, path, value):
+        """
+        Set a value following a path like 'a/b/c'.
+        """
+        # Remove leading '/' if present
+        if path.startswith('/'):
+            path = path[1:]
+        
+        keys = path.split('/')
+        current = self
+        
+        # Navigate to the second-to-last element, creating dicts if needed
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = PathDict()
+            elif not isinstance(current[key], dict):
+                raise ValueError(f"Cannot create path '{path}': '{key}' is not a dictionary")
+            current = current[key]
+        
+        # Set the final value
+        current[keys[-1]] = value
+    
+    def keys(self):
+        """
+        Return all keys as paths.
+        """
+        return list(self._get_all_paths())
+    
+    def _get_all_paths(self, prefix=''):
+        """
+        Recursively generate all possible paths.
+        """
+        for key, value in super().items():
+            current_path = f"{prefix}/{key}"
+            yield current_path
             
+            # If the value is a dictionary, explore recursively
+            if isinstance(value, dict):
+                # Convert to PathDict if needed and continue recursion
+                path_dict = PathDict(value) if not isinstance(value, PathDict) else value
+                yield from path_dict._get_all_paths(current_path)
+    
+    def _get_path_dict(self, obj):
+        """
+        Convert a normal dictionary to PathDict if needed.
+        """
+        if isinstance(obj, PathDict):
+            return obj
+        elif isinstance(obj, dict):
+            return PathDict(obj)
+        else:
+            return obj
+    
+    def items(self):
+        """
+        Return (path, value) pairs for all elements.
+        """
+        for path in self.keys():
+            yield (path, self[path])
+    
+    def values(self):
+        """
+        Return all values following the paths.
+        """
+        for path in self.keys():
+            yield self[path]
+
 
 def match_patterns(target: str, patterns: Union[str, Iterable[Union[str, List[str]]]]) -> bool:
     """
@@ -247,7 +408,7 @@ def copy_or_move_files(source_folder: str, destination_folder: str, move: bool =
                 shutil.copy2(file_path, destination_path)
 
 
-def unify_files(
+def consolidate_files(
     source_dirs: List[str],
     destination: str,
     filters: Optional[List[str]] = None,

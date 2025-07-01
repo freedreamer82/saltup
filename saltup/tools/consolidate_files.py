@@ -3,14 +3,13 @@ import sys
 import argparse
 
 from saltup.utils import configure_logging
-from saltup.utils.misc import unify_files
+from saltup.utils.misc import consolidate_files
 
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description='Unify files from multiple directories into a single destination.',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description='Unify files from multiple directories into a single destination.'
     )
     
     parser.add_argument(
@@ -39,16 +38,6 @@ def parse_arguments() -> argparse.Namespace:
         action='store_true',
         help='Move files instead of copying them'
     )
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-        default='INFO',
-        help='Set the logging level'
-    )
-    parser.add_argument(
-        '--log-file',
-        help='Optional log file path'
-    )
     
     return parser.parse_args()
 
@@ -56,14 +45,15 @@ def parse_arguments() -> argparse.Namespace:
 def main():
     """Main entry point for the script."""
     args = parse_arguments()
+    print(f"Arguments received: {args}")
     
     try:
         
         logger = configure_logging.get_logger(__name__)
         
         # Execute file unification
-        processed, failed = unify_files(
-            sources=args.sources,
+        processed, failed = consolidate_files(
+            source_dirs=args.sources,
             destination=args.destination,
             filters=args.filters,
             divide_by_extension=args.divide_by_extension,

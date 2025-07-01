@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saltup"
-version = "0.8.3"
+version = "0.8.5"
 description = "add flavor to your AI projects"
 readme = "README.md"
 requires-python = ">=3.6"
@@ -22,7 +22,7 @@ dependencies = [
     "opencv-python",
     "boto3",
     "onnx",
-    "onnxruntime-gpu",
+    "onnxruntime",
     "tensorflow==2.18.0",
     "tf_keras",
     "torch",
@@ -39,3 +39,7 @@ saltup_yolo_s3_inference = "saltup.tools.yolo_s3_inference:main"
 saltup_info = "saltup.tools.saltup_info:main"
 saltup_keras2onnx = "saltup.tools.keras2onnx:main"
 saltup_onnx_quantization = "saltup.tools.onnx_quantization:main"
+
+[tool.setuptools.packages.find]
+include = ["saltup*"]
+exclude = ["mlruns*"]
