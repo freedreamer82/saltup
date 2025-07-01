@@ -156,7 +156,7 @@ class YoloAnchorsBased(BaseYolo):
             raw_output = raw_output[0]
             
         preds_decoded = postprocess_decode(
-            raw_output, anchors, self._number_class, input_shape, calc_loss=False)
+            raw_output, anchors, self._number_class, input_shape)
         input_image_shape = [image_height, image_width]
 
         corners_boxes, scores, classes, centers_boxes = tiny_anchors_based_nms(

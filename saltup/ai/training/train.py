@@ -148,97 +148,98 @@ def _train_model(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.pt')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.pt')
+        
         for callback in app_callbacks:
             callback.on_train_begin(context)
 
-            best_val_loss = float('inf')
-            best_loss = float('inf')
+        best_val_loss = float('inf')
+        best_loss = float('inf')
 
-            for epoch in range(epochs):
-                model.train()
-                running_loss = 0.0
-                correct = 0
-                total = 0
+        for epoch in range(epochs):
+            model.train()
+            running_loss = 0.0
+            correct = 0
+            total = 0
+
+            if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                train_iter = tqdm(train_gen, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False)
+            else:
+                train_iter = train_gen
+
+            for inputs, targets in train_iter:
+                inputs, targets = inputs.to(device), targets.to(device)
+
+                # For classification, convert one-hot to class indices; for others, leave as is.
+                if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
+                    targets = torch.argmax(targets, dim=1)
+
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                loss = loss_function(outputs, targets)
+                loss.backward()
+                optimizer.step()
+
+                running_loss += loss.item() * inputs.size(0)
+                _, predicted = torch.max(outputs, 1)
+                correct += (predicted == targets).sum().item()
+                total += targets.size(0)
 
                 if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
-                    train_iter = tqdm(train_gen, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False)
-                else:
-                    train_iter = train_gen
+                    train_iter.set_postfix(loss=loss.item())
 
-                for inputs, targets in train_iter:
+            epoch_loss = running_loss / total
+            epoch_accuracy = correct / total
+
+            # Validation
+            model.eval()
+            val_loss = 0.0
+            val_correct = 0
+            val_total = 0
+
+            with torch.no_grad():
+                for inputs, targets in val_gen:
                     inputs, targets = inputs.to(device), targets.to(device)
-
-                    # For classification, convert one-hot to class indices; for others, leave as is.
                     if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
                         targets = torch.argmax(targets, dim=1)
-
-                    optimizer.zero_grad()
                     outputs = model(inputs)
                     loss = loss_function(outputs, targets)
-                    loss.backward()
-                    optimizer.step()
-
-                    running_loss += loss.item() * inputs.size(0)
+                    val_loss += loss.item() * inputs.size(0)
                     _, predicted = torch.max(outputs, 1)
-                    correct += (predicted == targets).sum().item()
-                    total += targets.size(0)
+                    val_correct += (predicted == targets).sum().item()
+                    val_total += targets.size(0)
 
-                    if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
-                        train_iter.set_postfix(loss=loss.item())
+            epoch_val_loss = val_loss / val_total
+            epoch_val_accuracy = val_correct / val_total
 
-                epoch_loss = running_loss / total
-                epoch_accuracy = correct / total
+            # Update context with new best_loss and best_val_loss
+            context.loss = epoch_loss
+            context.accuracy = epoch_accuracy
+            context.val_loss = epoch_val_loss
+            context.val_accuracy = epoch_val_accuracy
 
-                # Validation
-                model.eval()
-                val_loss = 0.0
-                val_correct = 0
-                val_total = 0
+            if epoch_val_loss < best_val_loss:
+                best_val_loss = epoch_val_loss
+                context.best_val_loss = best_val_loss
+                best_loss = epoch_loss
+                context.best_loss = best_loss
+                context.best_model = copy.deepcopy(model)
+                context.best_epoch = epoch
+                scripted = torch.jit.script(model.cpu())
+                scripted.save(best_model_path)
 
-                with torch.no_grad():
-                    for inputs, targets in val_gen:
-                        inputs, targets = inputs.to(device), targets.to(device)
-                        if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
-                            targets = torch.argmax(targets, dim=1)
-                        outputs = model(inputs)
-                        loss = loss_function(outputs, targets)
-                        val_loss += loss.item() * inputs.size(0)
-                        _, predicted = torch.max(outputs, 1)
-                        val_correct += (predicted == targets).sum().item()
-                        val_total += targets.size(0)
-
-                epoch_val_loss = val_loss / val_total
-                epoch_val_accuracy = val_correct / val_total
-
-                # Update context with new best_loss and best_val_loss
-                context.loss = epoch_loss
-                context.accuracy = epoch_accuracy
-                context.val_loss = epoch_val_loss
-                context.val_accuracy = epoch_val_accuracy
-
-                if epoch_val_loss < best_val_loss:
-                    best_val_loss = epoch_val_loss
-                    context.best_val_loss = best_val_loss
-                    best_loss = epoch_loss
-                    context.best_loss = best_loss
-                    context.best_model = copy.deepcopy(model)
-                    context.best_epoch = epoch
-                    scripted = torch.jit.script(model.cpu())
-                    scripted.save(best_model_path)
-
-                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
-                    print(
-                    f"Epoch {epoch+1}/{epochs} - "
-                    f"loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f} - "
-                    f"best_epoch: {context.best_epoch+1 if context.best_epoch is not None else '-'} - "
-                    f"best_loss: {context.best_loss:.4f} - best_val_loss: {context.best_val_loss:.4f}"
-                    )
-
+            if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                print(
+                f"Epoch {epoch+1}/{epochs} - "
+                f"loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f} - "
+                f"best_epoch: {context.best_epoch+1 if context.best_epoch is not None else '-'} - "
+                f"best_loss: {context.best_loss:.4f} - best_val_loss: {context.best_val_loss:.4f}"
+                )
+            for callback in app_callbacks:
                 callback.on_epoch_end(epoch , context)
-
+        for callback in app_callbacks:
             callback.on_train_end(context)
-            scripted = torch.jit.script(model.cpu())
-            scripted.save(last_epoch_model)
+        scripted = torch.jit.script(model.cpu())
+        scripted.save(last_epoch_model)
 
         return best_model_path
             

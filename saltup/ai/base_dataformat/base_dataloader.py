@@ -1,14 +1,15 @@
-from pathlib import Path
-import pickle
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-from datetime import datetime
 from abc import ABC, abstractmethod
+from datetime import datetime
 from enum import Enum
-from typing import Iterator, Tuple, Any, List, Tuple, Union
+from pathlib import Path
+from typing import Any, Iterator, List, Tuple, Union
+
 import base64
 import io
+import numpy as np
+import pandas as pd
+import pickle
+from tqdm import tqdm
 
 from saltup.ai.object_detection.utils.bbox import BBoxClassId
 from saltup.utils.data.image.image_utils import Image, ColorMode
@@ -19,13 +20,23 @@ class StorageFormat(Enum):
     PICKLE = 'pkl'
     PARQUET = 'parquet'
 
-# TODO @S0nFra: Add set/get name method
 class BaseDataloader(ABC):
     """Base interface for dataset loaders.
 
     Abstract base class that defines the interface for dataset loaders.
     Provides basic functionality for loading and iterating over image-label pairs.
     """
+
+    def __init__(self):
+        self._name = None
+
+    def set_name(self, name: str):
+        """Set the name of the dataloader."""
+        self._name = name
+
+    def get_name(self) -> str:
+        """Get the name of the dataloader."""
+        return self._name
 
     @abstractmethod
     def __iter__(self):
@@ -52,10 +63,9 @@ class BaseDataloader(ABC):
         """Merges another dataloader into this one."""
         raise NotImplementedError
     
-    # TODO @S0nFra: Correct this method signature
     def __getitem__(self, idx: Union[int, slice]) -> Union[
-        Tuple[Image, List[BBoxClassId]],
-        List[Tuple[Image, List[BBoxClassId]]]
+        Tuple[Image, Any],
+        List[Tuple[Image, Any]]
     ]:
         """Get item(s) by index.
         
