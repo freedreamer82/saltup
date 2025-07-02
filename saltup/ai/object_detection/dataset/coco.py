@@ -256,8 +256,10 @@ def validate_dataset_structure(root_dir: str) -> Dict:
         ann_file = os.path.join(ann_dir, f'instances_{split}.json')
 
         if os.path.exists(img_dir):
-            stats[split]['images'] = len([f for f in os.listdir(img_dir)
-                                          if f.endswith(('.jpg', '.jpeg', '.png'))])
+            stats[split]['images'] = len([
+                f for f in os.listdir(img_dir)
+                if f.endswith(('.jpg', '.jpeg', '.png'))
+            ])
 
         if os.path.exists(ann_file):
             annotations = read_annotations(ann_file)
@@ -267,68 +269,95 @@ def validate_dataset_structure(root_dir: str) -> Dict:
     return stats
 
 
-def get_dataset_paths(root_dir: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+def is_coco_dataset(root_dir: Union[str, Path]) -> bool:
     """
-    Get directory paths for dataset in COCO format and verify correlation between
-    images and their annotations.
+    Check if the dataset at the given path is in COCO format.
+
+    This function searches for typical COCO annotation JSON files and verifies
+    that at least one of them contains the required COCO structure.
 
     Args:
-        root_dir: Dataset root directory
+        root_dir: Path to the root directory of the dataset
 
     Returns:
-        Tuple of (train_images_dir, train_annotations_file, val_images_dir, val_annotations_file)
-        Returns None for paths that don't exist or don't have correlation
+        True if a valid COCO annotation file is found, False otherwise
     """
-    logger = logging.getLogger(__name__)
-    
-    # Verify root directory exists
-    if not os.path.exists(root_dir):
+    if not isinstance(root_dir, Path):
+        root_dir = Path(root_dir)
+    if not root_dir.exists():
         raise FileNotFoundError(f"Root directory {root_dir} does not exist")
 
-    # Build COCO paths
-    train_images_dir = os.path.join(root_dir, 'images', 'train')
-    train_annotations_file = os.path.join(root_dir, 'annotations', 'instances_train.json')
-    val_images_dir = os.path.join(root_dir, 'images', 'val')
-    val_annotations_file = os.path.join(root_dir, 'annotations', 'instances_val.json')
+    json_patterns = [
+        'instances_*.json',
+        'annotations.json', 
+        'train.json',
+        'val.json',
+        'test.json'
+    ]
 
-    def verify_split_correlation(images_dir: str, annotation_file: str, split: str) -> Tuple[Optional[str], Optional[str]]:
-        """Helper function to verify correlation between images and annotations for a split"""
-        has_images = os.path.exists(images_dir) and len(os.listdir(images_dir)) > 0
-        has_annotations = os.path.exists(annotation_file)
-        
-        if has_images and not has_annotations:
-            logger.warning(f"{split} split: Found images in {images_dir} but missing annotations file {annotation_file}")
-            return None, None
-        
-        if has_annotations and not has_images:
-            try:
-                with open(annotation_file, 'r') as f:
-                    annotations = json.load(f)
-                if annotations.get('images'):
-                    logger.warning(f"{split} split: Found annotations in {annotation_file} but missing images in {images_dir}")
-                    return None, None
-            except json.JSONDecodeError:
-                logger.warning(f"Invalid JSON format in annotation file: {annotation_file}")
-                return None, None
-            except Exception as e:
-                logger.warning(f"Error reading annotation file {annotation_file}: {str(e)}")
-                return None, None
-        
-        if not has_images and not has_annotations:
-            logger.warning(f"{split} split: Neither images nor annotations found")
-            return None, None
-            
-        return images_dir if has_images else None, annotation_file if has_annotations else None
+    json_files = []
+    for pattern in json_patterns:
+        json_files.extend(root_dir.rglob(pattern))
 
-    # Verify correlation for both splits
-    train_imgs, train_anns = verify_split_correlation(
-        train_images_dir, train_annotations_file, "Training"
+    if not json_files:
+        return False
+
+    for json_file in json_files[:3]:
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                if 'images' in data and 'annotations' in data and 'categories' in data:
+                    return True
+        except Exception:
+            continue
+
+    return False
+
+
+def get_dataset_paths(root_dir: str) -> Tuple[
+    Optional[str], Optional[str],
+    Optional[str], Optional[str],
+    Optional[str], Optional[str]
+]:
+    """
+    Retrieve paths to images directories and annotation files for train, val, and test splits
+    in a COCO-style dataset structure.
+
+    Args:
+        root_dir: Root directory of the dataset.
+
+    Returns:
+        Tuple containing:
+            - train_images_dir: Path to training images directory (or None if missing/empty)
+            - train_annotations_file: Path to training annotations file (or None if missing/empty)
+            - val_images_dir: Path to validation images directory (or None if missing/empty)
+            - val_annotations_file: Path to validation annotations file (or None if missing/empty)
+            - test_images_dir: Path to test images directory (or None if missing/empty)
+            - test_annotations_file: Path to test annotations file (or None if missing/empty)
+    """
+    def check_dir_or_file(path: str) -> Optional[str]:
+        if os.path.exists(path):
+            if os.path.isdir(path) and any(Path(path).iterdir()):
+                return path
+            elif os.path.isfile(path) and Path(path).stat().st_size > 0:
+                return path
+        return None
+
+    train_images_dir = check_dir_or_file(os.path.join(root_dir, 'images', 'train'))
+    train_annotations_file = check_dir_or_file(os.path.join(root_dir, 'annotations', 'instances_train.json'))
+    val_images_dir = check_dir_or_file(os.path.join(root_dir, 'images', 'val'))
+    val_annotations_file = check_dir_or_file(os.path.join(root_dir, 'annotations', 'instances_val.json'))
+    test_images_dir = check_dir_or_file(os.path.join(root_dir, 'images', 'test'))
+    test_annotations_file = check_dir_or_file(os.path.join(root_dir, 'annotations', 'instances_test.json'))
+
+    return (
+        train_images_dir,
+        train_annotations_file,
+        val_images_dir,
+        val_annotations_file,
+        test_images_dir,
+        test_annotations_file
     )
-    val_imgs, val_anns = verify_split_correlation(
-        val_images_dir, val_annotations_file, "Validation"
-    )
-
-    return train_imgs, train_anns, val_imgs, val_anns
 
 
 def analyze_dataset(root_dir: str, class_names: List[str] = None):

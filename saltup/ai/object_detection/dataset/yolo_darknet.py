@@ -422,7 +422,7 @@ class YoloDataset(Dataset):
         self.save_image(image, image_id, overwrite=overwrite)
         self.save_annotations(annotations, image_id, overwrite=overwrite)
 
-    def list_images_ids(self, max_entries: Optional[int] = None) -> List[str]:
+    def list_images(self, max_entries: Optional[int] = None) -> List[str]:
         """
         List all image IDs in the dataset.
 
@@ -524,48 +524,122 @@ def create_dataset_structure(root_dir: str):
     return directories
 
 
-def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str, Optional[str], Optional[str]]:
-    """Get directory paths for dataset in YOLO format, including test set if present.
-    
+def is_yolo_darknet_dataset(root_dir: Union[str, Path]) -> bool:
+    """
+    Check if a directory contains a YOLO/Darknet-format dataset.
+
+    This function looks for .txt annotation files and image files,
+    and verifies that at least some of the annotation files are in YOLO format:
+    class_id x_center y_center width height (all values normalized between 0 and 1).
+
     Args:
-        root_dir: Dataset root directory
-        
+        root_dir: Path to the root directory of the dataset.
+
     Returns:
-        Tuple of (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir)
-        Test directories are None if not present.
-        
-    Raises:
-        FileNotFoundError: If required train/val directories don't exist
+        bool: True if the structure and format match YOLO/Darknet, False otherwise.
     """
     # Verify root directory exists
-    if not os.path.exists(root_dir):
+    if not isinstance(root_dir, Path):
+        root_dir = Path(root_dir)
+    if not root_dir.exists():
         raise FileNotFoundError(f"Root directory {root_dir} does not exist")
-    
-    # Build YOLO Darknet paths
-    train_images_dir = os.path.join(root_dir, 'images', 'train')
-    train_labels_dir = os.path.join(root_dir, 'labels', 'train')
-    val_images_dir = os.path.join(root_dir, 'images', 'val')
-    val_labels_dir = os.path.join(root_dir, 'labels', 'val')
-    test_images_dir = os.path.join(root_dir, 'images', 'test')
-    test_labels_dir = os.path.join(root_dir, 'labels', 'test')
-    
-    # Verify required YOLO Darknet directories exist
-    required_dirs = [
-        (train_images_dir, "Train Images"),
-        (train_labels_dir, "Train Labels"), 
-        (val_images_dir, "Validation Images"),
-        (val_labels_dir, "Validation Labels")
-    ]
-    
-    for dir_path, dir_name in required_dirs:
-        if not os.path.exists(dir_path):
-            raise FileNotFoundError(f"{dir_name} directory not found at {dir_path}")
-    
-    # Test directories are optional
-    if os.path.exists(test_images_dir) and os.path.exists(test_labels_dir):
-        return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir
-    else:
-        return train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, None, None
+
+    # Look for .txt annotation files recursively
+    txt_files = list(root_dir.rglob('*.txt'))
+
+    if not txt_files:
+        return False
+
+    # Look for image files recursively
+    img_extensions = ['.jpg', '.jpeg', '.png', '.bmp']
+    img_files = []
+    for ext in img_extensions:
+        img_files.extend(root_dir.rglob(f'*{ext}'))
+
+    if not img_files:
+        return False
+
+    # Count how many files have YOLO-format annotations
+    yolo_format_count = 0
+
+    def _is_float_in_range(s: str, min_val: float, max_val: float) -> bool:
+        """Check if a string represents a float within the specified range."""
+        try:
+            val = float(s)
+            return min_val <= val <= max_val
+        except ValueError:
+            return False
+
+    for txt_file in txt_files[:10]:  # Check only the first 10 files for performance
+        try:
+            labels = read_label(txt_file)  # Use read_label to parse annotations
+
+            if not labels:  # An empty file is still valid for YOLO
+                continue
+
+            for label in labels[:5]:  # Check only the first 5 annotations per file
+                class_id, x_center, y_center, width, height = label
+
+                # Ensure coordinates are normalized between 0 and 1
+                if (isinstance(class_id, int) and
+                    all(_is_float_in_range(coord, 0.0, 1.0) for coord in [x_center, y_center, width, height])):
+                    yolo_format_count += 1
+                    break
+
+        except (IOError, ValueError):
+            continue
+
+    # Return True if at least 30% of the checked files have YOLO-format annotations
+    return yolo_format_count >= max(1, len(txt_files[:10]) * 0.3)
+
+
+def get_dataset_paths(root_dir: str) -> Tuple[
+    Optional[str], Optional[str], 
+    Optional[str], Optional[str], 
+    Optional[str], Optional[str]
+]:
+    """
+    Return paths to train/val/test image and label directories in a YOLO dataset.
+
+    Checks if each directory exists and is non-empty. Returns None for missing or empty dirs.
+
+    Args:
+        root_dir (str): Root dataset directory.
+
+    Returns:
+        Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+            A tuple containing the paths to:
+                - train_images_dir (str or None): Path to training images directory.
+                - train_labels_dir (str or None): Path to training labels directory.
+                - val_images_dir (str or None): Path to validation images directory.
+                - val_labels_dir (str or None): Path to validation labels directory.
+                - test_images_dir (str or None): Path to test images directory.
+                - test_labels_dir (str or None): Path to test labels directory.
+            Each element is None if the corresponding directory does not exist or is empty.
+
+    Example:
+        train_images, train_labels, val_images, val_labels, test_images, test_labels = get_dataset_paths('/path/to/dataset')
+    """
+    def check_dir(path):
+        if os.path.exists(path) and any(Path(path).iterdir()):
+            return path
+        return None
+
+    train_images_dir = check_dir(os.path.join(root_dir, 'images', 'train'))
+    train_labels_dir = check_dir(os.path.join(root_dir, 'labels', 'train'))
+    val_images_dir = check_dir(os.path.join(root_dir, 'images', 'val'))
+    val_labels_dir = check_dir(os.path.join(root_dir, 'labels', 'val'))
+    test_images_dir = check_dir(os.path.join(root_dir, 'images', 'test'))
+    test_labels_dir = check_dir(os.path.join(root_dir, 'labels', 'test'))
+
+    return (
+        train_images_dir,
+        train_labels_dir,
+        val_images_dir,
+        val_labels_dir,
+        test_images_dir,
+        test_labels_dir
+    )
 
 
 def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, List[str]]]]:

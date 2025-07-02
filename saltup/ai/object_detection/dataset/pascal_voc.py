@@ -219,49 +219,81 @@ def create_dataset_structure(root_dir: str):
     return directories
 
 
-def get_dataset_paths(root_dir: str) -> Tuple[str, str, str, str]:
-    """Get directory paths for dataset in Pascal VOC format.
+def is_pascal_voc_dataset(root_dir: Union[str, Path]) -> bool:
+    """
+    Checks whether the given directory contains a dataset in Pascal VOC format.
+
+    This function verifies the presence of typical Pascal VOC subdirectories 
+    ('images', 'annotations') for train/val/test splits and checks for at least one XML 
+    annotation file.
+
+    Args:
+        root_dir: The root directory to check for Pascal VOC dataset structure.
+
+    Returns:
+        bool: True if the directory appears to be a Pascal VOC dataset, False otherwise.
+    """
+    if not isinstance(root_dir, Path):
+        root_dir = Path(root_dir)
+    if not root_dir.exists():
+        raise FileNotFoundError(f"Root directory {root_dir} does not exist")
+
+    train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir, test_images_dir, test_annotations_dir = get_dataset_paths(str(root_dir))
+
+    if not any([train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir, test_images_dir, test_annotations_dir]):
+        # If all directories are None, it's not a valid Pascal VOC dataset
+        return False
     
+    # Check if at least one of the required directories exists and contains at least one annotation file
+    for d in [train_annotations_dir, val_annotations_dir, test_annotations_dir]:
+        if d and os.path.exists(d):
+            if any(f.endswith('.xml') for f in os.listdir(d)):
+                return True
+    return False
+
+
+def get_dataset_paths(root_dir: str) -> Tuple[
+    Optional[str], Optional[str], 
+    Optional[str], Optional[str], 
+    Optional[str], Optional[str]
+]:
+    """Get directory paths for dataset in Pascal VOC format.
+
     Args:
         root_dir: Dataset root directory
-        
+
     Returns:
-        Tuple of (train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir)
-        
-    Raises:
-        FileNotFoundError: If required directories don't exist
+        Tuple of (train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir, test_images_dir, test_annotations_dir)
+        If a directory does not exist or is empty, its value will be None.
     """
-    # Verify root directory exists
-    if not os.path.exists(root_dir):
-        raise FileNotFoundError(f"Root directory {root_dir} does not exist")
-    
-    # Build Pascal VOC paths
-    train_images_dir = os.path.join(root_dir, 'images', 'train')
-    train_annotations_dir = os.path.join(root_dir, 'annotations', 'train')
-    val_images_dir = os.path.join(root_dir, 'images', 'val')
-    val_annotations_dir = os.path.join(root_dir, 'annotations', 'val')
-    
-    # Verify required Pascal VOC directories exist
-    required_dirs = [
-        (train_images_dir, "Train Images"),
-        (train_annotations_dir, "Train Annotations"), 
-        (val_images_dir, "Validation Images"),
-        (val_annotations_dir, "Validation Annotations")
-    ]
-    
-    for dir_path, dir_name in required_dirs:
-        if not os.path.exists(dir_path):
-            raise FileNotFoundError(f"{dir_name} directory not found at {dir_path}")
-    
-    return train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir
+    def check_dir(path):
+        if os.path.exists(path) and any(Path(path).iterdir()):
+            return path
+        return None
+
+    train_images_dir = check_dir(os.path.join(root_dir, 'images', 'train'))
+    train_annotations_dir = check_dir(os.path.join(root_dir, 'annotations', 'train'))
+    val_images_dir = check_dir(os.path.join(root_dir, 'images', 'val'))
+    val_annotations_dir = check_dir(os.path.join(root_dir, 'annotations', 'val'))
+    test_images_dir = check_dir(os.path.join(root_dir, 'images', 'test'))
+    test_annotations_dir = check_dir(os.path.join(root_dir, 'annotations', 'test'))
+
+    return (
+        train_images_dir,
+        train_annotations_dir,
+        val_images_dir,
+        val_annotations_dir,
+        test_images_dir,
+        test_annotations_dir
+    )
 
 
 def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, List[str]]]]:
     """Verify directory structure and validate image-annotation pairs.
-    
+
     Args:
         root_dir: Dataset root directory
-        
+
     Returns:
         Dict containing per-split statistics:
             images: Number of images
@@ -270,46 +302,39 @@ def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, 
             unmatched_images: List of images without annotations
             unmatched_annotations: List of annotations without images
     """
-    # Ottieni i percorsi per le directory train e val
-    train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir = get_dataset_paths(root_dir)
-    
-    # Aggiungi i percorsi per la directory test
-    test_images_dir = os.path.join(root_dir, 'images', 'test')
-    test_annotations_dir = os.path.join(root_dir, 'annotations', 'test')
-    
-    # Inizializza le statistiche per train, val e test
+    # Get paths for train, val, and test directories
+    train_images_dir, train_annotations_dir, val_images_dir, val_annotations_dir, test_images_dir, test_annotations_dir = get_dataset_paths(root_dir)
+
+    # Initialize statistics for train, val, and test
     stats = {
         'train': {'images': 0, 'annotations': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_annotations': []},
         'val': {'images': 0, 'annotations': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_annotations': []},
         'test': {'images': 0, 'annotations': 0, 'matched': 0, 'unmatched_images': [], 'unmatched_annotations': []}
     }
-    
+
     # Helper function to check image-annotation correspondences
     def check_matches(images_dir, annotations_dir, split):
-        """Verifica le corrispondenze tra immagini e annotazioni per uno split specifico."""
-        if os.path.exists(images_dir):
-            image_files = {os.path.splitext(f)[0] for f in os.listdir(images_dir) 
-                          if f.endswith(('.jpg', '.jpeg', '.png'))}
+        if images_dir and os.path.exists(images_dir):
+            image_files = {os.path.splitext(f)[0] for f in os.listdir(images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))}
         else:
             image_files = set()
-        
-        if os.path.exists(annotations_dir):
-            annotation_files = {os.path.splitext(f)[0] for f in os.listdir(annotations_dir) 
-                          if f.endswith('.xml')}
+
+        if annotations_dir and os.path.exists(annotations_dir):
+            annotation_files = {os.path.splitext(f)[0] for f in os.listdir(annotations_dir) if f.endswith('.xml')}
         else:
             annotation_files = set()
-        
+
         stats[split]['images'] = len(image_files)
         stats[split]['annotations'] = len(annotation_files)
         stats[split]['matched'] = len(image_files & annotation_files)
         stats[split]['unmatched_images'] = list(image_files - annotation_files)
         stats[split]['unmatched_annotations'] = list(annotation_files - image_files)
-    
-    # Verifica le corrispondenze per train, val e test
+
+    # Check matches for train, val, and test
     check_matches(train_images_dir, train_annotations_dir, 'train')
     check_matches(val_images_dir, val_annotations_dir, 'val')
     check_matches(test_images_dir, test_annotations_dir, 'test')
-    
+
     return stats
 
 
