@@ -1,106 +1,140 @@
 from pathlib import Path
-from enum import IntEnum
 
-class DatasetFormat(IntEnum):
-    # Aligned with common notations in BBoxFormat
-    YOLO = 2
-    COCO = 6
-    VOC = 4
-
-    @classmethod
-    def from_string(cls, value: str) -> 'DatasetFormat':
-        """
-        Convert a string representation of the YoloType to its corresponding enum value.
-
-        Args:
-            value: The string representation of the YoloType (case-insensitive).
-
-        Returns:
-            The corresponding YoloType enum value.
-
-        Raises:
-            ValueError: If the string does not match any YoloType.
-        """
-        # Case-insensitive mapping
-        value_upper = value.upper()
-        for enum_value in cls:
-            if value_upper == enum_value.name.upper():
-                return enum_value
-        raise ValueError(f"Invalid YoloType string: {value}. Valid options are: {', '.join([e.name for e in cls])}")
+from saltup.ai.object_detection.dataset.yolo_darknet import (
+    is_yolo_darknet_dataset,
+    get_dataset_paths as get_yolo_paths,
+    YoloDarknetLoader,
+)
+from saltup.ai.object_detection.dataset.coco import (
+    is_coco_dataset,
+    get_dataset_paths as get_coco_paths,
+    COCOLoader,
+)
+from saltup.ai.object_detection.dataset.pascal_voc import (
+    is_pascal_voc_dataset,
+    get_dataset_paths as get_voc_paths,
+    PascalVOCLoader,
+)
 
 
 class DataLoaderFactory:
-        
-    @staticmethod
-    def create(dir, *args, **kwargs):
-        
-        if not isinstance(dir, Path):
-            dir = Path(dir)
-        if not dir.is_dir():
-            raise ValueError(f"The provided path is not a directory: {dir}")
-        
-        exts = ('*.jpg', '*.jpeg', '*.png')
-        imgs_files: list[Path] = []
-        for ext in exts:
-            imgs_files.extend(dir.rglob(ext))
-        if not imgs_files:
-            raise ValueError(f"No images found in directory: {dir}")
-    
-        print(f"Found {len(imgs_files)} images in directory: {dir}")
-        
-        exts2type = {
-            '*.txt': DatasetFormat.YOLO,
-            '*.json': DatasetFormat.COCO,
-            '*.xml': DatasetFormat.VOC
-        }
-        
-        for ext in exts2type.keys():
-            lbl_files = list(dir.rglob(ext))
-            if lbl_files:
-                dataset_type = exts2type[ext]
-                print(f"Found {len(lbl_files)} label files of type {dataset_type.name} in directory: {dir}")
-                break
-        
-        if dataset_type == DatasetFormat.YOLO or dataset_type == DatasetFormat.VOC:
-            if len(lbl_files) != len(imgs_files):
-                raise ValueError(f"Mismatch between number of images ({len(imgs_files)}) and labels ({len(lbl_files)}) in directory: {dir}")
-        elif dataset_type == DatasetFormat.COCO:
-            if len(lbl_files) != 1:
-                raise ValueError(f"Expected exactly one COCO JSON file, found {len(lbl_files)} in directory: {dir}")
-        else:
-            raise ValueError(f"Unsupported dataset type: {dataset_type}")
-        
-        image_dirs = set()
-        for img_file in imgs_files:
-            image_dirs.add(img_file.parent.absolute())
-            
-        lbls_dirs = set()
-        for lbl_file in lbl_files:
-            lbls_dirs.add(lbl_file.parent.absolute())
-        
-        if dataset_type != DatasetFormat.COCO:
-            if len(image_dirs) != len(lbls_dirs):
-                raise ValueError("Mismatch between number of image directories and label directories.")
-        
-            image_dirs = sorted(image_dirs)
-            lbls_dirs = sorted(lbls_dirs)
-            
-            for img_dir, lbl_dir in zip(image_dirs, lbls_dirs):
-                print(img_dir)
-                print(lbl_dir)
-                pass
+    """
+    Factory class to automatically detect the dataset format (YOLO, COCO, VOC)
+    and instantiate the appropriate dataloader(s) for train, val, and test splits.
 
-        
-        
-        
-        if dataset_type == DatasetFormat.YOLO:
-            from saltup.ai.object_detection.dataset.yolo_darknet import YoloDarknetLoader
-            pass
-        elif dataset_type == DatasetFormat.COCO:
-            from saltup.ai.object_detection.dataset.coco import COCOLoader
-            pass
-        elif dataset_type == DatasetFormat.VOC:
-            from saltup.ai.object_detection.dataset.pascal_voc import PascalVOCLoader
-            pass
+    Usage:
+        train_loader, val_loader, test_loader = DataLoaderFactory.create(root_dir)
+    """
+
+    @staticmethod
+    def create(root_dir, *args, **kwargs):
+        """
+        Detects the dataset type in the given root directory and returns the corresponding
+        dataloaders for train, val, and test splits.
+
+        Args:
+            root_dir (str or Path): Path to the dataset root directory.
+            *args, **kwargs: Additional arguments passed to the dataloader constructors.
+
+        Returns:
+            tuple: (train_dataloader, val_dataloader, test_dataloader)
+
+        Raises:
+            ValueError: If the dataset type is not supported or the path is invalid.
+        """
+        if not isinstance(root_dir, Path):
+            root_dir = Path(root_dir)
+        if not root_dir.is_dir():
+            raise ValueError(f"The provided path is not a directory: {root_dir}")
+
+        train_dataloader = None
+        val_dataloader = None
+        test_dataloader = None
+
+        print(f"Detecting dataset format in: {root_dir}")
+
+        if is_yolo_darknet_dataset(root_dir):
+            print("Detected YOLO Darknet dataset format.")
+            (
+            train_images_dir, 
+            train_labels_dir, 
+            val_images_dir, 
+            val_labels_dir, 
+            test_images_dir, 
+            test_labels_dir
+            ) = get_yolo_paths(root_dir)
+
+            if all(x is None for x in [train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir]):
+                print("Warning: All YOLO split directories are None. The dataset may not follow the expected structure. Please create dataloaders manually.")
+                return None, None, None
+            
+            if train_images_dir and train_labels_dir:
+                print(f"Creating YOLO train dataloader: {train_images_dir}, {train_labels_dir}")
+                train_dataloader = YoloDarknetLoader(train_images_dir, train_labels_dir, *args, **kwargs)
+
+            if val_images_dir and val_labels_dir:
+                print(f"Creating YOLO val dataloader: {val_images_dir}, {val_labels_dir}")
+                val_dataloader = YoloDarknetLoader(val_images_dir, val_labels_dir, *args, **kwargs)
+
+            if test_images_dir and test_labels_dir:
+                print(f"Creating YOLO test dataloader: {test_images_dir}, {test_labels_dir}")
+                test_dataloader = YoloDarknetLoader(test_images_dir, test_labels_dir, *args, **kwargs)
+
+        elif is_coco_dataset(root_dir):
+            print("Detected COCO dataset format.")
+            (
+            train_images_dir, 
+            train_labels_file, 
+            val_images_dir, 
+            val_labels_file, 
+            test_images_dir, 
+            test_labels_file
+            ) = get_coco_paths(root_dir)
+
+            if all(x is None for x in [train_images_dir, train_labels_file, val_images_dir, val_labels_file, test_images_dir, test_labels_file]):
+                print("Warning: All COCO split directories/files are None. The dataset may not follow the expected structure. Please create dataloaders manually.")
+                return None, None, None
+            
+            if train_images_dir and train_labels_file:
+                print(f"Creating COCO train dataloader: {train_images_dir}, {train_labels_file}")
+                train_dataloader = COCOLoader(train_images_dir, train_labels_file, *args, **kwargs)
+
+            if val_images_dir and val_labels_file:
+                print(f"Creating COCO val dataloader: {val_images_dir}, {val_labels_file}")
+                val_dataloader = COCOLoader(val_images_dir, val_labels_file, *args, **kwargs)
+
+            if test_images_dir and test_labels_file:
+                print(f"Creating COCO test dataloader: {test_images_dir}, {test_labels_file}")
+                test_dataloader = COCOLoader(test_images_dir, test_labels_file, *args, **kwargs)
+
+        elif is_pascal_voc_dataset(root_dir):
+            print("Detected Pascal VOC dataset format.")
+            (
+            train_images_dir, 
+            train_labels_dir, 
+            val_images_dir, 
+            val_labels_dir, 
+            test_images_dir, 
+            test_labels_dir
+            ) = get_voc_paths(root_dir)
+
+            if all(x is None for x in [train_images_dir, train_labels_dir, val_images_dir, val_labels_dir, test_images_dir, test_labels_dir]):
+                print("Warning: All VOC split directories are None. The dataset may not follow the expected structure. Please create dataloaders manually.")
+                return None, None, None
+            
+            if train_images_dir and train_labels_dir:
+                print(f"Creating VOC train dataloader: {train_images_dir}, {train_labels_dir}")
+                train_dataloader = PascalVOCLoader(train_images_dir, train_labels_dir, *args, **kwargs)
+
+            if val_images_dir and val_labels_dir:
+                print(f"Creating VOC val dataloader: {val_images_dir}, {val_labels_dir}")
+                val_dataloader = PascalVOCLoader(val_images_dir, val_labels_dir, *args, **kwargs)
+
+            if test_images_dir and test_labels_dir:
+                print(f"Creating VOC test dataloader: {test_images_dir}, {test_labels_dir}")
+                test_dataloader = PascalVOCLoader(test_images_dir, test_labels_dir, *args, **kwargs)
+
         else:
-            raise ValueError(f"Unsupported dataset type: {dataset_type}")
+            raise ValueError("Unsupported or unknown dataset type in directory: {}".format(root_dir))
+
+        return train_dataloader, val_dataloader, test_dataloader
