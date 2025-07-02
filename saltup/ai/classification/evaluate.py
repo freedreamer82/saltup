@@ -21,7 +21,7 @@ def evaluate_model(
     model: Union[str, tf.keras.Model, torch.nn.Module, "tf.lite.Interpreter"],
     test_gen: Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
     output_dir: str = None,
-    confusion_matrix: bool = False
+    conf_matrix: bool = False
 ) -> Tuple[Metric, Dict[int, Metric]]:
     """
     Evaluate a classification model on the test set.
@@ -176,7 +176,7 @@ def evaluate_model(
         
     
     # ==== Confusion Matrix ====
-    if confusion_matrix:
+    if conf_matrix:
         labels_range = [i for i in range(len(class_names))]
         cm = confusion_matrix(all_true_labels, all_pred_labels, labels=labels_range)
         plt.figure(figsize=(10, 7))
