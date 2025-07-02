@@ -1,6 +1,6 @@
 import os
 import gc
-from typing import Union
+from typing import Union, Tuple, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,9 +21,8 @@ def evaluate_model(
     model: Union[str, tf.keras.Model, torch.nn.Module, "tf.lite.Interpreter"],
     test_gen: Union[keras_ClassificationDataGenerator, pytorch_DataGenerator],
     output_dir: str = None,
-    loss_function: callable = None,
     confusion_matrix: bool = False
-) -> float:
+) -> Tuple[Metric, Dict[int, Metric]]:
     """
     Evaluate a classification model on the test set.
 
@@ -34,8 +33,6 @@ def evaluate_model(
             Test data generator.
         output_dir (str, optional):
             Directory to save output files such as confusion matrix images.
-        loss_function (callable, optional):
-            Loss function for evaluation (used only for PyTorch models).
         confusion_matrix (bool, optional):
             Whether to compute and save the confusion matrix plot.
 
