@@ -183,7 +183,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
 
     def _update_metrics_and_metadata(self, context):
         metrics = {}
-        for k in ["loss", "val_loss", "accuracy", "val_accuracy", "best_loss", "best_val_loss","best_epoch"]:
+        for k in ["loss", "val_loss", "best_loss", "best_val_loss","best_epoch"]:
             v = getattr(context, k, None)
             if v is not None:
                 metrics[k] = v
