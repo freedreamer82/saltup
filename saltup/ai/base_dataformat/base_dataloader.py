@@ -27,8 +27,7 @@ class BaseDataloader(ABC):
     Provides basic functionality for loading and iterating over image-label pairs.
     """
 
-    def __init__(self):
-        self._name = None
+    _name: str = None
 
     def set_name(self, name: str):
         """Set the name of the dataloader."""

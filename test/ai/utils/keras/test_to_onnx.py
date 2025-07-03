@@ -31,7 +31,7 @@ def test_convert_keras_to_onnx_and_verify(tmp_path):
     assert onnx_model_path.endswith(".onnx")
 
     # Verify the ONNX model against the Keras model
-    keras_pred, onnx_pred = verify_onnx_model(onnx_model_path, keras_model)
+    stats, keras_pred, onnx_pred = verify_onnx_model(onnx_model_path, keras_model_path)
 
     # Assertions for predictions
     assert keras_pred.shape == onnx_pred.shape

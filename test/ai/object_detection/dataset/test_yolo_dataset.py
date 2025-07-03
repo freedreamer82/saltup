@@ -12,9 +12,8 @@ from saltup.ai.object_detection.dataset.yolo_darknet import (
     validate_dataset_structure, analyze_dataset,
     create_symlinks_by_class, replace_label_class,
     shift_class_ids, split_dataset,
-    split_and_organize_dataset, count_objects,
-    _extract_unique_classes, _create_labels_map,
-    _image_per_class_id, YoloDarknetLoader, ColorMode, YoloDataset
+    count_objects, _image_per_class_id, is_yolo_darknet_dataset,
+    YoloDarknetLoader, ColorMode, YoloDataset
 )
 
 class TestYOLODarknet:
@@ -268,6 +267,19 @@ class TestYOLODarknet:
         # Test without class names
         analyze_dataset(str(root_dir))
         
+    def test_is_yolo_darknet_dataset(self, sample_dataset):
+        """Test validation of YOLO Darknet dataset detection."""
+        images_dir, labels_dir = sample_dataset
+        root_dir = str(Path(images_dir).parent)
+
+        # Test valid YOLO dataset
+        assert is_yolo_darknet_dataset(root_dir)
+
+        # Test invalid dataset (missing labels directory)
+        invalid_root = Path(root_dir) / "invalid_dataset"
+        invalid_root.mkdir()
+        assert not is_yolo_darknet_dataset(str(invalid_root))
+
 
 class TestYOLODarknetLoader:
     @pytest.fixture
@@ -439,13 +451,14 @@ class TestYOLODarknetLoader:
         root_dir, dirs = sample_dataset
 
         loader1 = YoloDarknetLoader(
-            images_dir=str(dirs['images']['train']),
-            labels_dir=str(dirs['labels']['train'])
+            images_dir=str(dirs["image_dir"]),
+            labels_dir=str(dirs["labels_dir"])
         )
 
+        # For loader2, use the same dirs as there is no 'val' split in this fixture
         loader2 = YoloDarknetLoader(
-            images_dir=str(dirs['images']['val']),
-            labels_dir=str(dirs['labels']['val'])
+            images_dir=str(dirs["image_dir"]),
+            labels_dir=str(dirs["labels_dir"])
         )
 
         with pytest.raises(NotImplementedError):
@@ -458,23 +471,23 @@ class TestYoloDataset:
         images_dir = tmpdir.mkdir("images")
         labels_dir = tmpdir.mkdir("labels")
         
-        # Sample data con diverse classi e overlapping
+        # Sample data with multiple classes and overlapping instances
         sample_data = [
             ("img1.jpg", "0 0.5 0.5 0.2 0.3\n1 0.3 0.4 0.1 0.2"),
             ("img2.jpg", "1 0.4 0.6 0.3 0.2\n2 0.7 0.3 0.2 0.4"),
             ("img3.jpg", "0 0.6 0.5 0.25 0.35"),
         ]
         
-        # Crea immagine dummy (10x10 nera)
+        # Create dummy image data (10x10 black image)
         dummy_image = np.zeros((10, 10, 3), dtype=np.uint8)
-        
-        # Crea i file di test
+
+        # Create the sample files
         for img_name, label_content in sample_data:
-            # Crea e salva l'immagine
+            # Create and save image file
             img_path = images_dir / img_name
             cv2.imwrite(str(img_path), dummy_image)
-            
-            # Crea il file delle label
+
+            # Create corresponding label file
             label_path = labels_dir / f"{img_name.replace('.jpg', '.txt')}"
             with open(label_path, 'w') as f:
                 f.write(label_content)
@@ -482,16 +495,16 @@ class TestYoloDataset:
         return str(images_dir), str(labels_dir)
 
     def test_initialization(self, sample_dataset):
-        """Test inizializzazione del dataset."""
+        """Test initialization of the dataset."""
         images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(images_dir, labels_dir)
-        assert len(dataset.list_images_ids()) == 3
+        assert len(dataset.list_images()) == 3
 
     def test_get_annotations(self, sample_dataset):
-        """Test caricamento annotazioni."""
+        """Test loading annotations."""
         images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(images_dir, labels_dir)
-        
+
         annotations = dataset.get_annotations("img1")
         assert len(annotations) == 2
         assert isinstance(annotations[0], BBoxClassId)
@@ -499,27 +512,27 @@ class TestYoloDataset:
         assert annotations[1].class_id == 1
 
     def test_save_and_remove_image(self, sample_dataset):
-        """Test salvataggio e rimozione immagini."""
+        """Test saving and removing images."""
         images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(images_dir, labels_dir)
-        
-        # Salva nuova immagine
+
+        # Save new image
         new_image = np.zeros((10, 10, 3), dtype=np.uint8)
         dataset.save_image(new_image, "new_image")
-        assert "new_image" in dataset.list_images_ids()
-        
-        # Rimuovi immagine
+        assert "new_image" in dataset.list_images()
+
+        # Remove image
         assert dataset.remove_image("new_image")
-        assert "new_image" not in dataset.list_images_ids()
+        assert "new_image" not in dataset.list_images()
 
     def test_check_integrity(self, sample_dataset):
-        """Test controllo integrità."""
+        """Test integrity check."""
         images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(images_dir, labels_dir)
-        
+
         assert dataset.check_integrity()
-        
-        # Introduce un errore rimuovendo un file di label
+
+        # Introduce an error by removing a label file
         os.remove(Path(labels_dir) / "img1.txt")
         assert not dataset.check_integrity()
         
@@ -547,11 +560,11 @@ class TestYoloDataset:
         dataset.save_image(new_image, "new_image")
         
         # Verify refresh after two operations
-        initial_ids = dataset.list_images_ids()
+        initial_ids = dataset.list_images()
         dataset.save_image(new_image, "another_image")  # First operation
-        mid_ids = dataset.list_images_ids()
+        mid_ids = dataset.list_images()
         dataset.save_image(new_image, "third_image")    # Second operation
-        final_ids = dataset.list_images_ids()
+        final_ids = dataset.list_images()
         
         assert len(final_ids) > len(initial_ids)
         
@@ -566,10 +579,10 @@ class TestYoloDataset:
             dataset.save_image(dummy_image, f"image{i}")
 
         # Check if max_entries works
-        assert len(dataset.list_images_ids(max_entries=3)) == 3
+        assert len(dataset.list_images(max_entries=3)) == 3
 
     def test_save_annotations(self, sample_dataset):
-        """Test salvataggio annotazioni."""
+        """Test saving annotations."""
         images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(images_dir, labels_dir)
         
@@ -596,7 +609,7 @@ class TestYoloDataset:
         dataset.save_image_annotations(test_image, "test_combined", test_annotations)
         
         # Verify image was saved
-        assert "test_combined" in dataset.list_images_ids()
+        assert "test_combined" in dataset.list_images()
         
         # Load and verify image
         loaded_image = dataset.get_image("test_combined")
@@ -632,24 +645,24 @@ class TestYoloDataset:
             dataset.save_annotations("invalid_annotations", "image1")
 
     def test_invalid_operations(self, sample_dataset):
-        """Test gestione operazioni invalide."""
+        """Test handling of invalid operations."""
         images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(images_dir, labels_dir)
         
-        # Test immagine non esistente
+        # Test non-existent image
         with pytest.raises(FileNotFoundError):
             dataset.get_image("nonexistent")
             
-        # Test annotazioni invalide
+        # Test invalid annotations
         with pytest.raises(TypeError):
             dataset.save_annotations("invalid", "img1")
     
     def test_yolo_dataset_save_image_annotations(self, sample_dataset):
         """Test saving both image and annotations."""
-        root_dir, dirs = sample_dataset
+        images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(
-            images_dir=str(dirs['images']['train']),
-            labels_dir=str(dirs['labels']['train'])
+            images_dir=images_dir,
+            labels_dir=labels_dir
         )
 
         image_id = "test_image"
@@ -667,8 +680,8 @@ class TestYoloDataset:
         )
 
         # Verify saved image and annotations
-        image_path = Path(dirs['images']['train']) / f"{image_id}.jpg"
-        label_path = Path(dirs['labels']['train']) / f"{image_id}.txt"
+        image_path = Path(images_dir) / f"{image_id}.jpg"
+        label_path = Path(labels_dir) / f"{image_id}.txt"
 
         assert image_path.exists()
         assert label_path.exists()
@@ -678,10 +691,10 @@ class TestYoloDataset:
 
     def test_yolo_dataset_check_integrity(self, sample_dataset):
         """Test dataset integrity check."""
-        root_dir, dirs = sample_dataset
+        images_dir, labels_dir = sample_dataset
         dataset = YoloDataset(
-            images_dir=str(dirs['images']['train']),
-            labels_dir=str(dirs['labels']['train'])
+            images_dir=str(images_dir),
+            labels_dir=str(labels_dir)
         )
 
         stats = {

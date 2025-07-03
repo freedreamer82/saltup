@@ -7,8 +7,7 @@ import paho.mqtt.client as mqtt
 import tensorflow as tf
 import torch
 from typing import List, Optional
-
-
+ 
 @dataclass
 class CallbackContext:
     model: Union[tf.keras.Model, torch.nn.Module]
@@ -16,9 +15,7 @@ class CallbackContext:
     batch_size: int = None
     loss: float = None
     val_loss: float = None
-    accuracy: float = None
-    val_accuracy: float = None
-    misc: dict = None
+    other_metrics: dict = None
     best_model: Union[tf.keras.Model, torch.nn.Module] = None
     best_epoch: int = None
     best_loss: float = None
@@ -31,14 +28,12 @@ class CallbackContext:
             'batch_size': self.batch_size,
             'loss': self.loss,
             'val_loss': self.val_loss,
-            'accuracy': self.accuracy,
-            'val_accuracy': self.val_accuracy,
             'best_model': type(self.best_model) if self.best_model else None,
             'best_epoch': self.best_epoch,
             'best_loss': self.best_loss,
             'best_val_loss': self.best_val_loss
         }
-        return tmp | (self.misc if self.misc else {})
+        return tmp | (self.other_metrics if self.other_metrics else {})
 
 
 class BaseCallback:
@@ -178,9 +173,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             batch_size=self.params.get('batch_size', None),
             loss=logs.get('loss', None),
             val_loss=logs.get('val_loss', None),
-            accuracy=logs.get('accuracy', None),
-            val_accuracy=logs.get('val_accuracy', None),
-            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
+            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
             best_model=self.best_model,
             best_epoch=self.best_epoch,
             best_loss=self.best_value if self.mode == "min" else None,
@@ -190,7 +183,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
 
     def _update_metrics_and_metadata(self, context):
         metrics = {}
-        for k in ["loss", "val_loss", "accuracy", "val_accuracy", "best_loss", "best_val_loss","best_epoch"]:
+        for k in ["loss", "val_loss", "best_loss", "best_val_loss","best_epoch"]:
             v = getattr(context, k, None)
             if v is not None:
                 metrics[k] = v
@@ -217,9 +210,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             batch_size=self.params.get('batch_size', None),
             loss=logs.get('loss', None),
             val_loss=logs.get('val_loss', None),
-            accuracy=logs.get('accuracy', None),
-            val_accuracy=logs.get('val_accuracy', None),
-            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
+            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
             best_model=self.best_model,
             best_epoch=self.best_epoch,
             best_loss=self.best_value if self.mode == "min" else None,
@@ -254,9 +245,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             batch_size=self.params.get('batch_size', None),
             loss=logs.get('loss', None),
             val_loss=logs.get('val_loss', None),
-            accuracy=logs.get('accuracy', None),
-            val_accuracy=logs.get('val_accuracy', None),
-            misc={k: v for k, v in logs.items() if k not in ['loss', 'val_loss', 'accuracy', 'val_accuracy']},
+            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
             best_model=self.best_model,
             best_epoch=self.best_epoch,
             best_loss=best_loss,

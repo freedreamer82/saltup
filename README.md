@@ -1,71 +1,129 @@
 <div align="center">
-<img src="./docs/salt-shaker.svg" width="200" height="200" alt="Salt Shaker">
+<img src="docs/saltup-banner.png">
 </div>
 
-## Overview
-Saltup provides comprehensive tools for:
-- Neural network model management
-- Object detection dataset generation and loading
-- Bounding box calculations and visualizations
-- Model inference optimization
+# Saltup 🧂
 
-The framework offers robust features for:
-- Model configuration and deployment
-- Data preprocessing and augmentation
-- Performance metrics tracking
-- Easy integration with popular AI libraries
+The universal AI toolkit that works with your existing models and data, regardless of format.
 
-## Key Features
+Stop wrestling with format conversions. Stop rewriting data loaders. Start building.
 
-- **Model Management**
-  - Load, save, and manage neural network models efficiently
-  - Cross-framework compatibility (TensorFlow/Keras and PyTorch)
+## Installation
 
-- **Data Handling**
-  - Generate synthetic data for object detection tasks
-  - Load and preprocess real-world datasets (COCO, Pascal VOC, YOLO)
-  - Apply various image transformations and augmentations
+```bash
+pip install git+https://github.com/freedreamer82/saltup.git
+```
 
-- **Visualization**
-  - Bounding box annotations visualization
-  - Model outputs analysis
-  - Data pipeline debugging
+For development:
+```bash
+git clone https://github.com/freedreamer82/saltup.git
+cd saltup && ./makePackage.sh -d
+```
 
-- **Configuration Management**
-  - Logging configuration with TQDM support
-  - Easy integration of custom configurations
+## The Magic
 
-## Example Use Case
-Saltup can be used in various AI pipelines like:
-1. **Model Training Pipeline**
-   ```bash
-   # Load a neural network model
-   model = NeuralNetworkManager.load_model("path/to/model.pth")
-   
-   # Loading training data
-   datagen = AnchorsBasedDatagen(...)
-   train_dataset = datagen.generate_batch(1024)
-   
-   # Train the model with optimized parameters
-   trainer = ModelTrainer(model, train_dataset, num_epochs=10)
-   ```
+Load any model format through one interface:
+```python
+from saltup.ai.nn_model import NeuralNetworkModel
 
-2. **Inference Pipeline**
-   ```bash
-   # Load inference-ready model
-   model = NeuralNetworkManager.load_model("path/to/model.pth", inference=True)
-   
-   # Create an image and get predictions
-   image = load_image("input.jpg")
-   boxes, scores = model_inference(model, image)
-   
-   # Process results
-   filtered_boxes = filter_by_confidence(boxes, scores, 0.5)
-   visualize_boxes(image, filtered_boxes)
-   ```
+model = NeuralNetworkModel("model.pt")       # PyTorch
+model = NeuralNetworkModel("model.keras")    # TensorFlow/Keras  
+model = NeuralNetworkModel("model.onnx")     # ONNX
+model = NeuralNetworkModel("model.tflite")   # TensorFlow Lite
 
-## Documentation
-- [saltup/docs](https://github.com/freedreamer82/saltup/tree/main/docs) - Detailed documentation for all features and usage examples
-- [saltup/examples](https://github.com/saltup/examples) - Sample projects demonstrating Saltup's capabilities
+# Same interface, any format
+predictions = model.predict(your_data)
+```
 
-If you have any specific questions or need help with a particular feature, feel free to ask!
+Work with any dataset format:
+```python
+from saltup.ai.object_detection.dataset.loader_factory import DataLoaderFactory
+
+# Auto-detects COCO, Pascal VOC, YOLO formats
+train_dl, val_dl, test_dl = DataLoaderFactory.get_dataloaders("./your_dataset")
+```
+
+Train across frameworks with production-ready callbacks:
+```python
+from saltup.ai.training.train import training
+from saltup.ai.training.app_callbacks import MLflowCallback, FileLogger, YoloEvaluationsCallback, MQTTCallback
+
+# Production callbacks for real workflows
+callbacks = [
+    MLflowCallback(mlflow_client, run_id),        # Experiment tracking
+    FileLogger("training.log", "best_model.csv"), # File logging
+    YoloEvaluationsCallback(yolo_type, val_data), # Model evaluation
+    MQTTCallback("broker", 1883, "training/metrics") # Remote monitoring
+]
+
+# Mix TensorFlow data with PyTorch models + powerful callback system
+training(model, train_dataloader, validation_dataloader, callbacks=callbacks)
+```
+
+Create custom callbacks for your specific needs:
+```python
+from saltup.ai.training.callbacks import BaseCallback, CallbackContext
+
+class CustomCallback(BaseCallback):
+    def on_epoch_end(self, epoch, context: CallbackContext):
+        # Your custom logic: send notifications, update dashboards, etc.
+        if context.val_loss < self.best_threshold:
+            self.send_slack_notification(f"New best model! Loss: {context.val_loss}")
+    
+    def on_train_end(self, context: CallbackContext):
+        # Cleanup, final reports, model deployment, etc.
+        self.deploy_model(context.best_model)
+
+# Use alongside built-in callbacks
+callbacks = [MLflowCallback(...), CustomCallback()]
+```
+
+## Core Capabilities
+
+**🔄 Format Freedom**  
+One interface for .pt, .keras, .onnx, .tflite models. Load once, use everywhere.
+
+**📊 Dataset Flexibility**  
+Auto-detect and work with COCO, Pascal VOC, YOLO formats without manual conversion.
+
+**🔀 Cross-Framework**  
+Mix TensorFlow and PyTorch components in the same pipeline. Best of both worlds.
+
+**🚀 Production Ready**  
+Built-in quantization, model conversion, and deployment tools for real-world use.
+
+## Ready-to-Use Tools
+
+Get productive immediately with battle-tested command-line utilities:
+
+```bash
+# Model operations
+saltup_keras2onnx model.keras              # Convert between formats
+saltup_onnx_quantization model.onnx        # Optimize for deployment
+
+# Quick inference  
+saltup_yolo_image_inference model.pt image.jpg
+saltup_yolo_video_inference model.onnx video.mp4
+saltup_yolo_s3_inference model.tflite s3://bucket/images/
+
+# Dataset utilities
+saltup_yolo_count_classes ./dataset        # Analyze your data
+saltup_info                                # Package information
+```
+
+## Real-World Workflows
+
+**Model Format Pipeline:**
+Train in PyTorch → Convert to ONNX → Quantize → Deploy to embedded device
+
+**Cross-Framework Training:**
+Load COCO dataset → Train with TensorFlow → Export as PyTorch → Optimize with ONNX
+
+**Dataset Format Freedom:**
+Pascal VOC annotations → Auto-load as YOLO → Train any model → Deploy anywhere
+
+## Why Saltup?
+
+Because your time is valuable. Because formats shouldn't dictate your architecture. Because production deployment should be simple, not a research project.
+
+Work with what you have. Build what you need. Deploy where you want.
