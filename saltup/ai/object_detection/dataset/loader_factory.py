@@ -71,14 +71,17 @@ class DataLoaderFactory:
             if train_images_dir and train_labels_dir:
                 print(f"Creating YOLO train dataloader: {train_images_dir}, {train_labels_dir}")
                 train_dataloader = YoloDarknetLoader(train_images_dir, train_labels_dir, *args, **kwargs)
+                train_dataloader.set_name("Train YOLO Dataloader")
 
             if val_images_dir and val_labels_dir:
                 print(f"Creating YOLO val dataloader: {val_images_dir}, {val_labels_dir}")
                 val_dataloader = YoloDarknetLoader(val_images_dir, val_labels_dir, *args, **kwargs)
+                val_dataloader.set_name("Validation YOLO Dataloader")
 
             if test_images_dir and test_labels_dir:
                 print(f"Creating YOLO test dataloader: {test_images_dir}, {test_labels_dir}")
                 test_dataloader = YoloDarknetLoader(test_images_dir, test_labels_dir, *args, **kwargs)
+                test_dataloader.set_name("Test YOLO Dataloader")
 
         elif is_coco_dataset(root_dir):
             print("Detected COCO dataset format.")
@@ -98,14 +101,17 @@ class DataLoaderFactory:
             if train_images_dir and train_labels_file:
                 print(f"Creating COCO train dataloader: {train_images_dir}, {train_labels_file}")
                 train_dataloader = COCOLoader(train_images_dir, train_labels_file, *args, **kwargs)
+                train_dataloader.set_name("Train COCO Dataloader")
 
             if val_images_dir and val_labels_file:
                 print(f"Creating COCO val dataloader: {val_images_dir}, {val_labels_file}")
                 val_dataloader = COCOLoader(val_images_dir, val_labels_file, *args, **kwargs)
+                val_dataloader.set_name("Validation COCO Dataloader")
 
             if test_images_dir and test_labels_file:
                 print(f"Creating COCO test dataloader: {test_images_dir}, {test_labels_file}")
                 test_dataloader = COCOLoader(test_images_dir, test_labels_file, *args, **kwargs)
+                test_dataloader.set_name("Test COCO Dataloader")
 
         elif is_pascal_voc_dataset(root_dir):
             print("Detected Pascal VOC dataset format.")
@@ -125,14 +131,17 @@ class DataLoaderFactory:
             if train_images_dir and train_labels_dir:
                 print(f"Creating VOC train dataloader: {train_images_dir}, {train_labels_dir}")
                 train_dataloader = PascalVOCLoader(train_images_dir, train_labels_dir, *args, **kwargs)
+                train_dataloader.set_name("Train VOC Dataloader")
 
             if val_images_dir and val_labels_dir:
                 print(f"Creating VOC val dataloader: {val_images_dir}, {val_labels_dir}")
                 val_dataloader = PascalVOCLoader(val_images_dir, val_labels_dir, *args, **kwargs)
+                val_dataloader.set_name("Validation VOC Dataloader")
 
             if test_images_dir and test_labels_dir:
                 print(f"Creating VOC test dataloader: {test_images_dir}, {test_labels_dir}")
                 test_dataloader = PascalVOCLoader(test_images_dir, test_labels_dir, *args, **kwargs)
+                test_dataloader.set_name("Test VOC Dataloader")
 
         else:
             raise ValueError("Unsupported or unknown dataset type in directory: {}".format(root_dir))

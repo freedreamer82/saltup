@@ -108,3 +108,11 @@ class TestDataLoaderFactory:
         """Test DataLoaderFactory with invalid dataset type."""
         with pytest.raises(ValueError):
             DataLoaderFactory.create("InvalidType")
+
+    def test_loader_factory_dataloader_names(self, sample_coco_data, tmp_path):
+        """Test that dataloader names are correctly set by the factory."""
+        root_dir, train_images_dir, annotation_file = sample_coco_data
+        train_loader, val_loader, test_loader = DataLoaderFactory.create(root_dir)
+        assert train_loader.get_name() == "Train COCO Dataloader"
+        assert val_loader is None
+        assert test_loader is None
