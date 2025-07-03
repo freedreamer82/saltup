@@ -10,8 +10,6 @@ from saltup.ai.object_detection.utils.bbox import nms, convert_matrix_boxes
 TEST_IMAGE_WIDTH = 640
 TEST_IMAGE_HEIGHT = 480
 
-#TODO SonFra: Add test for check normalization of BBox coordinates
-
 # Test cases for BBox class
 def test_bbox_initialization():
     # Test initialization with CORNERS format
@@ -428,6 +426,13 @@ class TestComputeIoUBBox:
         bbox1, bbox2 = bbox_setup
         giou = bbox1.compute_iou(bbox2, iou_type=IoUType.GIOU)
         assert giou <= 0.1428  # GIoU is always <= IoU
+
+def test_bbox_normalization():
+    # Test normalization of bounding box coordinates
+    bbox = BBox(coordinates=[100, 150, 200, 250], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH)
+    normalized_coordinates = bbox.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)
+    assert normalized_coordinates == pytest.approx([0.1562, 0.3125, 0.3125, 0.5208])
+
 
 if __name__ == "__main__":
     pytest.main()
