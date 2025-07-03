@@ -12,6 +12,7 @@ Pillow
 
 # Machine Learning and Deep Learning
 tensorflow==2.18.0
+keras==3.8.0
 tf2onnx
 scikit-learn
 onnxruntime-gpu
@@ -23,7 +24,7 @@ torchmetrics
 # Audio processing
 librosa
 soundfile
-wave
+# wave  # Removed - use built-in wave module instead
 cmsisdsp
 
 # Image processing and augmentation
@@ -37,9 +38,20 @@ IPython
 
 # Jupyter Notebook support
 ipykernel
+nbformat
 
 # Cloud and storage
 boto3
 
+# MQTT client
+paho-mqtt
+
 # Testing
 pytest
+
+# Experiment tracking
+mlflow
+
+# Database connectivity (if needed)
+# PyMySQL  # Uncomment if you need MySQL connectivity
+# mysql-connector-python  # Alternative MySQL connector
