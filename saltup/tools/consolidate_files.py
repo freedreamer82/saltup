@@ -38,6 +38,11 @@ def parse_arguments() -> argparse.Namespace:
         action='store_true',
         help='Move files instead of copying them'
     )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Show progress bar and detailed output'
+    )
     
     return parser.parse_args()
 
@@ -45,10 +50,8 @@ def parse_arguments() -> argparse.Namespace:
 def main():
     """Main entry point for the script."""
     args = parse_arguments()
-    print(f"Arguments received: {args}")
     
-    try:
-        
+    try:        
         logger = configure_logging.get_logger(__name__)
         
         # Execute file unification
@@ -57,7 +60,8 @@ def main():
             destination=args.destination,
             filters=args.filters,
             divide_by_extension=args.divide_by_extension,
-            move_files=args.move
+            move_files=args.move,
+            verbose=args.verbose
         )
         
         if failed > 0:
