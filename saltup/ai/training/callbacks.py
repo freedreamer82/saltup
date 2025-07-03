@@ -35,7 +35,8 @@ class CallbackContext:
         }
         return tmp | (self.other_metrics if self.other_metrics else {})
 
- 
+
+class BaseCallback:
     """
     BaseCallback is an abstract base class for creating custom training callbacks.
 
