@@ -158,7 +158,6 @@ def _train_model(
         for epoch in range(epochs):
             model.train()
             running_loss = 0.0
-            correct = 0
             total = 0
 
             if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
@@ -169,10 +168,7 @@ def _train_model(
             for inputs, targets in train_iter:
                 inputs, targets = inputs.to(device), targets.to(device)
 
-                # For classification, convert one-hot to class indices; for others, leave as is.
-                if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
-                    targets = torch.argmax(targets, dim=1)
-
+                # Do not convert targets to class indices; keep as one-hot encoding.
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = loss_function(outputs, targets)
@@ -180,42 +176,41 @@ def _train_model(
                 optimizer.step()
 
                 running_loss += loss.item() * inputs.size(0)
-                _, predicted = torch.max(outputs, 1)
-                correct += (predicted == targets).sum().item()
-                total += targets.size(0)
+                #preds = torch.argmax(outputs, dim=1)
+                #targets_cat = torch.argmax(targets, dim=1)
+                #acc = (preds == targets_cat).float().mean()
+                #running_accuracy += acc.item() * inputs.size(0)
+                
+                total += inputs.size(0)
 
                 if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
                     train_iter.set_postfix(loss=loss.item())
 
             epoch_loss = running_loss / total
-            epoch_accuracy = correct / total
-
             # Validation
             model.eval()
             val_loss = 0.0
-            val_correct = 0
             val_total = 0
 
             with torch.no_grad():
                 for inputs, targets in val_gen:
                     inputs, targets = inputs.to(device), targets.to(device)
-                    if targets.ndim == 2 and targets.shape[1] > 1 and targets.dtype in (torch.float32, torch.float64):
-                        targets = torch.argmax(targets, dim=1)
+                    # Keep targets as one-hot encoding
                     outputs = model(inputs)
                     loss = loss_function(outputs, targets)
                     val_loss += loss.item() * inputs.size(0)
-                    _, predicted = torch.max(outputs, 1)
-                    val_correct += (predicted == targets).sum().item()
+                    #preds = torch.argmax(outputs, dim=1)
+                    #targets_cat = torch.argmax(targets, dim=1)
+                    #val_correct += (preds == targets_cat).float().mean()
                     val_total += targets.size(0)
 
             epoch_val_loss = val_loss / val_total
-            epoch_val_accuracy = val_correct / val_total
 
             # Update context with new best_loss and best_val_loss
             context.loss = epoch_loss
-            context.accuracy = epoch_accuracy
+            context.accuracy = 0
             context.val_loss = epoch_val_loss
-            context.val_accuracy = epoch_val_accuracy
+            context.val_accuracy = 0
 
             if epoch_val_loss < best_val_loss:
                 best_val_loss = epoch_val_loss
@@ -248,8 +243,7 @@ def training(
     model:Union[tf.keras.Model, torch.nn.Module],
     loss_function:callable,
     optimizer:callable,
-    epochs:int,
-    batch_size:int,           
+    epochs:int,     
     output_dir:str,
     validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
     kfold_param:dict = {'enable':False, 'split':[0.2, 0.8]},
@@ -289,7 +283,7 @@ def training(
         if kfold_param['enable']:
             f.write("The number of folds: {}".format(len(kfold_param['split'])))
         f.write("\nThe number of epochs: {}".format(epochs))
-        f.write("\nThe batch size: {}".format(batch_size))
+        f.write("\nThe batch size: {}".format(train_DataGenerator.batch_size))
     
     if kfold_param['enable']:
         kfolds = train_DataGenerator.split(kfold_param['split'])
@@ -392,8 +386,8 @@ def training(
             print("PyTorch model detected.")
             if loss_function is None or optimizer is None:
                     raise ValueError("For PyTorch models, both `loss_function` and `optimizer` must be provided.")
-            train_datagenerator = pytorch_DataGenerator(train_datagenerator, batch_size=batch_size, shuffle=True)
-            val_datagenerator = pytorch_DataGenerator(val_datagenerator, batch_size=batch_size, shuffle=True)
+            train_datagenerator = pytorch_DataGenerator(train_datagenerator, batch_size=train_datagenerator.batch_size, shuffle=True)
+            val_datagenerator = pytorch_DataGenerator(val_datagenerator, batch_size=val_datagenerator.batch_size, shuffle=True)
 
         print("\n--- Model training ---")
         classification_class_weight = kwargs.get('classification_class_weight', None)
