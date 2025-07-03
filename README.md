@@ -43,12 +43,39 @@ from saltup.ai.object_detection.dataset.loader_factory import DataLoaderFactory
 train_dl, val_dl, test_dl = DataLoaderFactory.get_dataloaders("./your_dataset")
 ```
 
-Train across frameworks seamlessly:
+Train across frameworks with production-ready callbacks:
 ```python
 from saltup.ai.training.train import training
+from saltup.ai.training.app_callbacks import MLflowCallback, FileLogger, YoloEvaluationsCallback, MQTTCallback
 
-# Mix TensorFlow data with PyTorch models, or vice versa
-training(model, train_dataloader, validation_dataloader)
+# Production callbacks for real workflows
+callbacks = [
+    MLflowCallback(mlflow_client, run_id),        # Experiment tracking
+    FileLogger("training.log", "best_model.csv"), # File logging
+    YoloEvaluationsCallback(yolo_type, val_data), # Model evaluation
+    MQTTCallback("broker", 1883, "training/metrics") # Remote monitoring
+]
+
+# Mix TensorFlow data with PyTorch models + powerful callback system
+training(model, train_dataloader, validation_dataloader, callbacks=callbacks)
+```
+
+Create custom callbacks for your specific needs:
+```python
+from saltup.ai.training.callbacks import BaseCallback, CallbackContext
+
+class CustomCallback(BaseCallback):
+    def on_epoch_end(self, epoch, context: CallbackContext):
+        # Your custom logic: send notifications, update dashboards, etc.
+        if context.val_loss < self.best_threshold:
+            self.send_slack_notification(f"New best model! Loss: {context.val_loss}")
+    
+    def on_train_end(self, context: CallbackContext):
+        # Cleanup, final reports, model deployment, etc.
+        self.deploy_model(context.best_model)
+
+# Use alongside built-in callbacks
+callbacks = [MLflowCallback(...), CustomCallback()]
 ```
 
 ## Core Capabilities
