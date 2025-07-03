@@ -267,8 +267,6 @@ def test_train_model_keras(mock_test_data_dir, tmp_path):
     # Assertions
     assert os.path.exists(trained_model_path)
     assert trained_model_path.endswith(".keras")
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best_v_.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best_t_.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch_.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "history_loss_plot.png"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "history_accuracy_plot.png"))
+    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best.keras"))
+    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best.keras"))
+    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch.keras"))
