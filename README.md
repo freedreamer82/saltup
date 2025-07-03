@@ -11,7 +11,7 @@ Stop wrestling with format conversions. Stop rewriting data loaders. Start build
 ## Installation
 
 ```bash
-pip install saltup
+pip install git+https://github.com/freedreamer82/saltup.git
 ```
 
 For development:
