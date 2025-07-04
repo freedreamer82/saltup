@@ -266,7 +266,7 @@ class FileLogger(BaseCallback):
         # General logging with error handling
         try:
             with open(self.log_file, "a") as f:
-                f.write(f"{epoch+1},{self.total_epochs},{loss},{val_loss}\n")
+                f.write(f"{epoch},{self.total_epochs},{loss},{val_loss}\n")
         except Exception as e:
             print(f"❌ Error while writing log: {e}")
 
@@ -274,7 +274,7 @@ class FileLogger(BaseCallback):
         if isinstance(val_loss, (int, float)) and val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             self.best_metrics = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'loss': loss,
                 'val_loss': val_loss,
             }
@@ -404,10 +404,10 @@ class YoloEvaluationsCallback(BaseCallback):
             **self.yolo_factory_kwargs
         )
 
-        if (epoch + 1) % self.every_epoch == 0:
+        if epoch % self.every_epoch == 0:
             print("\n\n")
             self._print("=" * 80)
-            self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch + 1}':^80}")
+            self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch}':^80}")
             self._print("=" * 80)
 
             self._print(f"Best model epoch: {context.best_epoch}")
@@ -488,13 +488,13 @@ class ClassificationEvaluationsCallback(BaseCallback):
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
         model=context.best_model
-        if (epoch + 1) % self.every_epoch == 0:
+        if epoch % self.every_epoch == 0:
             print("\n\n")
             self._print("=" * 80)
-            self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch + 1}':^80}")
+            self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch}':^80}")
             self._print("=" * 80)
 
-            self._print(f"Best model epoch: {context.best_epoch + 1} | Best loss: {context.best_loss:.4f} | Best val_loss: {context.best_val_loss:.4f}")
+            self._print(f"Best model epoch: {context.best_epoch} | Best loss: {context.best_loss:.4f} | Best val_loss: {context.best_val_loss:.4f}")
             if self.class_names is not None:
                 self._print(f"class_names: {self.class_names}")
                 

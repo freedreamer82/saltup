@@ -10,6 +10,28 @@ from typing import List, Optional
  
 @dataclass
 class CallbackContext:
+    """
+    CallbackContext holds information about the current state of a training process for machine learning models.
+
+    Note:
+        The `epochs` and `best_epoch` attributes are 1-based (i.e., the first epoch is 1).
+
+    Attributes:
+        model (Union[tf.keras.Model, torch.nn.Module]): The model being trained.
+        epochs (int, optional): The total number of epochs for training (1-based).
+        batch_size (int, optional): The batch size used during training.
+        loss (float, optional): The latest training loss value.
+        val_loss (float, optional): The latest validation loss value.
+        other_metrics (dict, optional): Additional metrics tracked during training.
+        best_model (Union[tf.keras.Model, torch.nn.Module], optional): The best-performing model observed so far.
+        best_epoch (int, optional): The epoch at which the best model was observed (1-based).
+        best_loss (float, optional): The lowest training loss observed.
+        best_val_loss (float, optional): The lowest validation loss observed.
+
+    Methods:
+        to_dict():
+            Returns a dictionary representation of the context, including model types, training statistics, and any additional metrics.
+    """
     model: Union[tf.keras.Model, torch.nn.Module]
     epochs: int = None
     batch_size: int = None
@@ -254,7 +276,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
 
         self._update_metrics_and_metadata(context)
         self.cb.update_metrics({"epoch": epoch + 1})
-        self.cb.on_epoch_end(epoch, context)
+        self.cb.on_epoch_end(epoch + 1, context)
         
 class KFoldTrackingCallback(BaseCallback):
     """

@@ -140,7 +140,6 @@ def _train_model(
             batch_size=train_gen.dataset.batch_size,
             best_model=None,
             best_epoch=1,
-            misc={},
             best_loss=None,
             best_val_loss=None
         )
@@ -218,7 +217,7 @@ def _train_model(
                 best_loss = epoch_loss
                 context.best_loss = best_loss
                 context.best_model = copy.deepcopy(model)
-                context.best_epoch = epoch
+                context.best_epoch = epoch + 1
                 scripted = torch.jit.script(model.cpu())
                 scripted.save(best_model_path)
 
@@ -226,11 +225,11 @@ def _train_model(
                 print(
                 f"Epoch {epoch+1}/{epochs} - "
                 f"loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f} - "
-                f"best_epoch: {context.best_epoch+1 if context.best_epoch is not None else '-'} - "
+                f"best_epoch: {context.best_epoch if context.best_epoch is not None else '-'} - "
                 f"best_loss: {context.best_loss:.4f} - best_val_loss: {context.best_val_loss:.4f}"
                 )
             for callback in app_callbacks:
-                callback.on_epoch_end(epoch , context)
+                callback.on_epoch_end(epoch + 1 , context)
         for callback in app_callbacks:
             callback.on_train_end(context)
         scripted = torch.jit.script(model.cpu())
