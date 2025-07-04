@@ -1,6 +1,7 @@
 import pytest
 import os
 import json
+import shutil
 import numpy as np
 from PIL import Image
 from collections import defaultdict
@@ -13,7 +14,8 @@ from saltup.ai.object_detection.dataset.coco import (
     replace_annotations_class, shift_class_ids,
     analyze_dataset, convert_coco_to_yolo_labels,
     split_dataset, split_and_organize_dataset,
-    count_annotations, COCOLoader, ColorMode
+    count_annotations, COCOLoader, ColorMode,
+    is_coco_dataset
 )
 
 class TestCOCODataset:
@@ -60,6 +62,37 @@ class TestCOCODataset:
         assert os.access(directories['annotations'], os.W_OK)
         for split_dir in directories['images'].values():
             assert os.access(split_dir, os.W_OK)
+    
+    def test_is_coco_dataset(self, tmp_path, sample_coco_data):
+        """Test detection of COCO dataset format."""
+        # Create a valid COCO dataset structure
+        root_dir = tmp_path / "coco_dataset"
+        root_dir.mkdir()
+        annotations_dir = root_dir / "annotations"
+        annotations_dir.mkdir()
+        images_dir = root_dir / "images" / "train"
+        images_dir.mkdir(parents=True)
+
+        # Use sample_coco_data for annotation file
+        annotation_file = annotations_dir / "instances_train.json"
+        with open(annotation_file, "w") as f:
+            json.dump(sample_coco_data, f)
+
+        # Create corresponding image files
+        for img in sample_coco_data["images"]:
+            (images_dir / img["file_name"]).touch()
+
+        # Test detection
+        assert is_coco_dataset(str(root_dir)) is True
+
+        # Test with missing annotation file
+        annotation_file.unlink()
+        assert is_coco_dataset(str(root_dir)) is False
+
+        # Test with missing images directory
+        for img in sample_coco_data["images"]:
+            (images_dir / img["file_name"]).unlink()
+        assert is_coco_dataset(str(root_dir)) is False
 
     def test_validate_dataset_structure(self, dataset_dir, sample_coco_data):
         """Test validation of dataset structure with sample data."""
@@ -120,33 +153,44 @@ class TestCOCODataset:
         (val_img_dir / "img1.jpg").touch()
 
         # Get paths using get_dataset_paths()
-        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file = get_dataset_paths(str(root_dir))
+        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file, test_images_dir, test_annotations_file = get_dataset_paths(str(root_dir))
 
-        # Verify paths are correct when correlation exists
+        # Verify paths are correct when directories/files exist
         assert train_images_dir == str(train_img_dir)
         assert train_annotations_file == str(train_ann_file)
         assert val_images_dir == str(val_img_dir)
         assert val_annotations_file == str(val_ann_file)
+        assert test_images_dir is None
+        assert test_annotations_file is None
 
         # Test case with missing images
         (train_img_dir / "img1.jpg").unlink()
-        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file = get_dataset_paths(str(root_dir))
-        
-        # Verify train paths are None when correlation is broken
+        # Since the directory is not empty check, but only existence, the path should still be returned
+        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file, test_images_dir, test_annotations_file = get_dataset_paths(str(root_dir))
+
+        # Directory still exists, so path is returned
         assert train_images_dir is None
-        assert train_annotations_file is None
-        # Val paths should still be valid
+        assert train_annotations_file == str(train_ann_file)
+        assert val_images_dir == str(val_img_dir)
+        assert val_annotations_file == str(val_ann_file)
+
+        # Test case with missing images directory
+        shutil.rmtree(train_img_dir)
+        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file, test_images_dir, test_annotations_file = get_dataset_paths(str(root_dir))
+
+        # Now directory does not exist, so path is None
+        assert train_images_dir is None
+        assert train_annotations_file == str(train_ann_file)
         assert val_images_dir == str(val_img_dir)
         assert val_annotations_file == str(val_ann_file)
 
         # Test case with missing annotations file
         train_ann_file.unlink()
-        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file = get_dataset_paths(str(root_dir))
-        
-        # Verify both train paths are None
+        train_images_dir, train_annotations_file, val_images_dir, val_annotations_file, test_images_dir, test_annotations_file = get_dataset_paths(str(root_dir))
+
+        # Directory exists, but annotation file is missing
         assert train_images_dir is None
         assert train_annotations_file is None
-        # Val paths should still be valid
         assert val_images_dir == str(val_img_dir)
         assert val_annotations_file == str(val_ann_file)
     

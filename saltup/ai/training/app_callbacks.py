@@ -200,7 +200,6 @@ class MLflowCallback(BaseCallback):
         # Log final metrics
         final_metrics = {
             "final_loss": getattr(context, 'final_loss', None),
-            "final_accuracy": getattr(context, 'final_accuracy', None),
         }
         
         self.log_metrics_dict(final_metrics)
@@ -246,13 +245,13 @@ class FileLogger(BaseCallback):
         if not os.path.exists(self.log_file):
             with open(self.log_file, "w") as f:
                 f.write(f"# Training logs started at: {now}\n")
-                f.write("epoch,total_epochs,loss,accuracy,val_loss,val_accuracy\n")
+                f.write("epoch,total_epochs,loss,val_loss\n")
 
         if not os.path.exists(self.best_stats_file):
             with open(self.best_stats_file, "w") as f:
                 f.write("# Best model statistics\n")
                 f.write(f"# Last updated: {now}\n")
-                f.write("epoch,loss,accuracy,val_loss,val_accuracy\n")
+                f.write("epoch,loss,val_loss\n")
 
     def on_train_begin(self, context: CallbackContext):
         """Automatically retrieve the total number of epochs."""
@@ -262,14 +261,12 @@ class FileLogger(BaseCallback):
     def on_epoch_end(self, epoch, context: CallbackContext):
         # Ensure values are not None
         loss = context.loss
-        accuracy = context.accuracy
         val_loss = context.val_loss
-        val_accuracy = context.val_accuracy
 
         # General logging with error handling
         try:
             with open(self.log_file, "a") as f:
-                f.write(f"{epoch+1},{self.total_epochs},{loss},{accuracy},{val_loss},{val_accuracy}\n")
+                f.write(f"{epoch+1},{self.total_epochs},{loss},{val_loss}\n")
         except Exception as e:
             print(f"❌ Error while writing log: {e}")
 
@@ -279,9 +276,7 @@ class FileLogger(BaseCallback):
             self.best_metrics = {
                 'epoch': epoch + 1,
                 'loss': loss,
-                'accuracy': accuracy,
                 'val_loss': val_loss,
-                'val_accuracy': val_accuracy
             }
 
             # Safely write the new best statistics
@@ -289,10 +284,8 @@ class FileLogger(BaseCallback):
                 with open(self.best_stats_file, "w") as f:
                     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     f.write(f"# Best model statistics - Updated: {now}\n")
-                    f.write("epoch,loss,accuracy,val_loss,val_accuracy\n")
-                    f.write(f"{self.best_metrics['epoch']},{self.best_metrics['loss']},"
-                            f"{self.best_metrics['accuracy']},{self.best_metrics['val_loss']},"
-                            f"{self.best_metrics['val_accuracy']}\n")
+                    f.write("epoch,loss,val_loss\n")
+                    f.write(f"{self.best_metrics['epoch']},{self.best_metrics['loss']},{self.best_metrics['val_loss']}\n")
             except Exception as e:
                 print(f"❌ Error while writing best statistics: {e}")
 

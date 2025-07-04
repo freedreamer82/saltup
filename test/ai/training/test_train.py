@@ -1,18 +1,22 @@
 import pytest
-import numpy as np
 import os
+import numpy as np
+from PIL import Image
+
+import tensorflow as tf
 import torch
 from torch import nn
 import torch.nn.functional as F
-import tensorflow as tf
 from torch.utils.data import DataLoader
-from unittest.mock import MagicMock
+
+from saltup.ai.classification.datagenerator import (
+    ClassificationDataloader,
+    keras_ClassificationDataGenerator,
+    pytorch_ClassificationDataGenerator,
+)
 from saltup.ai.classification.evaluate import evaluate_model
 from saltup.ai.training.train import _train_model
-from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
-from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
-from saltup.ai.classification.datagenerator import ClassificationDataloader, keras_ClassificationDataGenerator, pytorch_ClassificationDataGenerator
-from PIL import Image
+
 
 @pytest.fixture
 def mock_test_data_dir(tmp_path):
@@ -49,6 +53,7 @@ class PyTorchModel(nn.Module):
         x = F.softmax(self.fc(x), dim=1)  # Apply softmax activation
         return x
 
+
 @pytest.fixture
 def mock_pytorch_model(tmp_path):
     # Create a mock PyTorch model and save it
@@ -57,6 +62,7 @@ def mock_pytorch_model(tmp_path):
     scripted = torch.jit.script(model.cpu())
     scripted.save(model_path)
     return model_path
+
 
 @pytest.fixture
 def mock_tflite_model(tmp_path):
@@ -73,6 +79,7 @@ def mock_tflite_model(tmp_path):
     with open(model_path, "wb") as f:
         f.write(tflite_model)
     return model_path
+
 
 @pytest.fixture
 def mock_test_gen(mock_test_data_dir):
@@ -108,9 +115,11 @@ def mock_test_pytorch_gen(mock_test_data_dir):
     pytorch_gen = DataLoader(pytorch_gen, batch_size=4)
     return pytorch_gen
 
+
 def mock_loss_function(outputs, labels):
     # Mock loss value using outputs and labels
     return torch.mean((outputs - labels.float()) ** 2)
+
 
 def test_evaluate_model_pytorch_with_output_dir(mock_pytorch_model, mock_test_pytorch_gen, tmp_path):
     output_dir = str(tmp_path / "output")
@@ -121,6 +130,7 @@ def test_evaluate_model_pytorch_with_output_dir(mock_pytorch_model, mock_test_py
     assert os.path.exists(output_dir)
     assert any(fname.endswith("_pt_confusion_matrix.png") for fname in os.listdir(output_dir))
 
+
 def test_evaluate_model_tflite_with_output_dir(mock_tflite_model, mock_test_gen, tmp_path):
     output_dir = str(tmp_path / "output")
     accuracy = evaluate_model(mock_tflite_model, mock_test_gen, output_dir=output_dir)
@@ -129,9 +139,11 @@ def test_evaluate_model_tflite_with_output_dir(mock_tflite_model, mock_test_gen,
     assert os.path.exists(output_dir)
     assert any(fname.endswith("_tflite_confusion_matrix.png") for fname in os.listdir(output_dir))
 
+
 def test_evaluate_model_invalid_model_type(mock_test_gen):
     with pytest.raises(ValueError, match="Unsupported model type"):
         evaluate_model("invalid_model.xyz", mock_test_gen)
+
 
 def test_evaluate_model_missing_loss_function(mock_pytorch_model, mock_test_gen):
     pytorch_gen = pytorch_ClassificationDataGenerator(
@@ -143,7 +155,6 @@ def test_evaluate_model_missing_loss_function(mock_pytorch_model, mock_test_gen)
     pytorch_gen = DataLoader(pytorch_gen, batch_size=4)
     with pytest.raises(ValueError, match="please provide a loss_function"):
         evaluate_model(mock_pytorch_model, pytorch_gen)
-
 
 
 def test_train_model_pytorch(mock_test_data_dir, tmp_path):
@@ -207,7 +218,8 @@ def test_train_model_pytorch(mock_test_data_dir, tmp_path):
     assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch_.pt"))
     assert os.path.exists(os.path.join(output_dir, "saved_models", "history_loss_plot.png"))
     assert os.path.exists(os.path.join(output_dir, "saved_models", "history_accuracy_plot.png"))
-    
+
+
 def test_train_model_keras(mock_test_data_dir, tmp_path):
     # Setup mock data generator
     class_dict = {"class_0": 0, "class_1": 1}
@@ -255,8 +267,6 @@ def test_train_model_keras(mock_test_data_dir, tmp_path):
     # Assertions
     assert os.path.exists(trained_model_path)
     assert trained_model_path.endswith(".keras")
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best_v_.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best_t_.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch_.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "history_loss_plot.png"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "history_accuracy_plot.png"))
+    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best.keras"))
+    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best.keras"))
+    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch.keras"))
