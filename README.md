@@ -43,6 +43,25 @@ from saltup.ai.object_detection.dataset.loader_factory import DataLoaderFactory
 train_dl, val_dl, test_dl = DataLoaderFactory.get_dataloaders("./your_dataset")
 ```
 
+Saltup automatically handles preprocessing and postprocessing for **all major YOLO variants**. No more manual image resizing, normalization, or output decoding:
+```python
+from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
+from saltup.ai.object_detection.yolo.yolo_type import YoloType
+
+# Zero-configuration YOLO inference - preprocessing & postprocessing included
+yolo_ultralytics = YoloFactory.create(YoloType.ULTRALYTICS, "yolov8.pt", num_classes=80)
+yolo_damo = YoloFactory.create(YoloType.DAMO, "damo_yolo.onnx", num_classes=80)
+yolo_nas = YoloFactory.create(YoloType.SUPERGRAD, "yolo_nas.pt", num_classes=80)
+yolo_anchors = YoloFactory.create(YoloType.ANCHORS_BASED, "yolov3.weights", 
+                                  num_classes=80, anchors="anchors.txt")
+
+# Same simple interface, optimized processing for each architecture
+result = ultralytics_yolo.run(image)  # Automatic letterboxing + CHW normalization
+result = damo_yolo.run(image)         # DAMO-specific preprocessing + output parsing
+result = nas_yolo.run(image)          # NAS-optimized transforms + confidence handling
+result = anchors_yolo.run(image)      # Anchor box decoding + grid cell processing
+```
+
 Train across frameworks with production-ready callbacks:
 ```python
 from saltup.ai.training.train import training
@@ -86,6 +105,14 @@ One interface for .pt, .keras, .onnx, .tflite models. Load once, use everywhere.
 **📊 Dataset Flexibility**  
 Auto-detect and work with COCO, Pascal VOC, YOLO formats without manual conversion.
 
+**🎯 YOLO Pre/Post-Processing Out-of-the-Box**  
+Built-in preprocessing and postprocessing for all major YOLO variants:
+- **Ultralytics** (YOLOv5, YOLOv8, YOLOv11): Automatic letterboxing, RGB normalization, CHW format
+- **DAMO-YOLO**: Optimized preprocessing for DAMO architecture, proper output decoding
+- **YOLO-NAS/SuperGradients**: NAS-specific image transforms and confidence handling  
+- **Anchors-Based** (YOLOv3, YOLOv4): Anchor box management, proper grid cell decoding
+- **Custom preprocessing** supported for any variant
+
 **🔀 Cross-Framework**  
 Mix TensorFlow and PyTorch components in the same pipeline. Best of both worlds.
 
@@ -101,10 +128,13 @@ Get productive immediately with battle-tested command-line utilities:
 saltup_keras2onnx model.keras              # Convert between formats
 saltup_onnx_quantization model.onnx        # Optimize for deployment
 
-# Quick inference  
-saltup_yolo_image_inference model.pt image.jpg
-saltup_yolo_video_inference model.onnx video.mp4
-saltup_yolo_s3_inference model.tflite s3://bucket/images/
+# Quick inference with automatic pre/post-processing
+saltup_yolo_image_inference --model yolov8.pt --type ultralytics --img image.jpg --num_class 80
+saltup_yolo_video_inference --model model.onnx --type damo --img image.jpg --num_class 80
+saltup_yolo_s3_inference --model model.tflite --type supergrad --img /path/to/images --num_class 80
+
+# For anchor-based models
+saltup_yolo_image_inference --model yolov4.keras --type anchors_based --img image.jpg --num_class 80 --anchors anchors.txt
 
 # Dataset utilities
 saltup_yolo_count_classes ./dataset        # Analyze your data
