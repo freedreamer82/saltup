@@ -90,6 +90,7 @@ class Metric:
             'fp': self.getFP(),
             'tn': self.getTN(),
             'fn': self.getFN(),
+            'accuracy': self.getAccuracy(),
             'precision': self.getPrecision(),
             'recall': self.getRecall(),
             'f1_score': self.getF1Score(),

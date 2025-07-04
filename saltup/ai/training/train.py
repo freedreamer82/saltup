@@ -1,42 +1,31 @@
 import os
 import shutil
+import sys
 import copy
 import gc
+from tqdm import tqdm
 
 from typing import Iterator, Tuple, Any, List, Union
 
-import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
-from glob import glob
-from tqdm import tqdm
-
-from sklearn.model_selection import KFold
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-
-import albumentations as A
 
 import torch
 from torch.utils.data import DataLoader as pytorch_DataGenerator
 
 import tensorflow as tf
 
-from saltup.ai.classification.datagenerator import (
-    keras_ClassificationDataGenerator,
-    ClassificationDataloader,
-    pytorch_ClassificationDataGenerator
-)
-
 from saltup.saltup_env import SaltupEnv
 from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator, kfoldGenerator
 from saltup.ai.classification.evaluate import evaluate_model
 from saltup.ai.utils.keras.to_onnx import *
 from saltup.ai.utils.keras.to_tflite import tflite_conversion
+from saltup.ai.utils.torch.to_onnx import convert_torch_to_onnx
 from saltup.ai.training.callbacks import *
 from saltup.utils.data.image.image_utils import Image, ColorMode
 from saltup.ai.object_detection.utils.metrics import Metric
-from saltup.ai.training.callbacks import _KerasCallbackAdapter
+from saltup.ai.training.callbacks import _KerasCallbackAdapter, KFoldTrackingCallback
+from saltup.ai.training.app_callbacks import YoloEvaluationsCallback, ClassificationEvaluationsCallback
 
 
 def _train_model(
@@ -54,20 +43,27 @@ def _train_model(
 ) -> str:
     """
     Train the model.
+
     Args:
-        model (Union[tf.keras.models.Sequential, torch.nn.Module]): model to be trained.
-        train_gen (Union[keras_ClassificationDataGenerator, DataLoader]): training data generator
-        val_gen (Union[keras_ClassificationDataGenerator, DataLoader]): validation data generator
-        output_dir (str): folder to save the model
-        epochs (int): number of epochs for training
-        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module]): loss function for training
-        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]): optimizer for training
-        scheduler (Union[torch.optim.lr_scheduler._LRScheduler, None]): scheduler for the optimizer
-        model_output_name (str, optional): name of the model. Defaults to None.
-        app_callbacks (list, optional): list of callbacks for training. Defaults to [].
+        model (Union[tf.keras.models.Sequential, torch.nn.Module]): Model to be trained.
+        train_gen (BaseDatagenerator): Training data generator.
+        val_gen (BaseDatagenerator): Validation data generator.
+        output_dir (str): Directory to save the model.
+        epochs (int): Number of epochs for training.
+        loss_function (Union[tf.keras.losses.Loss, torch.nn.Module]): Loss function for training.
+        optimizer (Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]): Optimizer for training.
+        scheduler (Union[torch.optim.lr_scheduler._LRScheduler, None]): Scheduler for the optimizer.
+        model_output_name (str, optional): Name of the model. Defaults to None.
+        class_weight (dict, optional): Class weights for training. Defaults to None.
+        app_callbacks (list, optional): List of callbacks for training. Defaults to [].
+
+    Returns:
+        str: Path to the best saved model.
     """
     if model_output_name is None:
         model_output_name = 'model'
+    saved_models_folder_path = os.path.join(output_dir, "saved_models")
+    os.makedirs(saved_models_folder_path, exist_ok=True)
     if isinstance(model, tf.keras.Model):
         # === Keras model ===
         if optimizer is None or loss_function is None:
@@ -89,9 +85,6 @@ def _train_model(
         )
         
         keras_callbacks = [_KerasCallbackAdapter(cb) for cb in app_callbacks]
-        
-        saved_models_folder_path = os.path.join(output_dir, "saved_models")
-        os.makedirs(saved_models_folder_path, exist_ok=True)
         
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.keras')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.keras')
@@ -140,146 +133,119 @@ def _train_model(
         return best_model_path
 
     elif isinstance(model, torch.nn.Module):
-        # === PyTorch model ===
-        pytorch_callbacks = [cb for cb in app_callbacks if isinstance(cb, BaseCallback)]
-        saved_models_folder_path = os.path.join(output_dir, "saved_models")
-        os.makedirs(saved_models_folder_path, exist_ok=True)
-
-        # TODO @marc: Check saved models. Only best and last epoch models must be saved
-        # TODO @marc: Review pytorch callbacks according to new implementation
-        best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_v_.pt')
-        b_train_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best_t_.pt')
-        last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch_.pt')
-
-        best_val_loss = float('inf')
-        best_train_loss = float('inf')
-
-        history = {
-            'loss': [],
-            'val_loss': [],
-            'accuracy': [],
-            'val_accuracy': []
-        }
+        
+        context = CallbackContext(
+            model=model,
+            epochs=epochs,
+            batch_size=train_gen.dataset.batch_size,
+            best_model=None,
+            best_epoch=1,
+            best_loss=None,
+            best_val_loss=None
+        )
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model.to(device)
+        best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.pt')
+        last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.pt')
         
+        for callback in app_callbacks:
+            callback.on_train_begin(context)
+
+        best_val_loss = float('inf')
+        best_loss = float('inf')
+
         for epoch in range(epochs):
             model.train()
-            running_loss, correct, total = 0, 0, 0
-            for x_batch, y_batch in train_gen:
-                x_batch, y_batch = x_batch.to(device).float(), y_batch.to(device)
-                
-                # Handle both one-hot encoded and non-one-hot encoded labels
-                if y_batch.ndim == 1:  # If labels are not one-hot encoded
-                    labels = y_batch
-                elif y_batch.ndim == 2:  # If labels are one-hot encoded
-                    labels = torch.argmax(y_batch, dim=1)
-                else:
-                    raise ValueError(f"Unexpected label shape: {y_batch.shape}")
+            running_loss = 0.0
+            total = 0
 
+            if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                train_iter = tqdm(train_gen, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False)
+            else:
+                train_iter = train_gen
+
+            for inputs, targets in train_iter:
+                inputs, targets = inputs.to(device), targets.to(device)
+
+                # Do not convert targets to class indices; keep as one-hot encoding.
                 optimizer.zero_grad()
-                outputs = model(x_batch)
-                loss = loss_function(outputs, labels)
+                outputs = model(inputs)
+                loss = loss_function(outputs, targets)
                 loss.backward()
                 optimizer.step()
 
-                running_loss += loss.item()
-                _, predicted = torch.max(outputs, 1)
-                correct += (predicted == labels).sum().item()
-                total += labels.size(0)
+                running_loss += loss.item() * inputs.size(0)
+                #preds = torch.argmax(outputs, dim=1)
+                #targets_cat = torch.argmax(targets, dim=1)
+                #acc = (preds == targets_cat).float().mean()
+                #running_accuracy += acc.item() * inputs.size(0)
+                
+                total += inputs.size(0)
 
-            train_loss = running_loss / len(train_gen.dataset)
-            train_acc = correct / len(train_gen.dataset)
-            
+                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                    train_iter.set_postfix(loss=loss.item())
+
+            epoch_loss = running_loss / total
             # Validation
             model.eval()
-            val_loss, val_correct = 0, 0
+            val_loss = 0.0
+            val_total = 0
+
             with torch.no_grad():
-                for x_batch, y_batch in val_gen:
-                    x_batch, y_batch = x_batch.to(device).float(), y_batch.to(device)
-                    
-                    # Handle both one-hot encoded and non-one-hot encoded labels
-                    if y_batch.ndim == 1:  # If labels are not one-hot encoded
-                        labels = y_batch
-                    elif y_batch.ndim == 2:  # If labels are one-hot encoded
-                        labels = torch.argmax(y_batch, dim=1)
-                    else:
-                        raise ValueError(f"Unexpected label shape: {y_batch.shape}")
+                for inputs, targets in val_gen:
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    # Keep targets as one-hot encoding
+                    outputs = model(inputs)
+                    loss = loss_function(outputs, targets)
+                    val_loss += loss.item() * inputs.size(0)
+                    #preds = torch.argmax(outputs, dim=1)
+                    #targets_cat = torch.argmax(targets, dim=1)
+                    #val_correct += (preds == targets_cat).float().mean()
+                    val_total += targets.size(0)
 
-                    outputs = model(x_batch)
-                    loss = loss_function(outputs, labels)
-                    val_loss += loss.item()
-                    val_correct += (torch.argmax(outputs, 1) == labels).sum().item()
+            epoch_val_loss = val_loss / val_total
 
-            val_loss /= len(val_gen.dataset)
-            val_acc = val_correct / len(val_gen.dataset)
-                
-            history['loss'].append(train_loss)
-            history['val_loss'].append(val_loss)
-            history['accuracy'].append(train_acc)
-            history['val_accuracy'].append(val_acc)
+            # Update context with new best_loss and best_val_loss
+            context.loss = epoch_loss
+            context.accuracy = 0
+            context.val_loss = epoch_val_loss
+            context.val_accuracy = 0
 
-            # TODO: Give possibility to use custom metrics
-            print(f"Epoch {epoch+1}/{epochs} - "
-                  f"Train Loss: {train_loss:.4f}, Acc: {train_acc:.4f} | "
-                  f"Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}")
-
-            for cb in pytorch_callbacks:
-                cb.on_epoch_end(epoch, metrics={
-                'loss': round(train_loss, 4),
-                'val_loss': round(val_loss, 4),
-                'accuracy': round(train_acc, 4),
-                'val_accuracy': round(val_acc, 4)
-            })
-            
-            # Save best models (JIT)
-            if val_loss < best_val_loss:
+            if epoch_val_loss < best_val_loss:
+                best_val_loss = epoch_val_loss
+                context.best_val_loss = best_val_loss
+                best_loss = epoch_loss
+                context.best_loss = best_loss
+                context.best_model = copy.deepcopy(model)
+                context.best_epoch = epoch + 1
                 scripted = torch.jit.script(model.cpu())
                 scripted.save(best_model_path)
-                model.to(device)
-                best_val_loss = val_loss
 
-            if train_loss < best_train_loss:
-                scripted = torch.jit.script(model.cpu())
-                scripted.save(b_train_model_path)
-                model.to(device)
-                best_train_loss = train_loss
-
-            if scheduler:
-                scheduler.step(val_loss)
-
-        # Save last epoch model
+            if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                print(
+                f"Epoch {epoch+1}/{epochs} - "
+                f"loss: {epoch_loss:.4f} - val_loss: {epoch_val_loss:.4f} - "
+                f"best_epoch: {context.best_epoch if context.best_epoch is not None else '-'} - "
+                f"best_loss: {context.best_loss:.4f} - best_val_loss: {context.best_val_loss:.4f}"
+                )
+            for callback in app_callbacks:
+                callback.on_epoch_end(epoch + 1 , context)
+        for callback in app_callbacks:
+            callback.on_train_end(context)
         scripted = torch.jit.script(model.cpu())
         scripted.save(last_epoch_model)
-        model.to(device)
 
-        def save_plot(data_key, filename, ylabel):
-            fig = plt.figure(figsize=(10, 10))
-            plt.plot(history[data_key], '.-', label='train')
-            plt.plot(history[f'val_{data_key}'], '.-', label='val')
-            plt.ylabel(ylabel)
-            plt.xlabel('epoch')
-            plt.legend(loc='upper right')
-            plt.savefig(os.path.join(saved_models_folder_path, filename + '_plot.png'), bbox_inches='tight')
-            plt.close(fig)
-
-        save_plot('loss', 'history_loss', 'Loss')
-        save_plot('accuracy', 'history_accuracy', 'Accuracy')
-
-        print(f"Saved scripted model at {last_epoch_model}")
-        return last_epoch_model         
+        return best_model_path
             
 def training(
     train_DataGenerator:BaseDatagenerator,
     model:Union[tf.keras.Model, torch.nn.Module],
     loss_function:callable,
     optimizer:callable,
-    epochs:int,
-    batch_size:int,           
+    epochs:int,     
     output_dir:str,
     validation:Union[list[float], BaseDatagenerator]=[0.2, 0.8],
-    kfold_param:dict = {'enable':True, 'split':[0.2, 0.8]},
+    kfold_param:dict = {'enable':False, 'split':[0.2, 0.8]},
     scheduler:callable=None,
     model_output_name:str=None,
     training_callback:list=[],
@@ -316,14 +282,14 @@ def training(
         if kfold_param['enable']:
             f.write("The number of folds: {}".format(len(kfold_param['split'])))
         f.write("\nThe number of epochs: {}".format(epochs))
-        f.write("\nThe batch size: {}".format(batch_size))
+        f.write("\nThe batch size: {}".format(train_DataGenerator.batch_size))
     
     if kfold_param['enable']:
         kfolds = train_DataGenerator.split(kfold_param['split'])
-        acc_per_fold = []
-        best_accuracy = -1
-        golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
         # TODO @Marc: Add function for validate golden model and add golden model folder to results_dict
+        
+        k_fold_calbck = KFoldTrackingCallback()
+        training_callback.append(k_fold_calbck)
         for fold in range(len(kfolds)):
             print(f"\n--- Fold {fold + 1} ---")
             train_generator, val_generator = kfoldGenerator(kfolds, fold).get_fold_generators()
@@ -340,6 +306,8 @@ def training(
             
             fold_path = os.path.join(output_dir,'k_'+str(fold))
             os.mkdir(fold_path)
+            
+            k_fold_calbck.set_fold(fold)
             print("\n--- Model training ---")
             classification_class_weight = kwargs.get('classification_class_weight', None)
             trained_model_path = _train_model(
@@ -355,36 +323,56 @@ def training(
                 class_weight=classification_class_weight,
                 app_callbacks=training_callback
             )
-            print("\n--- Model fold evaluation ---")
-            current_fold_folder = os.path.dirname(trained_model_path)
-            current_accuracy = evaluate_model(trained_model_path, val_generator, current_fold_folder, loss_function)
-            acc_per_fold.append(current_accuracy)
-            txt_performance_file_name = "performances.txt"
+        golden_model_folder = os.path.join(output_dir, 'golden_model_folder')
+        os.mkdir(golden_model_folder)    
+        k_fold_results = k_fold_calbck.get_fold_results()
+        best_val_loss = sys.float_info.max
+        for i in range((len(kfolds))):
+            if k_fold_results[i]['val_loss'] < best_val_loss:
+                best_val_loss = k_fold_results[i]['val_loss']
+                if isinstance(fold_model, tf.keras.Model):
+                    golden_model_path = os.path.join(golden_model_folder, f'golden_model.keras')
+                    k_fold_results[i]['model'].save(golden_model_path)
+                elif isinstance(fold_model, torch.nn.Module):
+                    golden_model_path = os.path.join(golden_model_folder, f'golden_model.pt')
+                    scripted = torch.jit.script(k_fold_results[i]['model'].cpu())
+                    scripted.save(golden_model_path)
+        
+        if isinstance(fold_model, tf.keras.Model):
+            golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
+            onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
+            onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path,SaltupEnv.SALTUP_ONNX_OPSET)
+            results_dict['models_paths'].append(onnx_model_path)
             
-            txt_performance_file_path = os.path.join(current_fold_folder, txt_performance_file_name)
-            with open(txt_performance_file_path, mode='w') as f:
-                f.write("The accuracy of the test of the fold " + str(fold) + ": "+str(current_accuracy))
-            
-            if  current_accuracy > best_accuracy:
-                best_accuracy = current_accuracy
-                fold_number = fold
-                golden_model_path = trained_model_path
+            tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
+            tflite_model_path = tflite_conversion(
+                golden_model_path, 
+                tflite_golden_model_path
+            )
+            results_dict['models_paths'].append(tflite_model_path)
+        elif isinstance(fold_model, torch.nn.Module):
+            model_name = os.path.basename(golden_model_path).replace('.pt', '')
+            onnx_model_path = os.path.join(golden_model_folder, f'{model_name}.onnx')
 
-            golden_fold_folder = os.path.dirname(golden_model_path)
-            shutil.copytree(golden_fold_folder, golden_model_folder, dirs_exist_ok=True)
-            
-            if isinstance(fold_model, tf.keras.Model):
-                golden_model_name = os.path.basename(golden_model_path).replace('.keras', '')       
-                onnx_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.onnx')
-                onnx_model_path, _ = convert_keras_to_onnx(golden_model_path, onnx_model_path,SaltupEnv.SALTUP_ONNX_OPSET)
-                results_dict['models_paths'].append(onnx_model_path)
-                
-                tflite_golden_model_path = os.path.join(golden_model_folder, f'{golden_model_name}.tflite')
-                tflite_model_path = tflite_conversion(
-                    golden_model_path, 
-                    tflite_golden_model_path
-                )
-                results_dict['models_paths'].append(tflite_model_path)
+            # Use the shape of a real batch from the validation dataloader as input shape for ONNX conversion
+            try:
+                train_batch = next(iter(train_generator))
+                if isinstance(train_batch, (list, tuple)):
+                    sample_input = train_batch[0]
+                else:
+                    sample_input = train_batch
+                if hasattr(sample_input, 'shape'):
+                    input_shape = tuple(sample_input.shape)
+                else:
+                    raise RuntimeError("Cannot determine input shape from training datagenerator.")
+            except Exception as e:
+                raise RuntimeError(f"Failed to get input shape from training datagenerator: {e}")
+            convert_torch_to_onnx(
+                fold_model, 
+                input_shape=input_shape,
+                output_path=onnx_model_path,
+            )
+            results_dict['models_paths'].append(onnx_model_path)
     else:
         if isinstance(validation, list):
             val_datagenerator, train_datagenerator  = train_DataGenerator.split(validation)
@@ -397,8 +385,8 @@ def training(
             print("PyTorch model detected.")
             if loss_function is None or optimizer is None:
                     raise ValueError("For PyTorch models, both `loss_function` and `optimizer` must be provided.")
-            train_datagenerator = pytorch_DataGenerator(train_datagenerator, batch_size=batch_size, shuffle=True)
-            val_datagenerator = pytorch_DataGenerator(val_datagenerator, batch_size=batch_size, shuffle=True)
+            train_datagenerator = pytorch_DataGenerator(train_datagenerator, batch_size=train_datagenerator.batch_size, shuffle=True)
+            val_datagenerator = pytorch_DataGenerator(val_datagenerator, batch_size=val_datagenerator.batch_size, shuffle=True)
 
         print("\n--- Model training ---")
         classification_class_weight = kwargs.get('classification_class_weight', None)
@@ -429,4 +417,28 @@ def training(
                 tflite_model_path
             )
             results_dict['models_paths'].append(tflite_model_path)
+        elif isinstance(training_model, torch.nn.Module):
+            model_folder = os.path.dirname(model_path)
+            model_name = os.path.basename(model_path).replace('.pt', '')
+            onnx_model_path = os.path.join(model_folder, f'{model_name}.onnx')
+
+            # Use the shape of a real batch from the validation dataloader as input shape for ONNX conversion
+            try:
+                train_batch = next(iter(train_datagenerator))
+                if isinstance(train_batch, (list, tuple)):
+                    sample_input = train_batch[0]
+                else:
+                    sample_input = train_batch
+                if hasattr(sample_input, 'shape'):
+                    input_shape = tuple(sample_input.shape)
+                else:
+                    raise RuntimeError("Cannot determine input shape from training datagenerator.")
+            except Exception as e:
+                raise RuntimeError(f"Failed to get input shape from training datagenerator: {e}")
+            convert_torch_to_onnx(
+                training_model, 
+                input_shape=input_shape,
+                output_path=onnx_model_path,
+            )
+            results_dict['models_paths'].append(onnx_model_path)
     return results_dict

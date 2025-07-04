@@ -203,7 +203,6 @@ def convert_matrix_boxes(box_xy, box_wh):
 
     return corners, centers
 
-
 class BBox:
     def __init__(
         self,
