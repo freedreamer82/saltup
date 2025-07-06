@@ -131,8 +131,7 @@ class BaseCallback:
                     result[k] = v
             return result
         
-        if metrics and hasattr(self.cb, "update_metrics"):
-            self.cb.update_metrics(metrics)
+        if metrics:
             self.metrics.update(metrics)                        
             # Truncate float values in metrics
             self.metrics = _truncate_floats(self.metrics, precision=4)
@@ -202,7 +201,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_loss=self.best_value if self.mode == "min" else None,
             best_val_loss=self.best_value if self.mode == "min" else None
         )
-        self.cb.on_train_begin(context)
+        if hasattr(self.cb, 'on_train_begin'):
+            self.cb.on_train_begin(context)
 
     def _update_metrics_and_metadata(self, context):
         metrics = {}
@@ -210,7 +210,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             v = getattr(context, k, None)
             if v is not None:
                 metrics[k] = v
-        if metrics:
+        if metrics and hasattr(self.cb, 'update_metrics'):
             self.cb.update_metrics(metrics)
 
         meta = {
@@ -221,7 +221,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             "datetime": datetime.datetime.now().isoformat(),
         }
         filtered_meta = {k: v for k, v in meta.items() if v is not None}
-        if filtered_meta:
+        if filtered_meta and hasattr(self.cb, 'update_metadata'):
             self.cb.update_metadata(filtered_meta)
 
 
@@ -240,7 +240,8 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             best_val_loss=self.best_value if self.mode == "min" else None
         )
         self._update_metrics_and_metadata(context)
-        self.cb.on_train_end(context)
+        if hasattr(self.cb, 'on_train_end'):
+            self.cb.on_train_end(context)
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
@@ -276,8 +277,10 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         )
 
         self._update_metrics_and_metadata(context)
-        self.cb.update_metrics({"epoch": epoch + 1})
-        self.cb.on_epoch_end(epoch + 1, context)
+        if hasattr(self.cb, 'update_metrics'):
+            self.cb.update_metrics({"epoch": epoch + 1})
+        if hasattr(self.cb, 'on_epoch_end'):
+            self.cb.on_epoch_end(epoch + 1, context)
         
 class KFoldTrackingCallback(BaseCallback):
     """
