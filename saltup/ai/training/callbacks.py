@@ -198,20 +198,24 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
         """Automatically retrieve the total number of epochs."""
         logs = logs or {}
-        context = CallbackContext(
-            model=self.model,
-            epochs=self.params.get('epochs', None),
-            batch_size=self.params.get('batch_size', None),
-            loss=logs.get('loss', None),
-            val_loss=logs.get('val_loss', None),
-            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
-            best_model=self.best_model,
-            best_epoch=self.best_epoch,
-            best_loss=self.best_value if self.mode == "min" else None,
-            best_val_loss=self.best_value if self.mode == "min" else None
-        )
-        if hasattr(self.cb, 'on_train_begin'):
-            self.cb.on_train_begin(context)
+        if isinstance(self.cb, BaseCallback):
+            context = CallbackContext(
+                model=self.model,
+                epochs=self.params.get('epochs', None),
+                batch_size=self.params.get('batch_size', None),
+                loss=logs.get('loss', None),
+                val_loss=logs.get('val_loss', None),
+                other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
+                best_model=self.best_model,
+                best_epoch=self.best_epoch,
+                best_loss=self.best_value if self.mode == "min" else None,
+                best_val_loss=self.best_value if self.mode == "min" else None
+            )
+            if hasattr(self.cb, 'on_train_begin'):
+                self.cb.on_train_begin(context)
+        elif isinstance(self.cb, tf.keras.callbacks.Callback):
+            # If the callback is a Keras Callback, we can directly call its on_train_begin method
+            self.cb.on_train_begin(logs)        
 
     def _update_metrics_and_metadata(self, context):
         metrics = {}
@@ -236,60 +240,68 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
 
     def on_train_end(self, logs=None):
         logs = logs or {}
-        context = CallbackContext(
-            model=self.model,
-            epochs=self.params.get('epochs', None),
-            batch_size=self.params.get('batch_size', None),
-            loss=logs.get('loss', None),
-            val_loss=logs.get('val_loss', None),
-            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
-            best_model=self.best_model,
-            best_epoch=self.best_epoch,
-            best_loss=self.best_value if self.mode == "min" else None,
-            best_val_loss=self.best_value if self.mode == "min" else None
-        )
-        self._update_metrics_and_metadata(context)
-        if hasattr(self.cb, 'on_train_end'):
-            self.cb.on_train_end(context)
+        if isinstance(self.cb, BaseCallback):
+            context = CallbackContext(
+                model=self.model,
+                epochs=self.params.get('epochs', None),
+                batch_size=self.params.get('batch_size', None),
+                loss=logs.get('loss', None),
+                val_loss=logs.get('val_loss', None),
+                other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
+                best_model=self.best_model,
+                best_epoch=self.best_epoch,
+                best_loss=self.best_value if self.mode == "min" else None,
+                best_val_loss=self.best_value if self.mode == "min" else None
+            )
+            self._update_metrics_and_metadata(context)
+            if hasattr(self.cb, 'on_train_end'):
+                self.cb.on_train_end(context)
+        elif isinstance(self.cb, tf.keras.callbacks.Callback):
+            # If the callback is a Keras Callback, we can directly call its on_train_end method
+            self.cb.on_train_end(logs)
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-        current = logs.get(self.monitor)
-        is_better = False
-        if current is not None:
-            if self.mode == "min" and current < self.best_value:
-                is_better = True
-            elif self.mode == "max" and current > self.best_value:
-                is_better = True
-        if is_better:
-            self.best_value = current
-            self.best_model = tf.keras.models.clone_model(self.model)
-            self.best_model.set_weights(self.model.get_weights())
-            self.best_epoch = epoch + 1
-            self.best_logs = logs.copy()  # <--- save the best
+        if isinstance(self.cb, BaseCallback):
+            current = logs.get(self.monitor)
+            is_better = False
+            if current is not None:
+                if self.mode == "min" and current < self.best_value:
+                    is_better = True
+                elif self.mode == "max" and current > self.best_value:
+                    is_better = True
+            if is_better:
+                self.best_value = current
+                self.best_model = tf.keras.models.clone_model(self.model)
+                self.best_model.set_weights(self.model.get_weights())
+                self.best_epoch = epoch + 1
+                self.best_logs = logs.copy()  # <--- save the best
 
-        # Use the best logs for best_loss/best_val_loss
-        best_loss = self.best_logs.get('loss') if self.best_logs else None
-        best_val_loss = self.best_logs.get('val_loss') if self.best_logs else None
+            # Use the best logs for best_loss/best_val_loss
+            best_loss = self.best_logs.get('loss') if self.best_logs else None
+            best_val_loss = self.best_logs.get('val_loss') if self.best_logs else None
 
-        context = CallbackContext(
-            model=self.model,
-            epochs=self.params.get('epochs', None),
-            batch_size=self.params.get('batch_size', None),
-            loss=logs.get('loss', None),
-            val_loss=logs.get('val_loss', None),
-            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
-            best_model=self.best_model,
-            best_epoch=self.best_epoch,
-            best_loss=best_loss,
-            best_val_loss=best_val_loss
-        )
+            context = CallbackContext(
+                model=self.model,
+                epochs=self.params.get('epochs', None),
+                batch_size=self.params.get('batch_size', None),
+                loss=logs.get('loss', None),
+                val_loss=logs.get('val_loss', None),
+                other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
+                best_model=self.best_model,
+                best_epoch=self.best_epoch,
+                best_loss=best_loss,
+                best_val_loss=best_val_loss
+            )
 
-        self._update_metrics_and_metadata(context)
-        if hasattr(self.cb, 'update_metrics'):
-            self.cb.update_metrics({"epoch": epoch + 1})
-        if hasattr(self.cb, 'on_epoch_end'):
-            self.cb.on_epoch_end(epoch + 1, context)
+            self._update_metrics_and_metadata(context)
+            if hasattr(self.cb, 'update_metrics'):
+                self.cb.update_metrics({"epoch": epoch + 1})
+            if hasattr(self.cb, 'on_epoch_end'):
+                self.cb.on_epoch_end(epoch + 1, context)
+        elif isinstance(self.cb, tf.keras.callbacks.Callback):
+            # If the callback is a Keras Callback, we can directly call its on_epoch_end method
+            self.cb.on_epoch_end(epoch, logs)
         
 class KFoldTrackingCallback(BaseCallback):
     """
