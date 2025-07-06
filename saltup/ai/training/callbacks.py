@@ -131,7 +131,8 @@ class BaseCallback:
                     result[k] = v
             return result
         
-        if metrics:
+        if metrics and hasattr(self.cb, "update_metrics"):
+            self.cb.update_metrics(metrics)
             self.metrics.update(metrics)                        
             # Truncate float values in metrics
             self.metrics = _truncate_floats(self.metrics, precision=4)
