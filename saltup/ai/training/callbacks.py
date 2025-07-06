@@ -131,7 +131,16 @@ class BaseCallback:
                     result[k] = v
             return result
         
-        if metrics:
+        if metrics is not None or len(self.metrics) > 0:
+            # Ensure metrics is actually a dictionary
+            if not isinstance(metrics, dict):
+                print(f"Warning: update_metrics called with non-dict argument: {type(metrics)}. Converting to dict.")
+                if hasattr(metrics, 'to_dict'):
+                    metrics = metrics.to_dict()
+                else:
+                    print(f"Error: Cannot convert {type(metrics)} to dict. Ignoring metrics update.")
+                    return
+            
             self.metrics.update(metrics)                        
             # Truncate float values in metrics
             self.metrics = _truncate_floats(self.metrics, precision=4)
