@@ -822,8 +822,8 @@ class BBox:
                 class_id, x_center, y_center, width, height = map(float, components)
                 class_id = int(class_id)
 
-                # Create a BBox object in CENTER format
-                bbox = cls(
+                # Always create a BBox (not cls) to avoid issues in subclasses
+                bbox = BBox(
                     coordinates=[x_center, y_center, width, height],
                     fmt=BBoxFormat.YOLO,
                     img_height=img_height,
@@ -855,7 +855,7 @@ class BBox:
         for annotation in data['annotations']:
             if annotation['image_id'] == image_id:
                 x_min, y_min, width, height = annotation['bbox']
-                bbox = cls(
+                bbox = BBox(
                     coordinates=[x_min, y_min, width, height],
                     fmt=BBoxFormat.COCO,
                     img_height=img_height,
@@ -885,7 +885,7 @@ class BBox:
             ymin = int(bndbox.find('ymin').text)
             xmax = int(bndbox.find('xmax').text)
             ymax = int(bndbox.find('ymax').text)
-            bbox = cls(
+            bbox = BBox(
                 coordinates=[xmin, ymin, xmax, ymax],
                 fmt=BBoxFormat.VOC,
                 img_height=img_height,
@@ -1145,6 +1145,30 @@ class BBoxClassId(BBox):
                    and the class information (either class ID or class name).
         """
         return (self.get_coordinates(fmt, img_shape), self.class_id if not self.class_name else self.class_name)
+    
+    @classmethod
+    def from_yolo_file(cls, file_path: str, img_height: int = None, img_width: int = None) -> List['BBoxClassId']:
+        """
+        Load bounding boxes with class IDs from a YOLO format annotation file.
+
+        Args:
+            file_path: Path to the YOLO annotation file.
+            img_height: Height of the image.
+            img_width: Width of the image.
+
+        Returns:
+            List[BBoxClassId]: A list of BBoxClassId objects (one for each annotation in the file).
+        """
+        bboxes, class_ids = super().from_yolo_file(file_path, img_height, img_width)
+        return [
+            cls(
+            coordinates = bbox.get_coordinates(),
+            class_id = classId,
+            fmt = BBOX_INNER_FORMAT,
+            img_height = img_height,
+            img_width = img_width
+            ) for bbox, classId in zip(bboxes, class_ids)
+        ]
 
     def __getitem__(self, idx):
         """
@@ -1194,15 +1218,15 @@ class BBoxClassId(BBox):
             class_id={self.class_id},
             class_name={self.class_name})"""
 
-    @classmethod
-    def from_yolo_file(cls, file_path: str, img_height: int, img_width: int) -> Tuple[List['BBoxClassId']]:
-        bbox, class_id = super().from_yolo_file(file_path, img_height, img_width)
-        return cls(
-            img_height = bbox.get_img_height(),
-            img_width = bbox.get_img_width(),
-            coordinates = bbox.get_coordinates(),
-            class_id = class_id
-        )
+    # @classmethod
+    # def from_yolo_file(cls, file_path: str, img_height: int, img_width: int) -> Tuple[List['BBoxClassId']]:
+    #     bbox, class_id = super().from_yolo_file(file_path, img_height, img_width)
+    #     return cls(
+    #         img_height = bbox.get_img_height(),
+    #         img_width = bbox.get_img_width(),
+    #         coordinates = bbox.get_coordinates(),
+    #         class_id = class_id
+    #     )
 
 
 class BBoxClassIdScore(BBoxClassId):
