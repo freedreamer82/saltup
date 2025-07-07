@@ -84,7 +84,10 @@ def _train_model(
             jit_compile=False
         )
         
-        keras_callbacks = [_KerasCallbackAdapter(cb) for cb in app_callbacks]
+        keras_callbacks = [
+            _KerasCallbackAdapter(cb) if not isinstance(cb, tf.keras.callbacks.Callback) else cb
+            for cb in app_callbacks
+        ]
         
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.keras')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.keras')
