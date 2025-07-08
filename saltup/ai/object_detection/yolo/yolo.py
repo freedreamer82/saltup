@@ -536,7 +536,7 @@ def evaluate(
     iou_threshold: float = 0.5,
     confidence_threshold: float = 0.5,
     output_streams: Optional[List[io.IOBase]] = None,
-) -> Tuple[Dict[int, Metric], Metric]:
+) -> Tuple[Dict[int, Metric], Metric, float]:
     """
     Evaluate a YOLO model on a dataset using a dataloader.
 
@@ -548,9 +548,10 @@ def evaluate(
         stdout (Optional[List[io.IOBase]]): List of output streams (e.g., [sys.stdout, file]).
 
     Returns:
-        Tuple[Dict[int, Metric], Metric]: 
+        Tuple[Dict[int, Metric], Metric, float]: 
             - Dictionary mapping class IDs to their Metric objects.
             - Overall Metric object for all classes.
+            - Overall mAP@50-95 score.
     """
     number_classes = yolo.get_number_class()
     metrics_per_class = {k: Metric() for k in range(number_classes)}
