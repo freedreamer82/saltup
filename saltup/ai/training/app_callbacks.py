@@ -446,7 +446,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
         output_file: str = None,
         class_names: dict = None
     ):
-        super().__init__()
+        BaseCallback.__init__(self)
         self.datagen = datagen
         self.end_of_train_datagen = end_of_train_datagen
         self.every_epoch = every_epoch
@@ -458,6 +458,19 @@ class ClassificationEvaluationsCallback(BaseCallback):
             with open(self.output_file, "a") as f:
                 print(msg, file=f)
         print(msg)
+        
+    def extract_per_class_metrics(self, metrics_per_class, number_classes):
+        """
+        Extracts per-class metrics (precision, recall, f1) into a dictionary.
+        All metrics are rounded to 4 decimal places.
+        """
+        per_class_metrics = {}
+        for class_id in range(number_classes):
+            metric = metrics_per_class[class_id]
+            per_class_metrics[class_id] = {
+                "accuracy": round(metric.getAccuracy(), 4)
+            }
+        return per_class_metrics
 
     def on_train_end(self, context: CallbackContext):
         model=context.best_model
@@ -484,7 +497,13 @@ class ClassificationEvaluationsCallback(BaseCallback):
         self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
         self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
         self._print("=" * 80)
-        super().on_train_end(context)
+        number_classes = self.end_of_train_datagen.num_classes
+        per_class_metrics = self.extract_per_class_metrics(metric_per_class, number_classes)
+        custom_data = {
+            "per_class": per_class_metrics,
+            "overall": global_metric.getAccuracy()
+        }
+        self.update_metrics(custom_data)
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
         model=context.best_model
@@ -499,7 +518,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
                 self._print(f"class_names: {self.class_names}")
                 
             global_metric, metric_per_class = evaluate_model(model, self.datagen)
-            self._print(f"{'Images processed:':<20} {len(self.datagen.dataset) if hasattr(self.datagen, 'dataset') else len(self.datagen)}")
+            self._print(f"{'Images processed:':<20} {len(self.datagen.dataset.dataloader) if hasattr(self.datagen, 'dataset') else len(self.datagen.dataloader)}")
 
             self._print("\nPer class:")
             self._print("+" * 50)
@@ -514,4 +533,10 @@ class ClassificationEvaluationsCallback(BaseCallback):
             self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
             self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
             self._print("=" * 80)
-        super().on_epoch_end(epoch, context)
+            number_classes = self.datagen.num_classes
+            per_class_metrics = self.extract_per_class_metrics(metric_per_class, number_classes)
+            custom_data = {
+                "per_class": per_class_metrics,
+                "overall": global_metric.getAccuracy()
+            }
+            self.update_metrics(custom_data)
