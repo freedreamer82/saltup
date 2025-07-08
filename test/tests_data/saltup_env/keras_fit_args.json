@@ -1,0 +1,7 @@
+{
+    "workers": 8,
+    "use_multiprocessing": true,
+    "max_queue_size": 20,
+    "validation_batch_size": 64,
+    "validation_steps": 100
+}

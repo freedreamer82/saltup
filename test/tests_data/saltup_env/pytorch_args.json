@@ -1,0 +1,4 @@
+{
+    "use_scheduler_per_epoch": false,
+    "early_stopping_patience": 15
+}
