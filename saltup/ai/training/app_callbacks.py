@@ -369,7 +369,8 @@ class YoloEvaluationsCallback(BaseCallback):
         metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.end_of_train_datagen)
         custom_data = {
             "best_model_per_class": metrics_dict["per_class"],
-            "overall": metrics_dict["overall"]
+            "overall": metrics_dict["overall"],
+            "map_50_95": metrics_dict["map_50_95"]
         }
         self.update_metrics(custom_data)
 
@@ -379,7 +380,7 @@ class YoloEvaluationsCallback(BaseCallback):
         if self.output_file is not None:
             f = open(self.output_file, "a")
             streams.append(f)
-        results, metrics = yolo.evaluate(
+        results, metrics, mAP_50_95 = yolo.evaluate(
             yolo=model,
             dataloader=datagen.dataloader,
             iou_threshold=self.iou_threshold,
@@ -392,7 +393,8 @@ class YoloEvaluationsCallback(BaseCallback):
         per_class_metrics = self.extract_per_class_metrics(results, number_classes)
         metrics_dict = {
             "per_class": per_class_metrics,
-            "overall": metrics.get_metrics()
+            "overall": metrics.get_metrics(),
+            "map_50_95": mAP_50_95
         }
         return metrics_dict
 
@@ -418,7 +420,8 @@ class YoloEvaluationsCallback(BaseCallback):
 
             custom_data = {
                "best_model_per_class": metrics_dict["per_class"],
-               "overall": metrics_dict["overall"]
+               "overall": metrics_dict["overall"],
+               "map_50_95": metrics_dict["map_50_95"]
             }
             self.update_metrics(custom_data)
 
