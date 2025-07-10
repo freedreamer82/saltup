@@ -397,14 +397,15 @@ class YoloEvaluationsCallback(BaseCallback):
         return metrics_dict
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
-        yolo_keras_best_model  = YoloFactory.create(
-            yolo_type=self.yolo_type,
-            model_or_path=NeuralNetworkModel(context.best_model),
-            number_class=self.datagen.num_classes,           
-            **self.yolo_factory_kwargs
-        )
-
+  
         if epoch % self.every_epoch == 0:
+
+            yolo_best_model  = YoloFactory.create(
+                yolo_type=self.yolo_type,
+                model_or_path=NeuralNetworkModel(context.best_model),
+                number_class=self.datagen.num_classes,           
+                **self.yolo_factory_kwargs
+            )
             print("\n\n")
             self._print("=" * 80)
             self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch}':^80}")
@@ -414,7 +415,7 @@ class YoloEvaluationsCallback(BaseCallback):
             if self.class_names is not None:
                 self._print(f"class_names: {self.class_names}")
 
-            metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.datagen)
+            metrics_dict = self._evaluate_metrics(yolo_best_model, self.datagen)
 
             custom_data = {
                "best_model_per_class": metrics_dict["per_class"],
