@@ -188,61 +188,76 @@ def compute_map_50_95(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox
     Returns:
         AP averaged over IoU thresholds from 0.5 to 0.95.
     """
-    iou_thresholds = np.arange(0.5, 1.0, 0.05)  # Soglie IoU da 0.50 a 0.95
+    iou_thresholds = np.arange(0.5, 1.0, 0.05)  # IoU thresholds from 0.50 to 0.95
     aps = []
 
     for threshold in iou_thresholds:
         ap = compute_ap_for_threshold(gt_bboxes, pred_bboxes_scores, threshold)
         aps.append(ap)
 
-    return np.mean(aps)  # Media delle AP per tutte le soglie IoU
+    return np.mean(aps)  # Mean of APs for all IoU thresholds
 
+def compute_map_50(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox, float]]) -> float:
+    """
+    Compute AP at IoU threshold 0.5.
+
+    Args:
+        gt_bboxes: List of ground truth bounding boxes.
+        pred_bboxes_scores: List of predicted bounding boxes and their confidence scores.
+
+    Returns:
+        AP at IoU threshold 0.5.
+    """
+
+    ap = compute_ap_for_threshold(gt_bboxes, pred_bboxes_scores, 0.5)
+
+    return np.mean(ap)  # Mean of APs for all IoU thresholds
 
 
 def compute_ap_for_threshold(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox, float]], threshold: float) -> float:
-    # Ordina le predizioni per punteggio di confidenza (decrescente)
+    # Sort predictions by confidence score (descending)
     pred_bboxes_scores.sort(key=lambda x: x[1], reverse=True)
     pred_bboxes = [x[0] for x in pred_bboxes_scores]
 
-    # Inizializza array TP e FP
+    # Initialize TP and FP arrays
     tp = np.zeros(len(pred_bboxes))
     fp = np.zeros(len(pred_bboxes))
 
-    # Inizializza array per tenere traccia delle ground truth già abbinate
+    # Initialize array to keep track of already matched ground truths
     gt_matched = [False] * len(gt_bboxes)
 
-    # Abbina le predizioni alle ground truth
+    # Match predictions to ground truths
     for i, pred_bbox in enumerate(pred_bboxes):
         max_iou = 0
         best_match_idx = -1
 
-        # Trova la ground truth con il massimo IoU
+        # Find the ground truth with the highest IoU
         for j, gt_bbox in enumerate(gt_bboxes):
             if gt_matched[j]:
-                continue  # Salta le ground truth già abbinate
+                continue  # Skip already matched ground truths
             iou = pred_bbox.compute_iou(gt_bbox)
             if iou > max_iou:
                 max_iou = iou
                 best_match_idx = j
 
-        # Se IoU > threshold e la ground truth non è già stata abbinata, è un TP
+        # If IoU > threshold and the ground truth is not already matched, it's a TP
         if max_iou >= threshold and best_match_idx != -1:
             tp[i] = 1
-            gt_matched[best_match_idx] = True  # Segna la ground truth come abbinata
+            gt_matched[best_match_idx] = True  # Mark the ground truth as matched
         else:
-            fp[i] = 1  # Altrimenti, è un FP
+            fp[i] = 1  # Otherwise, it's a FP
 
-    # Calcola il recall e la precisione cumulativa
+    # Compute cumulative recall and precision
     tp_cumsum = np.cumsum(tp)
     fp_cumsum = np.cumsum(fp)
 
-    # Calcola il recall
+    # Compute recall
     recall = tp_cumsum / len(gt_bboxes) if len(gt_bboxes) > 0 else np.zeros_like(tp_cumsum)
 
-    # Calcola la precisione
+    # Compute precision
     denominator = tp_cumsum + fp_cumsum
     precision = np.where(denominator > 0, tp_cumsum / denominator, np.zeros_like(tp_cumsum))
 
-    # Calcola l'AP utilizzando la funzione compute_ap
+    # Compute AP using the compute_ap function
     ap = compute_ap(recall, precision)
     return ap

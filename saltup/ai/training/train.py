@@ -69,19 +69,15 @@ def _train_model(
         if optimizer is None or loss_function is None:
             raise ValueError("For Keras models, both `optimizer` and `loss_function` must be provided.")
         
-        # TODO @S0nFra: Allow possibility to define arguments via SaltupEnv
-        # SALTUP_TRAINING_KERAS_COMPILE_ARGS = {
-        #     "optimizer": optimizer,
-        #     "loss": loss_function,
-        #     'jit_compile': False,
-        # }.update(SaltupEnv.SALTUP_TRAINING_KERAS_COMPILE_ARGS)   
-        # model.compile(
-        #     **SALTUP_TRAINING_KERAS_COMPILE_ARGS
-        # )
+        # Merge default compile arguments with environment-defined ones
+        SALTUP_TRAINING_KERAS_COMPILE_ARGS = {
+            "optimizer": optimizer,
+            "loss": loss_function,
+            'jit_compile': False,
+        }
+        SALTUP_TRAINING_KERAS_COMPILE_ARGS.update(SaltupEnv.SALTUP_TRAINING_KERAS_COMPILE_ARGS)   
         model.compile(
-            optimizer=optimizer,
-            loss=loss_function,
-            jit_compile=False
+            **SALTUP_TRAINING_KERAS_COMPILE_ARGS
         )
         
         keras_callbacks = [
@@ -92,30 +88,21 @@ def _train_model(
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.keras')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.keras')
 
-        # TODO @S0nFra: Allow possibility to define arguments via SaltupEnv
-        # SALTUP_TRAINING_KERAS_FIT_ARGS = {
-        #     "validation_data": val_gen,
-        #     "epochs": epochs,
-        #     "callbacks": keras_callbacks + [save_best_clbk],
-        #     "class_weight": class_weight,
-        #     "shuffle": SaltupEnv.SALTUP_KERAS_TRAIN_SHUFFLE,
-        #     "verbose": SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE
-        # }
-        # SALTUP_TRAINING_KERAS_FIT_ARGS.update(SaltupEnv.SALTUP_TRAINING_KERAS_FIT_ARGS)
-        # history = model.fit(
-        #     train_gen,
-        #     **SALTUP_TRAINING_KERAS_FIT_ARGS
-        # )
-
         save_best_clbk = tf.keras.callbacks.ModelCheckpoint(filepath=best_model_path, save_best_only=True)
+        
+        # Merge default fit arguments with environment-defined ones
+        SALTUP_TRAINING_KERAS_FIT_ARGS = {
+            "validation_data": val_gen,
+            "epochs": epochs,
+            "callbacks": keras_callbacks + [save_best_clbk],
+            "class_weight": class_weight,
+            "shuffle": SaltupEnv.SALTUP_KERAS_TRAIN_SHUFFLE,
+            "verbose": SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE
+        }
+        SALTUP_TRAINING_KERAS_FIT_ARGS.update(SaltupEnv.SALTUP_TRAINING_KERAS_FIT_ARGS)
         history = model.fit(
             train_gen,
-            validation_data=val_gen,
-            epochs=epochs,
-            callbacks=keras_callbacks + [save_best_clbk],
-            class_weight=class_weight,
-            shuffle=SaltupEnv.SALTUP_KERAS_TRAIN_SHUFFLE,
-            verbose=SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE
+            **SALTUP_TRAINING_KERAS_FIT_ARGS
         )
 
         # Plotting
@@ -137,6 +124,9 @@ def _train_model(
 
     elif isinstance(model, torch.nn.Module):
         
+        # Get PyTorch training configuration
+        pytorch_config = SaltupEnv.SALTUP_TRAINING_PYTORCH_ARGS
+        
         context = CallbackContext(
             model=model,
             epochs=epochs,
@@ -147,7 +137,15 @@ def _train_model(
             best_val_loss=None
         )
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Device configuration
+        device_config = SaltupEnv.SALTUP_PYTORCH_DEVICE
+        if device_config == "auto":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            device = torch.device(device_config)
+        
+        model = model.to(device)
+        
         best_model_path = os.path.join(saved_models_folder_path, f'{model_output_name}_best.pt')
         last_epoch_model = os.path.join(saved_models_folder_path, f'{model_output_name}_last_epoch.pt')
         
@@ -156,6 +154,7 @@ def _train_model(
 
         best_val_loss = float('inf')
         best_loss = float('inf')
+        patience_counter = 0
 
         for epoch in range(epochs):
             model.train()
@@ -178,10 +177,10 @@ def _train_model(
                 optimizer.step()
 
                 running_loss += loss.item() * inputs.size(0)
-                #preds = torch.argmax(outputs, dim=1)
-                #targets_cat = torch.argmax(targets, dim=1)
-                #acc = (preds == targets_cat).float().mean()
-                #running_accuracy += acc.item() * inputs.size(0)
+                # preds = torch.argmax(outputs, dim=1)
+                # targets_cat = torch.argmax(targets, dim=1)
+                # acc = (preds == targets_cat).float().mean()
+                # running_accuracy += acc.item() * inputs.size(0)
                 
                 total += inputs.size(0)
 
@@ -189,7 +188,12 @@ def _train_model(
                     train_iter.set_postfix(loss=loss.item())
 
             epoch_loss = running_loss / total
-            # Validation
+            
+            # Scheduler step if configured
+            if scheduler is not None and pytorch_config["use_scheduler_per_epoch"]:
+                scheduler.step()
+            
+            # Validation logic simplified (validation_frequency removed)
             model.eval()
             val_loss = 0.0
             val_total = 0
@@ -201,13 +205,10 @@ def _train_model(
                     outputs = model(inputs)
                     loss = loss_function(outputs, targets)
                     val_loss += loss.item() * inputs.size(0)
-                    #preds = torch.argmax(outputs, dim=1)
-                    #targets_cat = torch.argmax(targets, dim=1)
-                    #val_correct += (preds == targets_cat).float().mean()
                     val_total += targets.size(0)
 
             epoch_val_loss = val_loss / val_total
-
+            
             # Update context with new best_loss and best_val_loss
             context.loss = epoch_loss
             context.accuracy = 0
@@ -221,8 +222,13 @@ def _train_model(
                 context.best_loss = best_loss
                 context.best_model = copy.deepcopy(model)
                 context.best_epoch = epoch + 1
+                patience_counter = 0
+                
+                # Save model
                 scripted = torch.jit.script(model.cpu())
                 scripted.save(best_model_path)
+            else:
+                patience_counter += 1
 
             if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
                 print(
@@ -231,10 +237,25 @@ def _train_model(
                 f"best_epoch: {context.best_epoch if context.best_epoch is not None else '-'} - "
                 f"best_loss: {context.best_loss:.4f} - best_val_loss: {context.best_val_loss:.4f}"
                 )
+            
+            # Early stopping if configured
+            if pytorch_config["early_stopping_patience"] > 0 and patience_counter >= pytorch_config["early_stopping_patience"]:
+                print(f"Early stopping triggered after {patience_counter} epochs without improvement")
+                break
+            else:
+                # No validation this epoch, just update context with training loss
+                context.loss = epoch_loss
+                context.accuracy = 0
+                if SaltupEnv.SALTUP_KERAS_TRAIN_VERBOSE:
+                    print(f"Epoch {epoch+1}/{epochs} - loss: {epoch_loss:.4f}")
+                    
             for callback in app_callbacks:
                 callback.on_epoch_end(epoch + 1 , context)
+                
         for callback in app_callbacks:
             callback.on_train_end(context)
+            
+        # Save final model
         scripted = torch.jit.script(model.cpu())
         scripted.save(last_epoch_model)
 

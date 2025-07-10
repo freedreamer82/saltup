@@ -536,7 +536,7 @@ def evaluate(
     iou_threshold: float = 0.5,
     confidence_threshold: float = 0.5,
     output_streams: Optional[List[io.IOBase]] = None,
-) -> Tuple[Dict[int, Metric], Metric]:
+) -> Tuple[Dict[int, Metric], Metric, float]:
     """
     Evaluate a YOLO model on a dataset using a dataloader.
 
@@ -548,13 +548,19 @@ def evaluate(
         stdout (Optional[List[io.IOBase]]): List of output streams (e.g., [sys.stdout, file]).
 
     Returns:
-        Tuple[Dict[int, Metric], Metric]: 
+        Tuple[Dict[int, Metric], Metric, float]: 
             - Dictionary mapping class IDs to their Metric objects.
             - Overall Metric object for all classes.
+            - Overall mAP@50-95 score.
     """
     number_classes = yolo.get_number_class()
     metrics_per_class = {k: Metric() for k in range(number_classes)}
     image_count = 0
+    
+    # Collect all predictions and ground truth for global mAP@50-95 calculation
+    all_pred_boxes = []
+    all_gt_boxes = []
+
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -568,6 +574,15 @@ def evaluate(
             iou_threshold
         )
         
+        # Collect predictions and ground truth for global mAP@50-95 calculation
+        pred_boxes = yolo_out.get_boxes()
+        gt_boxes = label
+        # Convert to required format for compute_map_50_95
+        pred_boxes_flat = [(bbox, score) for bbox, class_id, score in pred_boxes]
+        gt_boxes_flat = [bbox for bbox, class_id in gt_boxes]
+        all_pred_boxes.extend(pred_boxes_flat)
+        all_gt_boxes.extend(gt_boxes_flat)
+
         for class_id in metrics_per_class:
             if class_id in one_shot_metric:
                 metrics_per_class[class_id].addTP(one_shot_metric[class_id].getTP())
@@ -576,6 +591,8 @@ def evaluate(
         image_count += 1
 
     overall_metric = sum(metrics_per_class.values(), start=Metric())
+    # Calculate mAP@50-95 across all images at once
+    overall_map_50_95 = compute_map_50_95(all_gt_boxes, all_pred_boxes) if all_gt_boxes and all_pred_boxes else 0.0
     # Optional: print to all provided streams
     if output_streams:
         output_text = []
@@ -613,6 +630,7 @@ def evaluate(
         output_text.append(f"  - {'Overall Precision:':<25} {overall_metric.getPrecision():.4f}\n")
         output_text.append(f"  - {'Overall Recall:':<25} {overall_metric.getRecall():.4f}\n")
         output_text.append(f"  - {'Overall F1 Score:':<25} {overall_metric.getF1Score():.4f}\n")
+        output_text.append(f"  - {'Overall mAP@50-95 :':<25} {overall_map_50_95:.4f}\n")
         output_text.append("="*80 + "\n\n")
         output_str = ''.join(output_text)
         for stream in output_streams:
@@ -620,4 +638,4 @@ def evaluate(
                 stream.write(output_str)
                 if hasattr(stream, "flush"):
                     stream.flush()
-    return metrics_per_class, overall_metric
+    return metrics_per_class, overall_metric, overall_map_50_95

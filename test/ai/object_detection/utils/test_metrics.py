@@ -98,9 +98,28 @@ class TestAveragePrecision(unittest.TestCase):
             (self.pred_bbox2, 0.97),  # False positive
         ]
         
+        # Verify IoUs for better understanding
+        iou1 = self.pred_bbox1.compute_iou(self.gt_bbox1)
+        iou2 = self.pred_bbox4.compute_iou(self.gt_bbox2)
+        iou3 = self.pred_bbox2.compute_iou(self.gt_bbox1)  # Should be low
+        iou4 = self.pred_bbox2.compute_iou(self.gt_bbox2)  # Should be low
+        
+        print(f"IoU pred1-gt1: {iou1:.3f}")
+        print(f"IoU pred4-gt2: {iou2:.3f}")
+        print(f"IoU pred2-gt1: {iou3:.3f}")
+        print(f"IoU pred2-gt2: {iou4:.3f}")
+        
+        # Verify expected IoUs
+        self.assertGreater(iou1, 0.5)  # Good match
+        self.assertEqual(iou2, 1.0)    # Perfect match
+        self.assertLess(iou3, 0.1)     # False positive
+        self.assertLess(iou4, 0.1)     # False positive
+        
         ap = compute_map_50_95(gt_bboxes, pred_bboxes_scores)
         print(f"AP for multiple ground truths and predictions: {ap}")
-        self.assertGreater(ap, 0.3)  # Updated expected value
+        # Should be around 0.4 - good performance with 2 TPs and 1 FP
+        self.assertGreater(ap, 0.35)
+        self.assertLess(ap, 0.55)
 
     def test_compute_ap(self):
         """Test the compute_ap function directly"""

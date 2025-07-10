@@ -1,0 +1,6 @@
+{
+    "metrics": ["accuracy", "precision", "recall"],
+    "run_eagerly": true,
+    "steps_per_execution": 1,
+    "jit_compile": false
+}
