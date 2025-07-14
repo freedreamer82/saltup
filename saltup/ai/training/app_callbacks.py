@@ -400,7 +400,7 @@ class YoloEvaluationsCallback(BaseCallback):
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
   
-        if epoch % self.every_epoch == 0:
+        if self.every_epoch > 0 and epoch % self.every_epoch == 0:
 
             yolo_best_model  = YoloFactory.create(
                 yolo_type=self.yolo_type,
