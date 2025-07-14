@@ -511,7 +511,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
         model=context.best_model
-        if epoch % self.every_epoch == 0:
+        if self.every_epoch > 0 and epoch % self.every_epoch == 0:
             print("\n\n")
             self._print("=" * 80)
             self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch}':^80}")
