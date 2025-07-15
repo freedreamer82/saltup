@@ -355,10 +355,10 @@ def training(
             if k_fold_results[i]['val_loss'] < best_val_loss:
                 best_val_loss = k_fold_results[i]['val_loss']
                 if isinstance(fold_model, tf.keras.Model):
-                    golden_model_path = os.path.join(golden_model_folder, f'golden_model.keras')
+                    golden_model_path = os.path.join(golden_model_folder, f'{model_output_name}.keras')
                     k_fold_results[i]['model'].save(golden_model_path)
                 elif isinstance(fold_model, torch.nn.Module):
-                    golden_model_path = os.path.join(golden_model_folder, f'golden_model.pt')
+                    golden_model_path = os.path.join(golden_model_folder, f'{model_output_name}.pt')
                     scripted = torch.jit.script(k_fold_results[i]['model'].cpu())
                     scripted.save(golden_model_path)
         results_dict['models_paths'].append(golden_model_path)
