@@ -561,6 +561,7 @@ def evaluate(
     all_pred_boxes = []
     all_gt_boxes = []
 
+    start_time = time.time()
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -589,6 +590,9 @@ def evaluate(
                 metrics_per_class[class_id].addFP(one_shot_metric[class_id].getFP())
                 metrics_per_class[class_id].addFN(one_shot_metric[class_id].getFN())
         image_count += 1
+    end_time = time.time()
+    total_time = end_time - start_time
+    avg_time_per_image = (total_time / image_count * 1000) if image_count > 0 else 0.0
 
     overall_metric = sum(metrics_per_class.values(), start=Metric())
     # Calculate mAP@50-95 across all images at once
@@ -598,6 +602,9 @@ def evaluate(
         output_text = []
 
         output_text.append(f"Model type: {yolo.getYoloType().name}\n")
+        print(f"Total execution time: {total_time:.2f} seconds")
+        print(f"Average time per image: {avg_time_per_image:.2f} ms")
+
         num_params = yolo.get_model().get_num_parameters()
         if num_params >= 1_000_000:
             num_params_str = f"{num_params:,} ({num_params/1_000_000:.1f}M)"
