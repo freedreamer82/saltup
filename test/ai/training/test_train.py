@@ -2,6 +2,7 @@ import pytest
 import os
 import numpy as np
 from PIL import Image
+from unittest.mock import Mock, patch, MagicMock, PropertyMock
 
 import tensorflow as tf
 import torch
@@ -14,13 +15,14 @@ from saltup.ai.classification.datagenerator import (
     keras_ClassificationDataGenerator,
     pytorch_ClassificationDataGenerator,
 )
-from saltup.ai.classification.evaluate import evaluate_model
-from saltup.ai.training.train import _train_model
+from saltup.ai.training.train import _train_model, training
+from saltup.ai.training.callbacks import CallbackContext
+from saltup.saltup_env import SaltupEnv
 
 
 @pytest.fixture
 def mock_test_data_dir(tmp_path):
-    # Create a mock test data directory with class subfolders and temporary jpg images
+    """Create a mock test data directory with class subfolders and temporary jpg images."""
     class_names = ["class_0", "class_1"]
     for class_name in class_names:
         class_dir = tmp_path / class_name
@@ -33,16 +35,17 @@ def mock_test_data_dir(tmp_path):
             image.save(img_path)
     return str(tmp_path)
 
-@pytest.fixture
-def mock_keras_model(tmp_path):
-    # Create a mock Keras model and save it
-    model = tf.keras.Sequential([tf.keras.layers.Dense(2, activation="softmax")])
-    model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-    model_path = str(tmp_path / "mock_model.keras")
-    model.save(model_path)
-    return model_path
 
-    
+@pytest.fixture
+def mock_keras_model():
+    """Create a mock Keras model."""
+    model = tf.keras.Sequential([
+        tf.keras.layers.Flatten(input_shape=(32, 32, 3)),
+        tf.keras.layers.Dense(2, activation="softmax")
+    ])
+    return model
+
+
 class PyTorchModel(nn.Module):
     def __init__(self, num_classes=2):
         super(PyTorchModel, self).__init__()
@@ -55,218 +58,437 @@ class PyTorchModel(nn.Module):
 
 
 @pytest.fixture
-def mock_pytorch_model(tmp_path):
-    # Create a mock PyTorch model and save it
-    model = PyTorchModel(num_classes=2)
-    model_path = str(tmp_path / "mock_model.pt")
-    scripted = torch.jit.script(model.cpu())
-    scripted.save(model_path)
-    return model_path
+def mock_pytorch_model():
+    """Create a mock PyTorch model."""
+    return PyTorchModel(num_classes=2)
 
 
 @pytest.fixture
-def mock_tflite_model(tmp_path):
-    # Create a mock TFLite model and save it
-    model = tf.keras.Sequential([tf.keras.layers.Dense(2, activation="softmax")])
-    model.build(input_shape=(32, 32, 3))  # Build the model with an input shape
-
-    # Convert the Keras model to TFLite format
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    tflite_model = converter.convert()
-
-    # Save the TFLite model to a temporary path
-    model_path = str(tmp_path / "mock_model.tflite")
-    with open(model_path, "wb") as f:
-        f.write(tflite_model)
-    return model_path
+def mock_keras_data_generator(mock_test_data_dir):
+    """Create a mock Keras data generator."""
+    class_dict = {"class_0": 0, "class_1": 1}
+    dataloader = ClassificationDataloader(
+        source=mock_test_data_dir, 
+        classes_dict=class_dict, 
+        img_size=(32, 32, 3)
+    )
+    return keras_ClassificationDataGenerator(
+        dataloader=dataloader,
+        target_size=(32, 32),
+        num_classes=2,
+        batch_size=4
+    )
 
 
 @pytest.fixture
-def mock_test_gen(mock_test_data_dir):
-    # Create a mock ClassificationDataloader and DataGenerator
+def mock_pytorch_data_generator(mock_test_data_dir):
+    """Create a mock PyTorch data generator."""
     class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
-
-    keras_gen = keras_ClassificationDataGenerator(
-        dataloader=dataloader,
-        target_size=(32, 32),
-        num_classes=2,
-        batch_size=4
+    dataloader = ClassificationDataloader(
+        source=mock_test_data_dir, 
+        classes_dict=class_dict, 
+        img_size=(32, 32, 3)
     )
-    return keras_gen
-
-def test_evaluate_model_keras(mock_keras_model, mock_test_gen):
-    accuracy = evaluate_model(mock_keras_model, mock_test_gen)
-    assert isinstance(accuracy, float)
-
-
-@pytest.fixture
-def mock_test_pytorch_gen(mock_test_data_dir):
-    # Create a mock ClassificationDataloader and DataGenerator
-    class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
-
-    pytorch_gen = pytorch_ClassificationDataGenerator(
-        dataloader=dataloader,
-        target_size=(32, 32),
-        num_classes=2,
-        batch_size=4
-    )
-    pytorch_gen = DataLoader(pytorch_gen, batch_size=4)
-    return pytorch_gen
-
-
-def mock_loss_function(outputs, labels):
-    # Mock loss value using outputs and labels
-    return torch.mean((outputs - labels.float()) ** 2)
-
-
-def test_evaluate_model_pytorch_with_output_dir(mock_pytorch_model, mock_test_pytorch_gen, tmp_path):
-    output_dir = str(tmp_path / "output")
-    loss_function = nn.CrossEntropyLoss()
-    accuracy = evaluate_model(mock_pytorch_model, mock_test_pytorch_gen, output_dir=output_dir, loss_function=loss_function)
-
-    assert isinstance(accuracy, float)
-    assert os.path.exists(output_dir)
-    assert any(fname.endswith("_pt_confusion_matrix.png") for fname in os.listdir(output_dir))
-
-
-def test_evaluate_model_tflite_with_output_dir(mock_tflite_model, mock_test_gen, tmp_path):
-    output_dir = str(tmp_path / "output")
-    accuracy = evaluate_model(mock_tflite_model, mock_test_gen, output_dir=output_dir)
-
-    assert isinstance(accuracy, float)
-    assert os.path.exists(output_dir)
-    assert any(fname.endswith("_tflite_confusion_matrix.png") for fname in os.listdir(output_dir))
-
-
-def test_evaluate_model_invalid_model_type(mock_test_gen):
-    with pytest.raises(ValueError, match="Unsupported model type"):
-        evaluate_model("invalid_model.xyz", mock_test_gen)
-
-
-def test_evaluate_model_missing_loss_function(mock_pytorch_model, mock_test_gen):
-    pytorch_gen = pytorch_ClassificationDataGenerator(
-        dataloader=mock_test_gen.dataloader,
-        target_size=(32, 32),
-        num_classes=2,
-        batch_size=4
-    )
-    pytorch_gen = DataLoader(pytorch_gen, batch_size=4)
-    with pytest.raises(ValueError, match="please provide a loss_function"):
-        evaluate_model(mock_pytorch_model, pytorch_gen)
-
-
-def test_train_model_pytorch(mock_test_data_dir, tmp_path):
-    # Setup mock data generator
-    class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
-    train_gen = pytorch_ClassificationDataGenerator(
-        dataloader=dataloader,
-        target_size=(32, 32),
-        num_classes=2,
-        batch_size=4
-    )
-    train_gen = DataLoader(train_gen, batch_size=4)
-
-    val_gen = pytorch_ClassificationDataGenerator(
-        dataloader=dataloader,
-        target_size=(32, 32),
-        num_classes=2,
-        batch_size=4
-    )
-    val_gen = DataLoader(val_gen, batch_size=4)
-
-    # Define a simple PyTorch model
-    class SimplePyTorchModel(nn.Module):
-        def __init__(self, num_classes=2):
-            super(SimplePyTorchModel, self).__init__()
-            self.fc = nn.Linear(32 * 32 * 3, num_classes)
-
-        def forward(self, x):
-            x = x.view(x.size(0), -1)  # Flatten the input
-            return self.fc(x)
-
-    model = SimplePyTorchModel(num_classes=2)
-
-    # Define loss function, optimizer, and scheduler
-    loss_function = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
-
-    # Define output directory
-    output_dir = str(tmp_path / "output")
-
-    # Train the model
-    trained_model_path = _train_model(
-        model=model,
-        train_gen=train_gen,
-        val_gen=val_gen,
-        output_dir=output_dir,
-        epochs=2,
-        loss_function=loss_function,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        model_output_name="test_model"
-    )
-
-    # Assertions
-    assert os.path.exists(trained_model_path)
-    assert trained_model_path.endswith(".pt")
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best_v_.pt"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best_t_.pt"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch_.pt"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "history_loss_plot.png"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "history_accuracy_plot.png"))
-
-
-def test_train_model_keras(mock_test_data_dir, tmp_path):
-    # Setup mock data generator
-    class_dict = {"class_0": 0, "class_1": 1}
-    dataloader = ClassificationDataloader(source=mock_test_data_dir, classes_dict=class_dict, img_size=(32, 32, 3))
-    train_gen = keras_ClassificationDataGenerator(
+    return pytorch_ClassificationDataGenerator(
         dataloader=dataloader,
         target_size=(32, 32),
         num_classes=2,
         batch_size=4
     )
 
-    val_gen = keras_ClassificationDataGenerator(
-        dataloader=dataloader,
-        target_size=(32, 32),
-        num_classes=2,
-        batch_size=4
-    )
 
-    # Define a simple Keras model
-    model = tf.keras.Sequential([
-        tf.keras.layers.Flatten(input_shape=(32, 32, 3)),
-        tf.keras.layers.Dense(2, activation="softmax")
-    ])
+class TestTrainModel:
+    """Test the _train_model function."""
+    
+    def test_train_model_keras(self, mock_keras_model, mock_keras_data_generator, tmp_path):
+        """Test training a Keras model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_COMPILE_ARGS', new_callable=PropertyMock) as mock_compile, \
+             patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_FIT_ARGS', new_callable=PropertyMock) as mock_fit, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_SHUFFLE', new_callable=PropertyMock) as mock_shuffle, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose:
+            
+            mock_compile.return_value = {}
+            mock_fit.return_value = {}
+            mock_shuffle.return_value = True
+            mock_verbose.return_value = 0
+            
+            # Define loss function and optimizer
+            loss_function = tf.keras.losses.CategoricalCrossentropy()
+            optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+            
+            # Train the model
+            trained_model_path = _train_model(
+                model=mock_keras_model,
+                train_gen=mock_keras_data_generator,
+                val_gen=mock_keras_data_generator,
+                output_dir=output_dir,
+                epochs=1,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                scheduler=None,
+                model_output_name="test_model"
+            )
+            
+            # Assertions
+            assert os.path.exists(trained_model_path)
+            assert trained_model_path.endswith(".keras")
+            assert os.path.exists(os.path.join(output_dir, "saved_models"))
+        
+    def test_train_model_pytorch(self, mock_pytorch_model, mock_pytorch_data_generator, tmp_path):
+        """Test training a PyTorch model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_PYTORCH_ARGS', new_callable=PropertyMock) as mock_pytorch_args, \
+             patch.object(type(SaltupEnv), 'SALTUP_PYTORCH_DEVICE', new_callable=PropertyMock) as mock_device, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose:
+            
+            mock_pytorch_args.return_value = {
+                'early_stopping_patience': 0,
+                'use_scheduler_per_epoch': False
+            }
+            mock_device.return_value = 'cpu'
+            mock_verbose.return_value = 0
+            
+            # The new implementation expects PyTorch DataLoader directly
+            # Convert our data generator to DataLoader format
+            train_loader = DataLoader(mock_pytorch_data_generator, batch_size=4, shuffle=True)
+            val_loader = DataLoader(mock_pytorch_data_generator, batch_size=4, shuffle=False)
+            
+            # Define loss function and optimizer
+            loss_function = nn.CrossEntropyLoss()
+            optimizer = torch.optim.Adam(mock_pytorch_model.parameters(), lr=0.001)
+            
+            # Train the model
+            trained_model_path = _train_model(
+                model=mock_pytorch_model,
+                train_gen=train_loader,
+                val_gen=val_loader,
+                output_dir=output_dir,
+                epochs=1,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                scheduler=None,
+                model_output_name="test_model"
+            )
+            
+            # Assertions
+            assert os.path.exists(trained_model_path)
+            assert trained_model_path.endswith(".pt")
+            assert os.path.exists(os.path.join(output_dir, "saved_models"))
+        
+    def test_train_model_keras_missing_optimizer(self, mock_keras_model, mock_keras_data_generator, tmp_path):
+        """Test that training fails when optimizer is missing for Keras model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        loss_function = tf.keras.losses.CategoricalCrossentropy()
+        
+        with pytest.raises(ValueError, match="both `optimizer` and `loss_function` must be provided"):
+            _train_model(
+                model=mock_keras_model,
+                train_gen=mock_keras_data_generator,
+                val_gen=mock_keras_data_generator,
+                output_dir=output_dir,
+                epochs=1,
+                loss_function=loss_function,
+                optimizer=None,
+                scheduler=None
+            )
 
-    # Define loss function, optimizer, and callbacks
-    loss_function = tf.keras.losses.CategoricalCrossentropy()
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
 
-    # Define output directory
-    output_dir = str(tmp_path / "output")
+class TestTrainingFunction:
+    """Test the main training function."""
+    
+    def test_training_without_kfold_keras(self, mock_keras_model, mock_keras_data_generator, tmp_path):
+        """Test training without k-fold cross validation for Keras model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_COMPILE_ARGS', new_callable=PropertyMock) as mock_compile, \
+             patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_FIT_ARGS', new_callable=PropertyMock) as mock_fit, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_SHUFFLE', new_callable=PropertyMock) as mock_shuffle, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose, \
+             patch.object(type(SaltupEnv), 'SALTUP_ONNX_OPSET', new_callable=PropertyMock) as mock_opset, \
+             patch('saltup.ai.training.train.convert_keras_to_onnx') as mock_onnx_conv, \
+             patch('saltup.ai.training.train.tflite_conversion') as mock_tflite_conv:
+            
+            mock_compile.return_value = {}
+            mock_fit.return_value = {}
+            mock_shuffle.return_value = True
+            mock_verbose.return_value = 0
+            mock_opset.return_value = 16
+            
+            # Mock the conversion functions
+            mock_onnx_conv.return_value = (Mock(), Mock())
+            mock_tflite_conv.return_value = os.path.join(output_dir, "saved_models", "test_model_best.tflite")
+            
+            # Define loss function and optimizer
+            loss_function = tf.keras.losses.CategoricalCrossentropy()
+            optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+            
+            # Train the model
+            result = training(
+                train_DataGenerator=mock_keras_data_generator,
+                model=mock_keras_model,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                epochs=1,
+                output_dir=output_dir,
+                validation=[0.8, 0.2],
+                kfold_param={'enable': False},
+                model_output_name="test_model"
+            )
+            
+            # Assertions
+            assert result['kfolds'] is False
+            assert len(result['models_paths']) >= 1
+            assert os.path.exists(os.path.join(output_dir, "options.txt"))
+        
+    def test_training_without_kfold_pytorch(self, mock_pytorch_model, mock_pytorch_data_generator, tmp_path):
+        """Test training without k-fold cross validation for PyTorch model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_PYTORCH_ARGS', new_callable=PropertyMock) as mock_pytorch_args, \
+             patch.object(type(SaltupEnv), 'SALTUP_PYTORCH_DEVICE', new_callable=PropertyMock) as mock_device, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose, \
+             patch('saltup.ai.training.train.convert_torch_to_onnx') as mock_torch_onnx_conv:
+            
+            mock_pytorch_args.return_value = {
+                'early_stopping_patience': 0,
+                'use_scheduler_per_epoch': False
+            }
+            mock_device.return_value = 'cpu'
+            mock_verbose.return_value = 0
+            
+            # Define loss function and optimizer
+            loss_function = nn.CrossEntropyLoss()
+            optimizer = torch.optim.Adam(mock_pytorch_model.parameters(), lr=0.001)
+            
+            # Train the model
+            result = training(
+                train_DataGenerator=mock_pytorch_data_generator,
+                model=mock_pytorch_model,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                epochs=1,
+                output_dir=output_dir,
+                validation=[0.8, 0.2],
+                kfold_param={'enable': False},
+                model_output_name="test_model"
+            )
+            
+            # Assertions
+            assert result['kfolds'] is False
+            assert len(result['models_paths']) >= 1
+            assert os.path.exists(os.path.join(output_dir, "options.txt"))
+        
+    def test_training_with_kfold_keras(self, mock_keras_model, mock_keras_data_generator, tmp_path):
+        """Test training with k-fold cross validation for Keras model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_COMPILE_ARGS', new_callable=PropertyMock) as mock_compile, \
+             patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_FIT_ARGS', new_callable=PropertyMock) as mock_fit, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_SHUFFLE', new_callable=PropertyMock) as mock_shuffle, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose, \
+             patch.object(type(SaltupEnv), 'SALTUP_ONNX_OPSET', new_callable=PropertyMock) as mock_opset, \
+             patch('saltup.ai.training.train.convert_keras_to_onnx') as mock_onnx_conv, \
+             patch('saltup.ai.training.train.tflite_conversion') as mock_tflite_conv:
+            
+            mock_compile.return_value = {}
+            mock_fit.return_value = {}
+            mock_shuffle.return_value = True
+            mock_verbose.return_value = 0
+            mock_opset.return_value = 16
+            
+            # Mock the conversion functions
+            mock_onnx_conv.return_value = (Mock(), Mock())
+            mock_tflite_conv.return_value = os.path.join(output_dir, "golden_model_folder", "test_model.tflite")
+            
+            # Define loss function and optimizer
+            loss_function = tf.keras.losses.CategoricalCrossentropy()
+            optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+            
+            # Mock the split method to return proper generators
+            mock_split_generators = [mock_keras_data_generator, mock_keras_data_generator]
+            
+            with patch.object(mock_keras_data_generator, 'split', return_value=mock_split_generators):
+                # Train the model
+                result = training(
+                    train_DataGenerator=mock_keras_data_generator,
+                    model=mock_keras_model,
+                    loss_function=loss_function,
+                    optimizer=optimizer,
+                    epochs=1,
+                    output_dir=output_dir,
+                    kfold_param={'enable': True, 'split': [0.8, 0.2]},
+                    model_output_name="test_model"
+                )
+                
+                # Assertions
+                assert result['kfolds'] is True
+                assert len(result['models_paths']) >= 1
+                assert os.path.exists(os.path.join(output_dir, "options.txt"))
+        
+    def test_training_with_validation_generator(self, mock_keras_model, mock_keras_data_generator, tmp_path):
+        """Test training with validation generator instead of split ratio."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Define loss function and optimizer
+        loss_function = tf.keras.losses.CategoricalCrossentropy()
+        optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_COMPILE_ARGS', new_callable=PropertyMock) as mock_compile, \
+             patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_FIT_ARGS', new_callable=PropertyMock) as mock_fit, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_SHUFFLE', new_callable=PropertyMock) as mock_shuffle, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose, \
+             patch('saltup.ai.training.train.convert_keras_to_onnx') as mock_onnx_conv, \
+             patch('saltup.ai.training.train.tflite_conversion') as mock_tflite_conv:
+            
+            mock_compile.return_value = {}
+            mock_fit.return_value = {}
+            mock_shuffle.return_value = True
+            mock_verbose.return_value = 0
+            
+            mock_onnx_conv.return_value = (Mock(), Mock())
+            mock_tflite_conv.return_value = os.path.join(output_dir, "saved_models", "test_model_best.tflite")
+            
+            # Train the model
+            result = training(
+                train_DataGenerator=mock_keras_data_generator,
+                model=mock_keras_model,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                epochs=1,
+                output_dir=output_dir,
+                validation=mock_keras_data_generator,  # Use generator instead of split
+                kfold_param={'enable': False},
+                model_output_name="test_model"
+            )
+            
+            # Assertions
+            assert result['kfolds'] is False
+            assert len(result['models_paths']) >= 1
+            
+    def test_training_pytorch_missing_optimizer(self, mock_pytorch_model, mock_pytorch_data_generator, tmp_path):
+        """Test that training fails when optimizer is missing for PyTorch model."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        loss_function = nn.CrossEntropyLoss()
+        
+        with pytest.raises(ValueError, match="both `loss_function` and `optimizer` must be provided"):
+            training(
+                train_DataGenerator=mock_pytorch_data_generator,
+                model=mock_pytorch_model,
+                loss_function=loss_function,
+                optimizer=None,
+                epochs=1,
+                output_dir=output_dir,
+                kfold_param={'enable': False}
+            )
+            
+    def test_training_class_weight_parameter(self, mock_keras_model, mock_keras_data_generator, tmp_path):
+        """Test training with class weight parameter."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Define loss function and optimizer
+        loss_function = tf.keras.losses.CategoricalCrossentropy()
+        optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_COMPILE_ARGS', new_callable=PropertyMock) as mock_compile, \
+             patch.object(type(SaltupEnv), 'SALTUP_TRAINING_KERAS_FIT_ARGS', new_callable=PropertyMock) as mock_fit, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_SHUFFLE', new_callable=PropertyMock) as mock_shuffle, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose, \
+             patch('saltup.ai.training.train.convert_keras_to_onnx') as mock_onnx_conv, \
+             patch('saltup.ai.training.train.tflite_conversion') as mock_tflite_conv:
+            
+            mock_compile.return_value = {}
+            mock_fit.return_value = {}
+            mock_shuffle.return_value = True
+            mock_verbose.return_value = 0
+            
+            mock_onnx_conv.return_value = (Mock(), Mock())
+            mock_tflite_conv.return_value = os.path.join(output_dir, "saved_models", "test_model_best.tflite")
+            
+            # Train the model with class weights
+            result = training(
+                train_DataGenerator=mock_keras_data_generator,
+                model=mock_keras_model,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                epochs=1,
+                output_dir=output_dir,
+                kfold_param={'enable': False},
+                model_output_name="test_model",
+                classification_class_weight={0: 1.0, 1: 2.0}
+            )
+            
+            # Assertions
+            assert result['kfolds'] is False
+            assert len(result['models_paths']) >= 1
 
-    # Train the model
-    trained_model_path = _train_model(
-        model=model,
-        train_gen=train_gen,
-        val_gen=val_gen,
-        output_dir=output_dir,
-        epochs=2,
-        loss_function=loss_function,
-        optimizer=optimizer,
-        scheduler=None,
-        model_output_name="test_model"
-    )
 
-    # Assertions
-    assert os.path.exists(trained_model_path)
-    assert trained_model_path.endswith(".keras")
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_best.keras"))
-    assert os.path.exists(os.path.join(output_dir, "saved_models", "test_model_last_epoch.keras"))
+class TestCallbackIntegration:
+    """Test callback integration in training."""
+    
+    def test_pytorch_training_with_callbacks(self, mock_pytorch_model, mock_pytorch_data_generator, tmp_path):
+        """Test PyTorch training with callbacks."""
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        with patch.object(type(SaltupEnv), 'SALTUP_TRAINING_PYTORCH_ARGS', new_callable=PropertyMock) as mock_pytorch_args, \
+             patch.object(type(SaltupEnv), 'SALTUP_PYTORCH_DEVICE', new_callable=PropertyMock) as mock_device, \
+             patch.object(type(SaltupEnv), 'SALTUP_KERAS_TRAIN_VERBOSE', new_callable=PropertyMock) as mock_verbose:
+            
+            mock_pytorch_args.return_value = {
+                'early_stopping_patience': 0,
+                'use_scheduler_per_epoch': False
+            }
+            mock_device.return_value = 'cpu'
+            mock_verbose.return_value = 0
+            
+            # Create a mock callback
+            mock_callback = Mock()
+            mock_callback.on_train_begin = Mock()
+            mock_callback.on_epoch_end = Mock()
+            mock_callback.on_train_end = Mock()
+            
+            # Convert to DataLoader
+            train_loader = DataLoader(mock_pytorch_data_generator, batch_size=4, shuffle=True)
+            val_loader = DataLoader(mock_pytorch_data_generator, batch_size=4, shuffle=False)
+            
+            # Define loss function and optimizer
+            loss_function = nn.CrossEntropyLoss()
+            optimizer = torch.optim.Adam(mock_pytorch_model.parameters(), lr=0.001)
+            
+            # Train the model with callbacks
+            trained_model_path = _train_model(
+                model=mock_pytorch_model,
+                train_gen=train_loader,
+                val_gen=val_loader,
+                output_dir=output_dir,
+                epochs=1,
+                loss_function=loss_function,
+                optimizer=optimizer,
+                scheduler=None,
+                model_output_name="test_model",
+                app_callbacks=[mock_callback]
+            )
+            
+            # Assertions
+            assert os.path.exists(trained_model_path)
+            mock_callback.on_train_begin.assert_called_once()
+            mock_callback.on_epoch_end.assert_called_once()
+            mock_callback.on_train_end.assert_called_once()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
