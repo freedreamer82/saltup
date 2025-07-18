@@ -173,7 +173,8 @@ class BaseYolo():
 
         self._number_class = number_class
         self._model = model
-        _, self._model_input_shape, self._model_output_shape = model.load()
+        self._model_input_shape = self._model.get_input_shape()
+        self._model_output_shape = self._model.get_output_shape()
         
         self._yolotype = yolot
         self._input_model_format = self.get_input_info()[2]
