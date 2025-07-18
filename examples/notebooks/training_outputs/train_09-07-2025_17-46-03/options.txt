@@ -1,3 +1,0 @@
-
-The number of epochs: 1
-The batch size: 32
