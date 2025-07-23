@@ -337,102 +337,6 @@ class BaseYolo():
         yoloOut.set_image(image=image) # input image
         
         return yoloOut
-
-    @classmethod
-    def evaluate(cls,predictions: YoloOutput, ground_truth: List[Tuple[BBox, int]], threshold_iou: float = 0.5) -> Dict[str, float]:
-        """
-        Compute evaluation metrics (precision, recall, F1-score, mAP, mAP@50-95) and TP, FP, FN.
-
-        Args:
-            predictions: YoloOutput object containing predicted bounding boxes, scores, and class IDs.
-            ground_truth: List of tuples (BBox, class_id) representing ground truth.
-            threshold_iou: IoU threshold to consider a detection as a true positive.
-
-        Returns:
-            Dictionary containing evaluation metrics and counts of TP, FP, FN.
-        """
-        if not ground_truth:  # No ground truth
-            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95", "tp", "fp", "fn"]}
-
-        if not predictions.get_boxes():  # No predictions
-            return {metric: 0.0 for metric in ["precision", "recall", "f1", "mAP", "mAP@50-95", "tp", "fp", "fn"]}
-
-        # Group ground truth and predictions by class ID
-        gt_by_class = defaultdict(list)
-        for gt_bbox, class_id in ground_truth:
-            gt_by_class[class_id].append(gt_bbox)
-
-        pred_by_class = defaultdict(list)
-        for pred_bbox, class_id, score in predictions.get_boxes():
-            pred_by_class[class_id].append((pred_bbox, score))
-
-        # Initialize global counters and AP lists
-        global_tp, global_fp, global_fn = 0, 0, 0
-        aps = []
-
-        for class_id in gt_by_class:
-            gt_bboxes = gt_by_class[class_id]
-            pred_bboxes_scores = pred_by_class.get(class_id, [])
-            
-            # Calculate AP for the class at the given threshold
-            ap = compute_ap_for_threshold(gt_bboxes, pred_bboxes_scores, threshold_iou)
-            aps.append(ap)
-
-            # Match predictions to ground truth
-            pred_bboxes_scores.sort(key=lambda x: x[1], reverse=True)
-            pred_bboxes = [x[0] for x in pred_bboxes_scores]
-
-            # Initialize TP, FP and matched ground truths
-            tp = np.zeros(len(pred_bboxes))
-            fp = np.zeros(len(pred_bboxes))
-            gt_matched = [False] * len(gt_bboxes)
-
-            for i, pred_bbox in enumerate(pred_bboxes):
-                max_iou = 0
-                best_match_idx = -1
-                for j, gt_bbox in enumerate(gt_bboxes):
-                    if gt_matched[j]:
-                        continue
-                    iou = pred_bbox.compute_iou(gt_bbox)
-                    if iou > max_iou:
-                        max_iou = iou
-                        best_match_idx = j
-
-                if max_iou >= threshold_iou and best_match_idx != -1:
-                    tp[i] = 1
-                    gt_matched[best_match_idx] = True
-                else:
-                    fp[i] = 1
-
-            # Update global counters
-            global_tp += np.sum(tp)
-            global_fp += np.sum(fp)
-            global_fn += len(gt_bboxes) - np.sum(tp)
-
-        # Calculate global precision, recall, and F1-score
-        precision = global_tp / (global_tp + global_fp) if (global_tp + global_fp) > 0 else 0.0
-        recall = global_tp / (global_tp + global_fn) if (global_tp + global_fn) > 0 else 0.0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-
-        # Calculate mAP using compute_ap_range (includes AP@50-95)
-        mAP_50_95 = compute_map_50_95(
-            [gt for gt_class in gt_by_class.values() for gt in gt_class],
-            [(pred, score) for preds in pred_by_class.values() for pred, score in preds],
-        )
-
-        # Calculate mAP (average AP across classes at the given threshold)
-        mAP = np.mean(aps) if aps else 0.0
-
-        return {
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-            "mAP": mAP,
-            "mAP@50-95": mAP_50_95,
-            "tp": int(global_tp),  # True Positives
-            "fp": int(global_fp),  # False Positives
-            "fn": int(global_fn),  # False Negatives
-        }
     
     @staticmethod
     @abstractmethod
@@ -562,6 +466,7 @@ def evaluate(
     all_pred_boxes = []
     all_gt_boxes = []
 
+    start_time = time.time()
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -590,6 +495,9 @@ def evaluate(
                 metrics_per_class[class_id].addFP(one_shot_metric[class_id].getFP())
                 metrics_per_class[class_id].addFN(one_shot_metric[class_id].getFN())
         image_count += 1
+    end_time = time.time()
+    total_time = end_time - start_time
+    avg_time_per_image = (total_time / image_count * 1000) if image_count > 0 else 0.0
 
     overall_metric = sum(metrics_per_class.values(), start=Metric())
     # Calculate mAP@50-95 across all images at once
@@ -599,6 +507,9 @@ def evaluate(
         output_text = []
 
         output_text.append(f"Model type: {yolo.getYoloType().name}\n")
+        print(f"Total execution time: {total_time:.2f} seconds")
+        print(f"Average time per image: {avg_time_per_image:.2f} ms")
+
         num_params = yolo.get_model().get_num_parameters()
         if num_params >= 1_000_000:
             num_params_str = f"{num_params:,} ({num_params/1_000_000:.1f}M)"

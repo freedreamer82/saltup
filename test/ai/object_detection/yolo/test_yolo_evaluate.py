@@ -2,7 +2,8 @@ import unittest
 import numpy as np
 from collections import defaultdict
 from typing import List, Tuple, Dict, Union
-from saltup.ai.object_detection.yolo.yolo import BaseYolo, BBox, YoloOutput, BBoxFormat, evaluate
+from saltup.ai.object_detection.yolo.yolo import BaseYolo, BBox, YoloOutput, BBoxFormat, evaluate, evaluate_image
+from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.utils.data.image import ColorMode, ImageFormat, Image
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
 import onnx
@@ -23,6 +24,14 @@ class TestEvaluate(unittest.TestCase):
         self.create_simple_onnx_model(self.onnx_model_path)
 
         class MockYolo(BaseYolo):
+            def __init__(self, model_path, number_class):
+                # Initialize with required parameters including YoloType
+                super().__init__(
+                    yolot=YoloType.ULTRALYTICS,  # Added YoloType parameter
+                    model=NeuralNetworkModel(model_path), 
+                    number_class=number_class
+                )
+            
             def preprocess(self, 
                    image: Image,
                    target_height: int, 
@@ -31,12 +40,11 @@ class TestEvaluate(unittest.TestCase):
                    apply_padding: bool = True,
                    **kwargs: Any
                    ) -> np.ndarray:
-                return image
+                return np.random.random((target_height, target_width, 3)).astype(np.float32)
 
             def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
-                input_shape = self._model_input_shape[1:]  # Remove batch size
                 return (
-                    input_shape,  # Shape: (480, 640, 1)
+                    (224, 224, 3),  # Shape: (H, W, C)
                     ColorMode.RGB,
                     ImageFormat.HWC
                 )
@@ -46,7 +54,7 @@ class TestEvaluate(unittest.TestCase):
                             iou_threshold: float = 0.5) -> List[Tuple[BBox, int, float]]:
                 return []
         
-        self.yolo = MockYolo(yolot=None, model=NeuralNetworkModel(self.onnx_model_path), number_class=1)
+        self.yolo = MockYolo(self.onnx_model_path, number_class=2)
 
     def create_simple_onnx_model(self, model_path: str):
         # Create a simple ONNX model with a single Identity node
@@ -60,180 +68,126 @@ class TestEvaluate(unittest.TestCase):
     def tearDown(self):
         if os.path.exists(self.onnx_model_path):
             os.remove(self.onnx_model_path)
-        os.rmdir(self.tmp_dir)
+        if os.path.exists(self.tmp_dir):
+            os.rmdir(self.tmp_dir)
 
-    def test_evaluate_perfect_match(self):
-        """Test the case where all predictions correspond exactly to ground truths."""
+    def test_evaluate_image_perfect_match(self):
+        """Test the evaluate_image function with perfect matches."""
         bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
-        metrics = self.yolo.evaluate(predictions, ground_truth)
-        self.assertAlmostEqual(metrics["precision"], 1.0)
-        self.assertAlmostEqual(metrics["recall"], 1.0)
-        self.assertAlmostEqual(metrics["f1"], 1.0)
-        self.assertAlmostEqual(metrics["mAP"], 1.0)
-        self.assertAlmostEqual(metrics["mAP@50-95"], 1.0)
+        metrics = evaluate_image(predictions, ground_truth, iou_thres=0.5)
+        
+        # Check that we have metrics for both classes
+        self.assertIn(0, metrics)
+        self.assertIn(1, metrics)
+        
+        # Class 0: 1 TP, 0 FP, 0 FN
+        self.assertEqual(metrics[0].getTP(), 1)
+        self.assertEqual(metrics[0].getFP(), 0)
+        self.assertEqual(metrics[0].getFN(), 0)
+        
+        # Class 1: 1 TP, 0 FP, 0 FN
+        self.assertEqual(metrics[1].getTP(), 1)
+        self.assertEqual(metrics[1].getFP(), 0)
+        self.assertEqual(metrics[1].getFN(), 0)
 
-    def test_evaluate_false_positives(self):
-        """Test the case where there are false positives."""
+    def test_evaluate_image_false_positives(self):
+        """Test the evaluate_image function with false positives."""
         bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], fmt=BBoxFormat.CORNERS_ABSOLUTE)   
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8), (bbox3, 1, 0.7)])   
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
-        metrics = self.yolo.evaluate(predictions, ground_truth)
-        self.assertAlmostEqual(metrics["precision"], 2 / 3)
-        self.assertAlmostEqual(metrics["recall"], 1.0)
-        self.assertAlmostEqual(metrics["f1"], 0.8)
-        self.assertAlmostEqual(metrics["mAP"], 1.0)
-        self.assertAlmostEqual(metrics["mAP@50-95"], 1.0)
+        metrics = evaluate_image(predictions, ground_truth, iou_thres=0.5)
+        
+        # Class 0: 1 TP, 0 FP, 0 FN
+        self.assertEqual(metrics[0].getTP(), 1)
+        self.assertEqual(metrics[0].getFP(), 0)
+        self.assertEqual(metrics[0].getFN(), 0)
+        
+        # Class 1: 1 TP, 1 FP, 0 FN (bbox3 is false positive)
+        self.assertEqual(metrics[1].getTP(), 1)
+        self.assertEqual(metrics[1].getFP(), 1)
+        self.assertEqual(metrics[1].getFN(), 0)
 
-    def test_evaluate_false_negatives(self):
-        """Test the case where there are false negatives."""
+    def test_evaluate_image_false_negatives(self):
+        """Test the evaluate_image function with false negatives."""
         bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])
         ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 1)]
 
-        metrics = self.yolo.evaluate(predictions, ground_truth)
-        self.assertAlmostEqual(metrics["precision"], 1.0)
-        self.assertAlmostEqual(metrics["recall"], 2 / 3)
-        self.assertAlmostEqual(metrics["f1"], 0.8)
-        self.assertAlmostEqual(metrics["mAP"], 0.875)
-        self.assertAlmostEqual(metrics["mAP@50-95"], 0.833, delta=0.0005)
+        metrics = evaluate_image(predictions, ground_truth, iou_thres=0.5)
+        
+        # Class 0: 1 TP, 0 FP, 0 FN
+        self.assertEqual(metrics[0].getTP(), 1)
+        self.assertEqual(metrics[0].getFP(), 0)
+        self.assertEqual(metrics[0].getFN(), 0)
+        
+        # Class 1: 1 TP, 0 FP, 1 FN (bbox3 is false negative)
+        self.assertEqual(metrics[1].getTP(), 1)
+        self.assertEqual(metrics[1].getFP(), 0)
+        self.assertEqual(metrics[1].getFN(), 1)
 
-    def test_evaluate_no_predictions(self):
-        """Test the case where there are no predictions."""
+    def test_evaluate_image_no_predictions(self):
+        """Test the evaluate_image function with no predictions."""
         bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         predictions = YoloOutput([])  
         ground_truth = [(bbox1, 0), (bbox2, 1)]
 
-        metrics = self.yolo.evaluate(predictions, ground_truth)
-        self.assertAlmostEqual(metrics["precision"], 0.0)
-        self.assertAlmostEqual(metrics["recall"], 0.0)
-        self.assertAlmostEqual(metrics["f1"], 0.0)
-        self.assertAlmostEqual(metrics["mAP"], 0.0)
-        self.assertAlmostEqual(metrics["mAP@50-95"], 0.0)
+        metrics = evaluate_image(predictions, ground_truth, iou_thres=0.5)
+        
+        # Should have metrics for both classes with all FN
+        self.assertEqual(metrics[0].getTP(), 0)
+        self.assertEqual(metrics[0].getFP(), 0)
+        self.assertEqual(metrics[0].getFN(), 1)
+        
+        self.assertEqual(metrics[1].getTP(), 0)
+        self.assertEqual(metrics[1].getFP(), 0)
+        self.assertEqual(metrics[1].getFN(), 1)
 
-    def test_evaluate_no_ground_truth(self):
-        """Test the case where there are no ground truths."""
+    def test_evaluate_image_no_ground_truth(self):
+        """Test the evaluate_image function with no ground truth."""
         bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)   
         bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)  
         predictions = YoloOutput([(bbox1, 0, 0.9), (bbox2, 1, 0.8)])   
         ground_truth = []
 
-        metrics = self.yolo.evaluate(predictions, ground_truth)
-        self.assertAlmostEqual(metrics["precision"], 0.0)
-        self.assertAlmostEqual(metrics["recall"], 0.0)
-        self.assertAlmostEqual(metrics["f1"], 0.0)
-        self.assertAlmostEqual(metrics["mAP"], 0.0)
-        self.assertAlmostEqual(metrics["mAP@50-95"], 0.0)
+        metrics = evaluate_image(predictions, ground_truth, iou_thres=0.5)
+        
+        # Should have metrics for both classes with all FP
+        self.assertEqual(metrics[0].getTP(), 0)
+        self.assertEqual(metrics[0].getFP(), 1)
+        self.assertEqual(metrics[0].getFN(), 0)
+        
+        self.assertEqual(metrics[1].getTP(), 0)
+        self.assertEqual(metrics[1].getFP(), 1)
+        self.assertEqual(metrics[1].getFN(), 0)
 
-    def test_evaluate_partial_overlap(self):
-        """Test the case where predictions have partial overlap with ground truths."""
+    def test_evaluate_image_partial_overlap(self):
+        """Test the evaluate_image function with partial overlap."""
         bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         bbox2 = BBox(img_height=100, img_width=100, coordinates=[1, 1, 11, 11], fmt=BBoxFormat.CORNERS_ABSOLUTE)
         predictions = YoloOutput([(bbox2, 0, 0.9)])
         ground_truth = [(bbox1, 0)]
 
-        metrics = self.yolo.evaluate(predictions, ground_truth, threshold_iou=0.5)
-        self.assertAlmostEqual(metrics["precision"], 1.0)   
-        self.assertAlmostEqual(metrics["recall"], 1.0)      
-        self.assertAlmostEqual(metrics["f1"], 1.0)         
-        self.assertAlmostEqual(metrics["mAP"], 1.0)         
-        self.assertAlmostEqual(metrics["mAP@50-95"], 0.4, delta=0.1)
-
-    def test_evaluate_comparison_with_torchmetrics(self):
-        """
-        Compare the results of our implementation with torchmetrics.
-        Verify that both implementations produce similar results.
-        """
-        # Create test data
-        bbox1 = BBox(img_height=100, img_width=100, coordinates=[0, 0, 10, 10], fmt=BBoxFormat.CORNERS_ABSOLUTE)
-        bbox2 = BBox(img_height=100, img_width=100, coordinates=[20, 20, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)
-        bbox3 = BBox(img_height=100, img_width=100, coordinates=[40, 40, 50, 50], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+        # Test with high IoU threshold (should not match)
+        metrics_high = evaluate_image(predictions, ground_truth, iou_thres=0.9)
+        self.assertEqual(metrics_high[0].getTP(), 0)
+        self.assertEqual(metrics_high[0].getFP(), 1)
+        self.assertEqual(metrics_high[0].getFN(), 1)
         
-        predictions = YoloOutput([
-            (bbox1, 0, 0.9),
-            (bbox2, 1, 0.8),
-            (bbox3, 0, 0.7)
-        ])
-        
-        ground_truth = [(bbox1, 0), (bbox2, 1), (bbox3, 0)]
-        
-        # Calculate metrics with our implementation
-        our_metrics = self.yolo.evaluate(predictions, ground_truth)
-        
-        # Prepare data for torchmetrics
-        pred_boxes = []
-        pred_scores = []
-        pred_labels = []
-        
-        # Access YoloOutput data using get_boxes()
-        for box, cls, score in predictions.get_boxes():
-            coords = box.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)
-            pred_boxes.append([
-                coords[0],
-                coords[1],
-                coords[2],
-                coords[3]
-            ])
-            pred_scores.append(score)
-            pred_labels.append(cls + 1)  # torchmetrics uses 1-based labels
-        
-        gt_boxes = []
-        gt_labels = []
-        
-        for box, cls in ground_truth:
-            coords = box.get_coordinates(fmt=BBoxFormat.CORNERS_NORMALIZED)
-            gt_boxes.append([
-                coords[0],
-                coords[1],
-                coords[2],
-                coords[3]
-            ])
-            gt_labels.append(cls + 1)
-        
-        preds = [{
-            'boxes': torch.tensor(pred_boxes, dtype=torch.float32),
-            'scores': torch.tensor(pred_scores, dtype=torch.float32),
-            'labels': torch.tensor(pred_labels, dtype=torch.int32)
-        }]
-        
-        target = [{
-            'boxes': torch.tensor(gt_boxes, dtype=torch.float32),
-            'labels': torch.tensor(gt_labels, dtype=torch.int32)
-        }]
-        
-        # Calculate metrics with torchmetrics
-        metric = MeanAveragePrecision(box_format='xyxy')
-        metric.update(preds, target)
-        torch_metrics = metric.compute()
-        
-        # Compare the results of the two implementations
-        self.assertAlmostEqual(
-            our_metrics["mAP"],
-            torch_metrics['map'].item(),
-            places=2,
-            msg="mAP metrics differ significantly between implementations"
-        )
-        
-        self.assertAlmostEqual(
-            our_metrics["mAP@50-95"],
-            torch_metrics['map_50'].item(),
-            places=2,
-            msg="mAP@50-95 metrics differ significantly between implementations"
-        )
-        
-        # Check also the other metrics of our implementation
-        self.assertGreater(our_metrics["precision"], 0.8)
-        self.assertGreater(our_metrics["recall"], 0.8)
-        self.assertGreater(our_metrics["f1"], 0.8)
+        # Test with low IoU threshold (should match)
+        metrics_low = evaluate_image(predictions, ground_truth, iou_thres=0.3)
+        self.assertEqual(metrics_low[0].getTP(), 1)
+        self.assertEqual(metrics_low[0].getFP(), 0)
+        self.assertEqual(metrics_low[0].getFN(), 0)
 
     def test_evaluate_with_dataloader(self):
         """Test the evaluate function with a mock dataloader."""
@@ -270,15 +224,29 @@ class TestEvaluate(unittest.TestCase):
         # Create mock YOLO model that returns predictable results
         class MockEvaluationYolo(BaseYolo):
             def __init__(self, predictions_per_image):
-                # Don't call super().__init__ to avoid model loading
-                self._number_class = 2
+                # Initialize with minimal required parameters including YoloType
+                model_path = self.create_temp_model()
+                super().__init__(
+                    yolot=YoloType.ULTRALYTICS,  # Added YoloType parameter
+                    model=NeuralNetworkModel(model_path), 
+                    number_class=2
+                )
                 self.predictions_per_image = predictions_per_image
                 self.current_image_idx = 0
                 
-            def get_number_class(self):
-                return self._number_class
+            def create_temp_model(self):
+                # Create temporary ONNX model for testing
+                tmp_dir = tempfile.mkdtemp()
+                model_path = os.path.join(tmp_dir, "temp_model.onnx")
+                input = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 224, 224])
+                output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
+                node = helper.make_node('Identity', ['input'], ['output'])
+                graph = helper.make_graph([node], 'simple_model', [input], [output])
+                model = helper.make_model(graph, producer_name='onnx-test', opset_imports=[helper.make_opsetid("", 16)])
+                onnx.save(model, model_path)
+                return model_path
                 
-            def run(self, image, confidence_thr=0.5, iou_threshold=0.5):
+            def run(self, image, confidence_thr=0.5, iou_threshold=0.5, preprocess=None, postprocess=None):
                 # Return predefined predictions for each image
                 predictions = self.predictions_per_image[self.current_image_idx % len(self.predictions_per_image)]
                 self.current_image_idx += 1
@@ -391,13 +359,24 @@ class TestEvaluate(unittest.TestCase):
         
         class MockEmptyYolo(BaseYolo):
             def __init__(self):
-                # Don't call super().__init__ to avoid model loading
-                self._number_class = 2
+                # Create temporary ONNX model for testing
+                tmp_dir = tempfile.mkdtemp()
+                model_path = os.path.join(tmp_dir, "temp_model.onnx")
+                input = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 224, 224])
+                output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
+                node = helper.make_node('Identity', ['input'], ['output'])
+                graph = helper.make_graph([node], 'simple_model', [input], [output])
+                model = helper.make_model(graph, producer_name='onnx-test', opset_imports=[helper.make_opsetid("", 16)])
+                onnx.save(model, model_path)
                 
-            def get_number_class(self):
-                return self._number_class
+                # Initialize with required parameters including YoloType
+                super().__init__(
+                    yolot=YoloType.ULTRALYTICS,  # Added YoloType parameter
+                    model=NeuralNetworkModel(model_path), 
+                    number_class=2
+                )
                 
-            def run(self, image, confidence_thr=0.5, iou_threshold=0.5):
+            def run(self, image, confidence_thr=0.5, iou_threshold=0.5, preprocess=None, postprocess=None):
                 return YoloOutput([])
                 
             def get_input_info(self):
@@ -434,6 +413,104 @@ class TestEvaluate(unittest.TestCase):
         
         # mAP@50-95 should be 0 for empty dataset
         self.assertEqual(overall_map_50_95, 0.0)
+
+    def test_evaluate_with_output_streams(self):
+        """Test the evaluate function with output streams."""
+        import io
+        
+        # Create a string buffer to capture output
+        output_buffer = io.StringIO()
+        
+        # Create minimal test setup
+        class SimpleDataloader(BaseDataloader):
+            def __init__(self):
+                self.data = []
+                bbox_gt = BBox(img_height=100, img_width=100, coordinates=[10, 10, 30, 30], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+                mock_image = Image(np.zeros((100, 100, 3), dtype=np.uint8), ColorMode.RGB)
+                self.data.append((mock_image, [(bbox_gt, 0)]))
+                self.index = 0
+
+            def __iter__(self):
+                self.index = 0
+                return self
+
+            def __next__(self):
+                if self.index >= len(self.data):
+                    raise StopIteration
+                item = self.data[self.index]
+                self.index += 1
+                return item
+
+            def __len__(self):
+                return len(self.data)
+
+            def split(self, ratio):
+                # For testing, just return two copies
+                return [self, self]
+
+            @staticmethod
+            def merge(dl1, dl2):
+                # For testing, just return dl1
+                return dl1
+        
+        
+        class SimpleYolo(BaseYolo):
+            def __init__(self):
+                tmp_dir = tempfile.mkdtemp()
+                model_path = os.path.join(tmp_dir, "temp_model.onnx")
+                input = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 224, 224])
+                output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 224, 224])
+                node = helper.make_node('Identity', ['input'], ['output'])
+                graph = helper.make_graph([node], 'simple_model', [input], [output])
+                model = helper.make_model(graph, producer_name='onnx-test', opset_imports=[helper.make_opsetid("", 16)])
+                onnx.save(model, model_path)
+                
+                super().__init__(
+                    yolot=YoloType.ULTRALYTICS,
+                    model=NeuralNetworkModel(model_path), 
+                    number_class=2
+                )
+                
+            def run(self, image, confidence_thr=0.5, iou_threshold=0.5, preprocess=None, postprocess=None):
+                # Return a matching prediction
+                bbox_pred = BBox(img_height=100, img_width=100, coordinates=[12, 12, 28, 28], fmt=BBoxFormat.CORNERS_ABSOLUTE)
+                return YoloOutput([(bbox_pred, 0, 0.9)])
+                
+            def get_input_info(self):
+                return ((100, 100, 3), ColorMode.RGB, ImageFormat.HWC)
+                
+            def preprocess(self, image, target_height, target_width, **kwargs):
+                return np.zeros((target_height, target_width, 3))
+                
+            def postprocess(self, raw_output, image_height, image_width, confidence_thr=0.5, iou_threshold=0.5):
+                return []
+        
+        dataloader = SimpleDataloader()
+        yolo = SimpleYolo()
+        
+        # Test evaluate function with output stream
+        metrics_per_class, overall_metric, overall_map_50_95 = evaluate(
+            yolo=yolo,
+            dataloader=dataloader,
+            iou_threshold=0.5,
+            confidence_threshold=0.5,
+            output_streams=[output_buffer]
+        )
+        
+        # Check that output was written to the buffer
+        output_content = output_buffer.getvalue()
+        self.assertIn("Model type:", output_content)
+        self.assertIn("Overall Precision:", output_content)
+        self.assertIn("Overall Recall:", output_content)
+        self.assertIn("Overall F1 Score:", output_content)
+        self.assertIn("Overall mAP@50-95", output_content)
+        
+        # Verify metrics are correct (should be perfect match)
+        self.assertEqual(overall_metric.getTP(), 1)
+        self.assertEqual(overall_metric.getFP(), 0)
+        self.assertEqual(overall_metric.getFN(), 0)
+        self.assertAlmostEqual(overall_metric.getPrecision(), 1.0)
+        self.assertAlmostEqual(overall_metric.getRecall(), 1.0)
         
 
 if __name__ == "__main__":

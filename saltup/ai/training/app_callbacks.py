@@ -111,8 +111,8 @@ class MLflowCallback(BaseCallback):
         # Ensure all patterns in metrics_filter start with '/'
         if metrics_filter is not None:
             self.metrics_filter = set(
-            pattern if pattern.startswith('/') else '/' + pattern
-            for pattern in metrics_filter
+                pattern if pattern.startswith('/') else '/' + pattern
+                for pattern in metrics_filter
             )
         else:
             self.metrics_filter = None
@@ -154,18 +154,13 @@ class MLflowCallback(BaseCallback):
             
         for key, value in metrics_dict.items():
             self.log_metric(key, value, step)
-    
-    def on_train_begin(self, context: CallbackContext):
-        """Called at the beginning of training."""
-        self.log_param("total_epochs", context.epochs)
-    
-    def on_epoch_end(self, epoch, context: CallbackContext):
-        if not self.is_enabled:
-            return
-        
+
+    def _log_all_metrics(self, step=None):
+        """Private method to log all metrics using MLflow, with filtering and formatting."""
         metrics = PathDict(self.get_metrics())
         for key, value in metrics.items():
             should_log = value is not None
+            orig_key = key
             if self.metrics_filter is not None:
                 should_log = should_log and any(fnmatch(key, pattern) for pattern in self.metrics_filter)
                 # Replace slashes with underscores for MLflow compatibility
@@ -180,7 +175,7 @@ class MLflowCallback(BaseCallback):
                                     run_id=self.mlflow_run_id,
                                     key=f"{key}.{subkey}",
                                     value=float(subvalue),
-                                    step=epoch
+                                    step=step
                                 )
                             except Exception as e:
                                 print(f"[MLflow] Errore log_metric {key}.{subkey}: {e}")
@@ -190,20 +185,28 @@ class MLflowCallback(BaseCallback):
                             run_id=self.mlflow_run_id,
                             key=key,
                             value=float(value),
-                            step=epoch
+                            step=step
                         )
                     except Exception as e:
                         print(f"[MLflow] Errore log_metric {key}: {e}")
+
+    def on_train_begin(self, context: CallbackContext):
+        """Called at the beginning of training."""
+        self.log_param("total_epochs", context.epochs)
+    
+    def on_epoch_end(self, epoch, context: CallbackContext):
+        if not self.is_enabled:
+            return
+        self._log_all_metrics(step=epoch)
         
     def on_train_end(self, context: CallbackContext):
         """Called at the end of training."""
         # Log final metrics
+        self._log_all_metrics(step=getattr(context, 'epochs', None))
         final_metrics = {
-            "final_loss": getattr(context, 'final_loss', None),
+            "final_loss": getattr(context, 'loss', None),
         }
-        
         self.log_metrics_dict(final_metrics)
-        
         # Optionally close the MLflow run
         if self.is_enabled and self.close_on_train_end:
             self.mlflow_client.set_terminated(self.mlflow_run_id)
@@ -399,14 +402,15 @@ class YoloEvaluationsCallback(BaseCallback):
         return metrics_dict
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
-        yolo_keras_best_model  = YoloFactory.create(
-            yolo_type=self.yolo_type,
-            model_or_path=NeuralNetworkModel(context.best_model),
-            number_class=self.datagen.num_classes,           
-            **self.yolo_factory_kwargs
-        )
+  
+        if self.every_epoch > 0 and epoch % self.every_epoch == 0:
 
-        if epoch % self.every_epoch == 0:
+            yolo_best_model  = YoloFactory.create(
+                yolo_type=self.yolo_type,
+                model_or_path=NeuralNetworkModel(context.best_model),
+                number_class=self.datagen.num_classes,           
+                **self.yolo_factory_kwargs
+            )
             print("\n\n")
             self._print("=" * 80)
             self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch}':^80}")
@@ -416,7 +420,7 @@ class YoloEvaluationsCallback(BaseCallback):
             if self.class_names is not None:
                 self._print(f"class_names: {self.class_names}")
 
-            metrics_dict = self._evaluate_metrics(yolo_keras_best_model, self.datagen)
+            metrics_dict = self._evaluate_metrics(yolo_best_model, self.datagen)
 
             custom_data = {
                "best_model_per_class": metrics_dict["per_class"],
@@ -512,7 +516,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
 
     def on_epoch_end(self, epoch: int, context: CallbackContext):
         model=context.best_model
-        if epoch % self.every_epoch == 0:
+        if self.every_epoch > 0 and epoch % self.every_epoch == 0:
             print("\n\n")
             self._print("=" * 80)
             self._print(f"{f'METRICS SUMMARY FOR EPOCH {epoch}':^80}")
