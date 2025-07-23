@@ -273,7 +273,9 @@ class NeuralNetworkModel:
                     else:
                         device = torch.device(device_config)
                     input_data = input_data.to(device)
-                    output = self.model(input_data).cpu().numpy()
+                    self.model.to(device)
+                    output = self.model(input_data)
+                    output = output.cpu().numpy()
             elif self._model_type == ModelType.KERAS:
                 # TensorFlow/Keras inference
                 output = self.model.predict(input_data)

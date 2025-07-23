@@ -12,32 +12,20 @@ from saltup.utils.misc import suppress_stdout
 
 from saltup.ai.nn_model import NeuralNetworkModel, ModelType
 from saltup.ai.utils.keras.to_onnx import convert_keras_to_onnx
-
+import torch.nn.functional as F
 # Move the SimpleModel class definition outside the fixture
 class SimpleModel(nn.Module):
     def __init__(self, input_shape, output_shape):
         super(SimpleModel, self).__init__()
-        self.input_shape = input_shape  # (1, 28, 28) - channels first for PyTorch
-        self.output_shape = output_shape  # (10,)
-        
-        # Define a convolutional neural network
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)  # After pooling twice, 28->14->7
-        self.fc2 = nn.Linear(128, output_shape[0])  # Output shape: (10,)
-        self.relu = nn.ReLU()
+        self.input_shape = input_shape  # (1, 28, 28)
+        #self.output_shape = output_shape  # (10,)
+        self.fc = nn.Linear(1 * 28 * 28, output_shape[0])
 
     def forward(self, x):
-        # Input shape: (batch_size, 1, 28, 28)
-        x = self.relu(self.conv1(x))
-        x = self.pool(x)  # Output shape: (batch_size, 32, 14, 14)
-        x = self.relu(self.conv2(x))
-        x = self.pool(x)  # Output shape: (batch_size, 64, 7, 7)
-        x = x.view(x.size(0), -1)  # Flatten the tensor
-        x = self.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = x.view(x.size(0), -1)  # Flatten input
+        x = self.fc(x)
         return x
+    
 
 # Fixture to create sample models and return their paths
 @pytest.fixture(scope="session")
