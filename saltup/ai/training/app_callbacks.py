@@ -504,7 +504,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
         self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
         self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
         self._print("=" * 80)
-        number_classes = self.end_of_train_datagen.num_classes
+        number_classes = self.end_of_train_datagen.dataset.num_classes if hasattr(self.end_of_train_datagen, 'dataset') else self.end_of_train_datagen.num_classes
         per_class_metrics = self.extract_per_class_metrics(metric_per_class, number_classes)
         custom_data = {
             "per_class": per_class_metrics,
@@ -540,7 +540,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
             self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
             self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
             self._print("=" * 80)
-            number_classes = self.datagen.num_classes
+            number_classes = self.datagen.dataset.num_classes if hasattr(self.datagen, 'dataset') else self.datagen.num_classes
             per_class_metrics = self.extract_per_class_metrics(metric_per_class, number_classes)
             custom_data = {
                 "per_class": per_class_metrics,

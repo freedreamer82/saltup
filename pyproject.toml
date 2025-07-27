@@ -16,18 +16,35 @@ authors = [
 keywords = ["AI", "deep learning", "computer vision", "YOLO"]
 license = { text = "MIT" }
 dependencies = [
-    "numpy",
     "cmsisdsp",
     "pillow",
+    "matplotlib",
+    "seaborn",
+    "pandas",
+    "scipy",
+    "pyarrow",
+    "fastparquet",
     "opencv-python",
     "boto3",
+    "tf2onnx==1.16.1",
     "onnx",
-    "onnxruntime",
     "tensorflow==2.18.0",
+    "keras==3.8.0",
     "tf_keras",
     "torch",
     "torchvision",
-    "torchaudio"
+    "torchaudio",
+    "onnxruntime-gpu",
+    "albumentations",
+    "tqdm",
+    "dotmap",
+    "IPython",
+    "ipykernel",
+    "nbformat",
+    "paho-mqtt",
+    "mlflow",
+    "librosa",
+    "soundfile",
 ]
 
 [project.scripts]
