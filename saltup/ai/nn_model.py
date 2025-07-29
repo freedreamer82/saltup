@@ -286,6 +286,7 @@ class NeuralNetworkModel:
                     input_data = np.array(input_data)                
                 # ONNX inference
                 input_name = self.model.get_inputs()[0].name
+                input_data = input_data.astype(np.float32)  # Ensure input is float32
                 output = self.model.run(None, {input_name: input_data})[0]
             elif self._model_type == ModelType.TFLITE:
                 # TensorFlow Lite inference
