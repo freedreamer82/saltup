@@ -27,7 +27,7 @@ def mock_test_data_dir(tmp_path):
     for class_name in class_names:
         class_dir = tmp_path / class_name
         class_dir.mkdir()
-        for i in range(2):  # Create 2 images per class
+        for i in range(5):  # Create 2 images per class
             img_path = class_dir / f"image_{i}.jpg"
             # Generate a random image matrix and save it as an image
             random_image = np.random.randint(0, 256, (32, 32, 3), dtype=np.uint8)
@@ -426,7 +426,7 @@ class TestTrainingFunction:
                 optimizer=optimizer,
                 epochs=1,
                 output_dir=output_dir,
-                kfold_param={'enable': False},
+                kfold_param={'enable': False, 'split': [0.8, 0.2]},
                 model_output_name="test_model",
                 classification_class_weight={0: 1.0, 1: 2.0}
             )

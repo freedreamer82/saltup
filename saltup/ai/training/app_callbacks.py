@@ -487,8 +487,10 @@ class ClassificationEvaluationsCallback(BaseCallback):
         self._print("=" * 80)
         if self.class_names is not None:
             self._print(f"class_names: {self.class_names}")
-
-        global_metric, metric_per_class = evaluate_model(model, self.end_of_train_datagen)
+        
+        model_to_test = NeuralNetworkModel(model_or_path=model)
+        
+        global_metric, metric_per_class = evaluate_model(model_to_test, self.end_of_train_datagen)
         self._print(f"{'Images processed:':<20} {len(self.end_of_train_datagen.dataset) if hasattr(self.end_of_train_datagen, 'dataset') else len(self.end_of_train_datagen)}")
 
         self._print("\nPer class:")
@@ -504,6 +506,7 @@ class ClassificationEvaluationsCallback(BaseCallback):
         self._print(f"{'False Positives (FP):':<25} {global_metric.getFP()}")
         self._print(f"{'Overall Accuracy:':<25} {global_metric.getAccuracy():.4f}")
         self._print("=" * 80)
+
         number_classes = self.end_of_train_datagen.dataset.num_classes if hasattr(self.end_of_train_datagen, 'dataset') else self.end_of_train_datagen.num_classes
         per_class_metrics = self.extract_per_class_metrics(metric_per_class, number_classes)
         custom_data = {
@@ -523,8 +526,9 @@ class ClassificationEvaluationsCallback(BaseCallback):
             self._print(f"Best model epoch: {context.best_epoch} | Best loss: {context.best_loss:.4f} | Best val_loss: {context.best_val_loss:.4f}")
             if self.class_names is not None:
                 self._print(f"class_names: {self.class_names}")
-                
-            global_metric, metric_per_class = evaluate_model(model, self.datagen)
+            
+            model_to_test = NeuralNetworkModel(model_or_path=model)
+            global_metric, metric_per_class = evaluate_model(model_to_test, self.datagen)
             self._print(f"{'Images processed:':<20} {len(self.datagen.dataset.dataloader) if hasattr(self.datagen, 'dataset') else len(self.datagen.dataloader)}")
 
             self._print("\nPer class:")
