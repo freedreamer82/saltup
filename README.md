@@ -6,10 +6,26 @@
 
 The universal AI toolkit that works with your existing models and data, regardless of format.
 
-Stop wrestling with format conversions. Stop rewriting data loaders. Start building.
+Stop wrestling with format conversions. Stop rewriting data loaders. Save your time and Start building.
 
-## Installation
+## Create a Python Environment (e.g: std python env, conda, ...)
 
+```bash
+python3 -m venv saltup-env
+```
+
+## Activate the Python Environment
+```bash
+# On Linux/macOS
+source saltup-env/bin/activate  
+
+# On Windows:
+saltup-env\Scripts\activate
+```
+
+## Repository Installation in the Active Python Environment
+
+Install directly from GitHub:
 ```bash
 pip install git+https://github.com/freedreamer82/saltup.git
 ```
@@ -32,7 +48,7 @@ model = NeuralNetworkModel("model.onnx")     # ONNX
 model = NeuralNetworkModel("model.tflite")   # TensorFlow Lite
 
 # Same interface, any format
-predictions = model.predict(your_data)
+predictions = model.model_inference(your_data)
 ```
 
 Work with any dataset format:
@@ -92,9 +108,11 @@ class CustomCallback(BaseCallback):
     def on_train_end(self, context: CallbackContext):
         # Cleanup, final reports, model deployment, etc.
         self.deploy_model(context.best_model)
+```
 
-# Use alongside built-in callbacks
-callbacks = [MLflowCallback(...), CustomCallback()]
+## Track the progess of the training phase with built-in callbacks
+```python
+callbacks = [MLflowCallback(...), MQTTCallback()]
 ```
 
 ## Core Capabilities
