@@ -470,7 +470,7 @@ def evaluate(
 
     start_time = time.time()
     pbar = tqdm(dataloader, desc="Inference", dynamic_ncols=True)
-    for image, label in dataloader:
+    for image, label in pbar:
         yolo_out = yolo.run(
             image,
             confidence_thr=confidence_threshold,
