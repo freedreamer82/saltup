@@ -469,7 +469,7 @@ def evaluate(
     all_gt_boxes = []
 
     start_time = time.time()
-    pbar = tqdm(dataloader, desc="Processing data", dynamic_ncols=True)
+    pbar = tqdm(dataloader, desc="Inference", dynamic_ncols=True)
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -501,10 +501,9 @@ def evaluate(
         
         overall_metric = sum(metrics_per_class.values(), start=Metric())
         dict_tqdm = {
-            "tp": overall_metric.getTP(),
-            "fp": overall_metric.getFP(),
-            "fn": overall_metric.getFN(),
-            "accuracy": overall_metric.getAccuracy()
+            "precision": overall_metric.getPrecision(),
+            "recall": overall_metric.getRecall(),
+            "f1": overall_metric.getF1Score()
         }
 
         pbar.set_postfix(**dict_tqdm)
