@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from abc import ABC, abstractmethod
 import sys, io
+from tqdm import tqdm
 
 from saltup.ai.object_detection.utils.bbox import BBoxFormat, BBox, BBoxClassId, BBoxClassIdScore
 from saltup.ai.object_detection.utils.metrics import compute_ap, compute_map_50_95, compute_ap_for_threshold
@@ -441,6 +442,7 @@ def evaluate(
     iou_threshold: float = 0.5,
     confidence_threshold: float = 0.5,
     output_streams: Optional[List[io.IOBase]] = None,
+    mAP: bool = False
 ) -> Tuple[Dict[int, Metric], Metric, float]:
     """
     Evaluate a YOLO model on a dataset using a dataloader.
@@ -467,6 +469,7 @@ def evaluate(
     all_gt_boxes = []
 
     start_time = time.time()
+    pbar = tqdm(dataloader, desc="Processing data", dynamic_ncols=True)
     for image, label in dataloader:
         yolo_out = yolo.run(
             image,
@@ -495,13 +498,25 @@ def evaluate(
                 metrics_per_class[class_id].addFP(one_shot_metric[class_id].getFP())
                 metrics_per_class[class_id].addFN(one_shot_metric[class_id].getFN())
         image_count += 1
+        
+        overall_metric = sum(metrics_per_class.values(), start=Metric())
+        dict_tqdm = {
+            "tp": overall_metric.getTP(),
+            "fp": overall_metric.getFP(),
+            "fn": overall_metric.getFN(),
+            "accuracy": overall_metric.getAccuracy()
+        }
+
+        pbar.set_postfix(**dict_tqdm)
+        
     end_time = time.time()
     total_time = end_time - start_time
     avg_time_per_image = (total_time / image_count * 1000) if image_count > 0 else 0.0
 
     overall_metric = sum(metrics_per_class.values(), start=Metric())
     # Calculate mAP@50-95 across all images at once
-    overall_map_50_95 = compute_map_50_95(all_gt_boxes, all_pred_boxes) if all_gt_boxes and all_pred_boxes else 0.0
+    if mAP:
+        overall_map_50_95 = compute_map_50_95(all_gt_boxes, all_pred_boxes) if all_gt_boxes and all_pred_boxes else 0.0
     # Optional: print to all provided streams
     if output_streams:
         output_text = []
@@ -542,7 +557,8 @@ def evaluate(
         output_text.append(f"  - {'Overall Precision:':<25} {overall_metric.getPrecision():.4f}\n")
         output_text.append(f"  - {'Overall Recall:':<25} {overall_metric.getRecall():.4f}\n")
         output_text.append(f"  - {'Overall F1 Score:':<25} {overall_metric.getF1Score():.4f}\n")
-        output_text.append(f"  - {'Overall mAP@50-95 :':<25} {overall_map_50_95:.4f}\n")
+        if mAP:
+            output_text.append(f"  - {'Overall mAP@50-95 :':<25} {overall_map_50_95:.4f}\n")
         output_text.append("="*80 + "\n\n")
         output_str = ''.join(output_text)
         for stream in output_streams:
@@ -550,4 +566,7 @@ def evaluate(
                 stream.write(output_str)
                 if hasattr(stream, "flush"):
                     stream.flush()
-    return metrics_per_class, overall_metric, overall_map_50_95
+    if mAP:
+        return metrics_per_class, overall_metric, overall_map_50_95
+    else:
+        return metrics_per_class, overall_metric, 0.0

@@ -12,7 +12,6 @@ import tempfile
 import os
 from typing import Any, Dict, List, Tuple
 import torch
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from saltup.ai.nn_model import NeuralNetworkModel
 
 
@@ -396,7 +395,8 @@ class TestEvaluate(unittest.TestCase):
             yolo=yolo,
             dataloader=dataloader,
             iou_threshold=0.5,
-            confidence_threshold=0.5
+            confidence_threshold=0.5,
+            mAP=True  # Enable mAP calculation
         )
         
         # Should have initialized metrics for all classes but with zero values
@@ -494,7 +494,8 @@ class TestEvaluate(unittest.TestCase):
             dataloader=dataloader,
             iou_threshold=0.5,
             confidence_threshold=0.5,
-            output_streams=[output_buffer]
+            output_streams=[output_buffer],
+            mAP=True  # Enable mAP calculation
         )
         
         # Check that output was written to the buffer

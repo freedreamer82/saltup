@@ -1,6 +1,7 @@
 import numpy as np
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from typing import List, Tuple, Union
+from tqdm import tqdm
  
 
 class Metric:
@@ -190,10 +191,16 @@ def compute_map_50_95(gt_bboxes: List[BBox], pred_bboxes_scores: List[Tuple[BBox
     """
     iou_thresholds = np.arange(0.5, 1.0, 0.05)  # IoU thresholds from 0.50 to 0.95
     aps = []
-
-    for threshold in iou_thresholds:
+    
+    pbar = tqdm(iou_thresholds, desc="Computing mAP 50-95", dynamic_ncols=True)
+    for threshold in pbar:
         ap = compute_ap_for_threshold(gt_bboxes, pred_bboxes_scores, threshold)
         aps.append(ap)
+        
+        dict_tqdm = {
+            "mAP": np.mean(aps)
+        }
+        pbar.set_postfix(**dict_tqdm)
 
     return np.mean(aps)  # Mean of APs for all IoU thresholds
 

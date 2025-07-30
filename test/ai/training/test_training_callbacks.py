@@ -52,10 +52,10 @@ def test_keras_callback_adapter_calls_custom_on_epoch_end():
     adapter = _KerasCallbackAdapter(mock_cb)
     adapter.params = {'epochs': 10, 'batch_size': 32}  # Mock the params attribute
 
-    adapter.on_epoch_end(1, logs={'loss': 0.5, 'accuracy': 0.8})
+    adapter.on_epoch_end(1, logs={'loss': 0.5})
 
     # Verify that update_metrics is called with the correct arguments.
-    mock_cb.update_metrics.assert_any_call({'loss': 0.5, 'accuracy': 0.8})
+    mock_cb.update_metrics.assert_any_call({'loss': 0.5})
     mock_cb.update_metrics.assert_any_call({'epoch': 2})
     # Verify that on_epoch_end is called once.
     mock_cb.on_epoch_end.assert_called_once()
