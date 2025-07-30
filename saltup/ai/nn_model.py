@@ -154,7 +154,7 @@ class NeuralNetworkModel:
                         except Exception as e:
                             raise RuntimeError(f"Failed to infer output shape from input_shape: {self.model.input_shape}. Error: {e}")
                     else:
-                        raise RuntimeError("Cannot infer output shape: model does not have a valid 'input_shape' attribute.")
+                        raise RuntimeError("Cannot infer output shape: model does not have a valid 'input_shape' attribute. Please define an 'input_shape' attribute for the model")
                     self.output_shape =  output.shape[1:]  # Exclude batch size
                 self._is_loaded = True
                 # Model parameters
