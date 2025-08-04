@@ -37,6 +37,7 @@ dependencies = [
     "onnxruntime-gpu",
     "albumentations",
     "tqdm",
+    "toml",
     "dotmap",
     "IPython",
     "ipykernel",
