@@ -87,44 +87,115 @@ class ClassificationDataloader(BaseDataloader):
 
     def split(self, ratios:List[float]=[0.2, 0.8]) -> List['ClassificationDataloader']:
         """
-        Split the current dataset into two ClassificationDataloader instances.
+        Split the current dataset into multiple ClassificationDataloader instances.
 
         Args:
-            split_ratio (float): Ratio of the first split dataset size (e.g., 0.8 means 80% train, 20% test)
+            ratios (List[float]): Ratios for each split (must sum to 1.0)
 
         Returns:
-            (ClassificationDataloader, ClassificationDataloader): Tuple of two new dataloaders
+            List[ClassificationDataloader]: List of dataloaders for each split
         """
         
         if not np.isclose(sum(ratios), 1.0):
             raise ValueError("Ratios must sum to 1.0")
         
-        list_output = []
         list_image_paths = self.get_image_paths()
         list_labels = self.get_labels()
-        # Shuffle image paths and labels together
-        combined = list(zip(list_image_paths, list_labels))
-        random.shuffle(combined)
-        list_image_paths, list_labels = zip(*combined)
-        list_image_paths = list(list_image_paths)
-        list_labels = list(list_labels)
+
+        # if stratified:
+        # Stratified split - maintains class distribution
+        return self._stratified_split(list_image_paths, list_labels, ratios)
+        # else:
+        #     # Random split - may result in unbalanced class distribution
+        #     return self._random_split(list_image_paths, list_labels, ratios)
+    
+    def _stratified_split(self, image_paths, labels, ratios):
+        """
+        Perform stratified split to maintain class distribution across splits.
+        """
+        # Group samples by class
+        class_indices = {}
+        for idx, label in enumerate(labels):
+            if label not in class_indices:
+                class_indices[label] = []
+            class_indices[label].append(idx)
         
-        total_samples = len(list_image_paths)
-        start = 0
-        for ratio in ratios:
-            end = start + int(ratio * total_samples)
-            current_list_image_paths = list_image_paths[start:end]
-            current_list_labels = list_labels[start:end]
+        # Shuffle indices within each class
+        for label in class_indices:
+            random.shuffle(class_indices[label])
+        
+        # Initialize split containers
+        num_splits = len(ratios)
+        split_image_paths = [[] for _ in range(num_splits)]
+        split_labels = [[] for _ in range(num_splits)]
+        
+        # For each class, distribute samples according to ratios
+        for label, indices in class_indices.items():
+            class_size = len(indices)
+            start = 0
+            
+            for split_idx, ratio in enumerate(ratios):
+                if split_idx == len(ratios) - 1:
+                    # Last split gets all remaining samples to handle rounding
+                    end = class_size
+                else:
+                    end = start + int(ratio * class_size)
+                
+                # Add samples from this class to current split
+                for idx in indices[start:end]:
+                    split_image_paths[split_idx].append(image_paths[idx])
+                    split_labels[split_idx].append(labels[idx])
+                
+                start = end
+        
+        # Create dataloaders for each split
+        list_output = []
+        for split_idx in range(num_splits):
+            # Shuffle the combined samples within each split
+            combined = list(zip(split_image_paths[split_idx], split_labels[split_idx]))
+            random.shuffle(combined)
+            current_image_paths, current_labels = zip(*combined) if combined else ([], [])
+            
             current_dataloader = ClassificationDataloader(
-                source=[current_list_image_paths, current_list_labels],
+                source=[list(current_image_paths), list(current_labels)],
                 classes_dict=self.get_classes(),
                 img_size=self.get_img_size(),
                 extensions=self.get_extensions()
             )
-            start = end
             list_output.append(current_dataloader)
-            
+        
         return list_output
+    
+    # def _random_split(self, image_paths, labels, ratios):
+    #     """
+    #     Perform random split (original behavior).
+    #     """
+    #     # Shuffle image paths and labels together
+    #     combined = list(zip(image_paths, labels))
+    #     random.shuffle(combined)
+    #     image_paths, labels = zip(*combined)
+    #     image_paths = list(image_paths)
+    #     labels = list(labels)
+        
+    #     total_samples = len(image_paths)
+    #     start = 0
+    #     list_output = []
+        
+    #     for ratio in ratios:
+    #         end = start + int(ratio * total_samples)
+    #         current_image_paths = image_paths[start:end]
+    #         current_labels = labels[start:end]
+            
+    #         current_dataloader = ClassificationDataloader(
+    #             source=[current_image_paths, current_labels],
+    #             classes_dict=self.get_classes(),
+    #             img_size=self.get_img_size(),
+    #             extensions=self.get_extensions()
+    #         )
+    #         start = end
+    #         list_output.append(current_dataloader)
+            
+    #     return list_output
     
     @staticmethod
     def merge(dl1, dl2) -> 'ClassificationDataloader':
@@ -168,7 +239,66 @@ class ClassificationDataloader(BaseDataloader):
         
     def get_idx_to_class(self):
         return self.idx_to_class
+    
+    def get_class_distribution(self) -> dict:
+        """
+        Get the class distribution in the dataset.
         
+        Returns:
+            dict: Dictionary with class names as keys and tuples (count, percentage) as values
+        """
+        total_samples = len(self.labels)
+        if total_samples == 0:
+            return {}
+        
+        class_counts = {}
+        for label in self.labels:
+            class_name = self.idx_to_class[label]
+            class_counts[class_name] = class_counts.get(class_name, 0) + 1
+        
+        class_distribution = {}
+        for class_name, count in class_counts.items():
+            percentage = (count / total_samples) * 100
+            class_distribution[class_name] = (count, percentage)
+        
+        return class_distribution
+    
+    def print_class_distribution(self, title="Dataset"):
+        """
+        Print the class distribution in a readable format.
+        
+        Args:
+            title (str): Title for the distribution report
+        """
+        distribution = self.get_class_distribution()
+        print(f"\n{title} Class Distribution:")
+        print(f"Total samples: {len(self.labels)}")
+        print("-" * 40)
+        
+        for class_name, (count, percentage) in distribution.items():
+            print(f"{class_name:20}: {count:6} samples ({percentage:5.1f}%)")
+    
+    @staticmethod
+    def compare_distributions(dataloaders: List['ClassificationDataloader'], titles: List[str] = None):
+        """
+        Compare class distributions across multiple dataloaders.
+        
+        Args:
+            dataloaders (List[ClassificationDataloader]): List of dataloaders to compare
+            titles (List[str]): Optional titles for each dataloader
+        """
+        if titles is None:
+            titles = [f"Split {i+1}" for i in range(len(dataloaders))]
+        
+        print("\n" + "="*60)
+        print("CLASS DISTRIBUTION COMPARISON")
+        print("="*60)
+        
+        for i, (dataloader, title) in enumerate(zip(dataloaders, titles)):
+            dataloader.print_class_distribution(title)
+            if i < len(dataloaders) - 1:
+                print()
+
     def __len__(self):
         return len(self.image_paths)
     
