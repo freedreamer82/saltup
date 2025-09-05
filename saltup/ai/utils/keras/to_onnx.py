@@ -1,6 +1,7 @@
 import tensorflow as tf
 #from tf_keras.saving import load_model
-from tensorflow.keras.models import load_model
+#from tensorflow.keras.models import load_model
+import keras
 import tf2onnx
 import onnx
 import numpy as np
@@ -22,7 +23,7 @@ def convert_keras_to_onnx(
     keras_model_path: str,
     onnx_path: str,
     opset: int = 16
-) -> tuple[onnx.ModelProto, tf.keras.Model]:
+) -> tuple[onnx.ModelProto, keras.Model]:
     """
     Converts a Keras model (.keras) to ONNX format
 
@@ -36,7 +37,7 @@ def convert_keras_to_onnx(
     print(f"Converting Keras model '{keras_model_path}' to ONNX format at '{onnx_path}' with opset {opset}...")
     # 1. Load Keras model
     # Don't load compiler to avoid issues with custom loss
-    model: tf.keras.Model = load_model(
+    model: keras.Model = keras.models.load_model(
         keras_model_path,
         compile=False  
     )
@@ -89,7 +90,7 @@ def verify_onnx_model(
         Tuple of (stats_dict, keras_pred, onnx_pred)
     """
     # Load Keras model
-    keras_model: tf.keras.Model = load_model(keras_model_path, compile=False)
+    keras_model: keras.Model = keras.models.load_model(keras_model_path, compile=False)
 
     # Create ONNX session
     providers = ort.get_available_providers()

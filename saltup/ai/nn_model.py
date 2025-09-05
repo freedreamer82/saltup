@@ -6,7 +6,8 @@ import onnx
 import numpy as np
 
 import tensorflow as tf
-from tf_keras.saving import load_model
+#from tf_keras.saving import load_model
+import keras
 import time
 
 from saltup.utils.misc import suppress_stdout
@@ -38,7 +39,7 @@ class NeuralNetworkModel:
     def __init__(self, model_or_path: Any):
         self.model = None
         self.model_path = None
-        self.supported_formats = [".pt", ".keras", ".h5", ".onnx", ".tflite"]
+        self.supported_formats = [".pt", ".pth", ".keras", ".h5", ".onnx", ".tflite"]
         self.inference_time_ms = None
         self._is_loaded = False
         self.input_shape = None
@@ -53,7 +54,7 @@ class NeuralNetworkModel:
         if isinstance(model_or_path, str):
             if not os.path.exists(model_or_path):
                 raise ValueError(f"Model file not found: {model_or_path}")
-            if model_or_path.endswith(".pt"):
+            if model_or_path.endswith(".pt") or model_or_path.endswith(".pth"):
                 return ModelType.TORCH
             elif model_or_path.endswith(".keras") or model_or_path.endswith(".h5"):
                 return ModelType.KERAS
@@ -63,7 +64,7 @@ class NeuralNetworkModel:
                 return ModelType.TFLITE
         elif isinstance(model_or_path, torch.nn.Module):
             return ModelType.TORCH
-        elif isinstance(model_or_path, tf.keras.Model):
+        elif isinstance(model_or_path, keras.Model):
             return ModelType.KERAS
         elif isinstance(model_or_path, ort.InferenceSession):
             return ModelType.ONNX
@@ -131,7 +132,10 @@ class NeuralNetworkModel:
                 else:
                     # Load TORCH model
                     self.model_path = model_or_path
-                    self.model = torch.jit.load(self.model_path, map_location=device)  # Generic TORCH model loading
+                    try:
+                        self.model = torch.load(self.model_path, map_location=device, weights_only=False)  # Try standard loading first
+                    except:
+                        self.model = torch.jit.load(self.model_path, map_location=device)  # Generic TORCH model loading
                     # Model size
                     self.model_size_bytes = os.path.getsize(self.model_path)
                 
@@ -169,9 +173,10 @@ class NeuralNetworkModel:
                     self.model_path = model_or_path
                     # Load TensorFlow/Keras model (supports both .keras and .h5 formats)
                     try:
-                        self.model = tf.keras.models.load_model(self.model_path, compile=False, safe_mode=False)
+                        self.model = keras.models.load_model(self.model_path, compile=False, safe_mode=False)
                     except:
-                        self.model = load_model(self.model_path, compile=False, safe_mode=False)
+                        raise RuntimeError(f"Failed to load Keras model from path: {self.model_path}")
+                        #self.model = load_model(self.model_path, compile=False, safe_mode=False)
                     # Model size and parameters
                     self.model_size_bytes = os.path.getsize(self.model_path)
                 self.input_shape = self.model.input_shape  # Exclude the batch size
@@ -272,6 +277,9 @@ class NeuralNetworkModel:
                         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                     else:
                         device = torch.device(device_config)
+                    if isinstance(input_data, np.ndarray):
+                        input_data = torch.from_numpy(input_data)
+                    input_data = input_data.to(torch.float32)  # Ensure float32 dtype
                     input_data = input_data.to(device)
                     self.model.to(device)
                     output = self.model(input_data)

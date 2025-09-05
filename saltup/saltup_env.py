@@ -154,6 +154,15 @@ class _SaltupEnv:
                 return defaults
             except json.JSONDecodeError:
                 return defaults
-    
+    @property
+    def KERAS_BACKEND(self):
+        """
+        Keras backend to use.
+        Set via environment variable KERAS_BACKEND.
+        Options: 'tensorflow', 'torch', 'jax'
+        Default: 'torch'
+        """
+        return os.getenv("KERAS_BACKEND", "torch").lower()
+
 # Create a singleton instance for easy access
 SaltupEnv = _SaltupEnv()

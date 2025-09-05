@@ -5,6 +5,7 @@ from typing import Union
 import paho.mqtt.client as mqtt
 
 import tensorflow as tf
+import keras
 import torch
 from typing import List, Optional
  
@@ -17,13 +18,13 @@ class CallbackContext:
         The `epochs` and `best_epoch` attributes are 1-based (i.e., the first epoch is 1).
 
     Attributes:
-        model (Union[tf.keras.Model, torch.nn.Module]): The model being trained.
+        model (Union[keras.Model, torch.nn.Module]): The model being trained.
         epochs (int, optional): The total number of epochs for training (1-based).
         batch_size (int, optional): The batch size used during training.
         loss (float, optional): The latest training loss value.
         val_loss (float, optional): The latest validation loss value.
         other_metrics (dict, optional): Additional metrics tracked during training.
-        best_model (Union[tf.keras.Model, torch.nn.Module], optional): The best-performing model observed so far.
+        best_model (Union[keras.Model, torch.nn.Module], optional): The best-performing model observed so far.
         best_epoch (int, optional): The epoch at which the best model was observed (1-based).
         best_loss (float, optional): The lowest training loss observed.
         best_val_loss (float, optional): The lowest validation loss observed.
@@ -32,13 +33,13 @@ class CallbackContext:
         to_dict():
             Returns a dictionary representation of the context, including model types, training statistics, and any additional metrics.
     """
-    model: Union[tf.keras.Model, torch.nn.Module]
+    model: Union[keras.Model, torch.nn.Module]
     epochs: int = None
     batch_size: int = None
     loss: float = None
     val_loss: float = None
     other_metrics: dict = None
-    best_model: Union[tf.keras.Model, torch.nn.Module] = None
+    best_model: Union[keras.Model, torch.nn.Module] = None
     best_epoch: int = None
     best_loss: float = None
     best_val_loss: float = None
@@ -155,7 +156,7 @@ class BaseCallback:
         pass
 
 
-class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
+class _KerasCallbackAdapter(keras.callbacks.Callback):
     """
     Adapter class to bridge a custom callback implementing the BaseCallback interface with the Keras Callback API.
     This class wraps a user-defined callback and ensures it is called at appropriate points during Keras model training.
@@ -169,7 +170,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
         monitor (str): The metric to monitor.
         mode (str): The mode for monitoring ("min" or "max").
         best_value (float): The best value observed for the monitored metric.
-        best_model (tf.keras.Model or None): The best model observed so far.
+        best_model (keras.Model or None): The best model observed so far.
         best_epoch (int or None): The epoch at which the best model was observed.
     Methods:
         on_train_begin(logs=None): Called at the beginning of training; passes context to the custom callback.
@@ -213,7 +214,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             )
             if hasattr(self.cb, 'on_train_begin'):
                 self.cb.on_train_begin(context)
-        elif isinstance(self.cb, tf.keras.callbacks.Callback):
+        elif isinstance(self.cb, keras.callbacks.Callback):
             # If the callback is a Keras Callback, we can directly call its on_train_begin method
             self.cb.on_train_begin(logs)        
 
@@ -256,7 +257,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
             self._update_metrics_and_metadata(context)
             if hasattr(self.cb, 'on_train_end'):
                 self.cb.on_train_end(context)
-        elif isinstance(self.cb, tf.keras.callbacks.Callback):
+        elif isinstance(self.cb, keras.callbacks.Callback):
             # If the callback is a Keras Callback, we can directly call its on_train_end method
             self.cb.on_train_end(logs)
 
@@ -272,7 +273,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
                     is_better = True
             if is_better:
                 self.best_value = current
-                self.best_model = tf.keras.models.clone_model(self.model)
+                self.best_model = keras.models.clone_model(self.model)
                 self.best_model.set_weights(self.model.get_weights())
                 self.best_epoch = epoch + 1
                 self.best_logs = logs.copy()  # <--- save the best
@@ -299,7 +300,7 @@ class _KerasCallbackAdapter(tf.keras.callbacks.Callback):
                 self.cb.update_metrics({"epoch": epoch + 1})
             if hasattr(self.cb, 'on_epoch_end'):
                 self.cb.on_epoch_end(epoch + 1, context)
-        elif isinstance(self.cb, tf.keras.callbacks.Callback):
+        elif isinstance(self.cb, keras.callbacks.Callback):
             # If the callback is a Keras Callback, we can directly call its on_epoch_end method
             self.cb.on_epoch_end(epoch, logs)
         

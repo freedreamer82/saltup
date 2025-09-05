@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 import os
 import tensorflow as tf
+import keras
 from saltup.ai.utils.keras.to_onnx import (
     convert_keras_to_onnx, verify_onnx_model
 )
@@ -9,11 +10,11 @@ from saltup.ai.utils.keras.to_onnx import (
 
 def test_convert_keras_to_onnx_and_verify(tmp_path):
     # Create a mock Keras model using the functional API
-    inputs = tf.keras.Input(shape=(28, 28))
-    x = tf.keras.layers.Flatten()(inputs)
-    x = tf.keras.layers.Dense(128, activation='relu')(x)
-    outputs = tf.keras.layers.Dense(10, activation='softmax')(x)
-    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    inputs = keras.Input(shape=(28, 28))
+    x = keras.layers.Flatten()(inputs)
+    x = keras.layers.Dense(128, activation='relu')(x)
+    outputs = keras.layers.Dense(10, activation='softmax')(x)
+    model = keras.Model(inputs=inputs, outputs=outputs)
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
     # Save the mock Keras model

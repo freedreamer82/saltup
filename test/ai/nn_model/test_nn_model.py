@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import onnxruntime as ort
 import tensorflow as tf
+import keras 
 import tf2onnx
 import onnx
 from onnx import helper, TensorProto
@@ -44,18 +45,18 @@ def sample_models(tmp_path_factory, request):
 
     # Create a simple TensorFlow/Keras model
     def create_simple_model():
-        input_layer = tf.keras.layers.Input(shape=(28, 28, 1), name="input")
+        input_layer = keras.layers.Input(shape=(28, 28, 1), name="input")
 
         # Add layers
-        x = tf.keras.layers.Conv2D(32, (3, 3), activation='relu')(input_layer)
-        x = tf.keras.layers.MaxPooling2D((2, 2))(x)
-        x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu')(x)
-        x = tf.keras.layers.MaxPooling2D((2, 2))(x)
-        x = tf.keras.layers.Flatten()(x)
-        output_layer = tf.keras.layers.Dense(10, activation='softmax')(x)
+        x = keras.layers.Conv2D(32, (3, 3), activation='relu')(input_layer)
+        x = keras.layers.MaxPooling2D((2, 2))(x)
+        x = keras.layers.Conv2D(64, (3, 3), activation='relu')(x)
+        x = keras.layers.MaxPooling2D((2, 2))(x)
+        x = keras.layers.Flatten()(x)
+        output_layer = keras.layers.Dense(10, activation='softmax')(x)
 
         # Create the model
-        model = tf.keras.models.Model(inputs=input_layer, outputs=output_layer, name="functional_model")
+        model = keras.models.Model(inputs=input_layer, outputs=output_layer, name="functional_model")
         return model
 
     # Create and save a PyTorch model
@@ -209,9 +210,9 @@ class TestNeuralNetworkModel:
     def test_model_instance_loading(self):
         """Test loading model instances directly (not from file paths)."""
         # Test with Keras model instance
-        input_layer = tf.keras.layers.Input(shape=(10,))
-        output_layer = tf.keras.layers.Dense(5)(input_layer)
-        keras_model = tf.keras.models.Model(inputs=input_layer, outputs=output_layer)
+        input_layer = keras.layers.Input(shape=(10,))
+        output_layer = keras.layers.Dense(5)(input_layer)
+        keras_model = keras.models.Model(inputs=input_layer, outputs=output_layer)
         
         nn_model = NeuralNetworkModel(keras_model)
         assert nn_model.is_loaded

@@ -1,15 +1,16 @@
 import os
 import numpy as np
 import tensorflow as tf
+import keras
 from saltup.ai.utils.keras.quantization import quantize
 
 
 def test_tflite_quantization(tmp_path):
     # Create a mock Keras model
-    model = tf.keras.Sequential([
-        tf.keras.layers.Flatten(input_shape=(28, 28)),
-        tf.keras.layers.Dense(128, activation='relu'),
-        tf.keras.layers.Dense(10, activation='softmax')
+    model = keras.Sequential([
+        keras.layers.Flatten(input_shape=(28, 28)),
+        keras.layers.Dense(128, activation='relu'),
+        keras.layers.Dense(10, activation='softmax')
     ])
     
     model.compile(

@@ -30,7 +30,7 @@ dependencies = [
     "onnx",
     "tensorflow==2.18.0",
     "keras==3.8.0",
-    "tf_keras",
+    "onnx2torch",
     "torch",
     "torchvision",
     "torchaudio",
