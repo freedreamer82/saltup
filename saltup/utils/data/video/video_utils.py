@@ -5,6 +5,7 @@ import cv2
 import contextlib
 import numpy as np
 import re
+import math
 import struct
 from pathlib import Path, PurePosixPath
 import subprocess
@@ -110,10 +111,93 @@ class MotionDetectionOptions:
     start_s: float = 0.0
     duration_s: Optional[float] = None
     resize_width: int = 320
-    store: bool = True
-    verbose: bool = True
+    store: bool = False
+    verbose: bool = False
     fps_override: Optional[float] = None
     roi: Optional[Tuple[float, float, float, float]] = None
+
+    # ------------------------------------------------------------------
+    # High-level / GUI constructor
+    # ------------------------------------------------------------------
+    @classmethod
+    def from_gui(cls, smoothing: float = 0.5, sensitivity: float = 0.5,
+                 grid_quadrants: int = 4, *, start_s: float = 0.0,
+                 duration_s: Optional[float] = None, resize_width: int = 320,
+                 fps_override: Optional[float] = None, store: bool = False,
+                 verbose: bool = False, roi: Optional[Tuple[float, float, float, float]] = None) -> "MotionDetectionOptions":
+        """Build options from a few independent, high-level controls.
+
+        The raw fields of :class:`MotionDetectionOptions` are coupled: the activity
+        threshold is expressed as *% of the cell*, so it depends on the grid geometry,
+        and the movement signal scales with the centroid-shift look-back, so it also
+        depends on the temporal windows. This constructor hides those couplings behind
+        three independent controls and derives every field consistently:
+
+        * ``smoothing`` (0..1): temporal smoothing / lag. ``0`` = snappy & noisy,
+          ``1`` = smooth & laggy. Drives ``window_seconds``, ``move_window_sec`` and
+          ``smooth_sec``. Neutral ``0.5`` reproduces the class defaults.
+        * ``sensitivity`` (0..1): ``0`` = strict (few detections), ``1`` = very sensitive
+          (many detections). Drives the base threshold and the pixel-level gate (``pixel_k``).
+        * ``grid_quadrants`` (int, 2..16): number of spatial cells; snapped to the
+          range accepted by :func:`_compute_grid`.
+
+        Absolute detection sensitivity is *preserved* across grid and smoothing
+        changes: ``move_threshold`` is rescaled by the look-back window and by the cell
+        size (a cell spans ``resize_width / cols`` of the image, where ``cols`` is the
+        number of grid columns) so the same real-world motion still triggers.
+
+        Calling with no arguments reproduces the default :class:`MotionDetectionOptions`
+        exactly, i.e. ``MotionDetectionOptions.from_gui() == MotionDetectionOptions()``.
+        """
+        r = max(0.0, min(1.0, float(smoothing)))
+        s = max(0.0, min(1.0, float(sensitivity)))
+        nq = max(_MIN_QUADRANTS, min(_MAX_QUADRANTS, int(round(grid_quadrants))))
+
+        # smoothing -> temporal windows (neutral 0.5 == class defaults).
+        window_seconds = _lerp(0.5, 2.5, r)
+        move_window_sec = _lerp(0.3, 1.7, r)
+        smooth_sec = _lerp(0.2, 0.8, r)
+
+        # Sensitivity -> base threshold + pixel gate (neutral 0.5 == class defaults).
+        # Higher sensitivity = lower threshold / looser pixel gate = MORE detections.
+        t0 = _lerp(14.0, 2.0, s)
+        pixel_k = _lerp(7.0, 2.0, s)
+
+        # Preserve absolute sensitivity: scale the threshold by the look-back window and
+        # by the cell size so the same real motion triggers regardless of grid/smoothing.
+        # The movement signal is built from the per-cell *normalised* centroid, so for a
+        # fixed absolute image-space horizontal move it scales with the number of grid
+        # columns (a cell spans 1/cols of the image width).  To keep the same real motion
+        # triggering, the threshold must scale with cols (not sqrt(n_quadrants), which only
+        # matches square grids 4/9/16 and under-scales every rectangular grid).
+        _, cols = _compute_grid(nq)
+        cols_4 = _compute_grid(4)[1]  # grid=4 reference used by the neutral defaults
+        move_threshold = t0 * (move_window_sec / 1.0) \
+            * (float(cols) / float(cols_4)) \
+            * (320.0 / float(resize_width))
+
+        return cls(
+            n_quadrants=nq,
+            pixel_k=round(pixel_k, 2),
+            window_seconds=round(window_seconds, 3),
+            move_window_sec=round(move_window_sec, 3),
+            min_seconds=0.0,
+            smooth_sec=round(smooth_sec, 3),
+            move_threshold=round(move_threshold, 3),
+            start_s=start_s,
+            duration_s=duration_s,
+            resize_width=int(resize_width),
+            store=store,
+            verbose=verbose,
+            fps_override=fps_override,
+            roi=roi
+        )
+
+
+def _lerp(a: float, b: float, t: float) -> float:
+    """Linearly interpolate ``a`` -> ``b`` for ``t`` clamped to [0, 1]."""
+    t = max(0.0, min(1.0, float(t)))
+    return float(a + (b - a) * t)
 
 # =============================================================================
 # Module Constants

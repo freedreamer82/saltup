@@ -43,7 +43,7 @@ def _collect_frames(video_input, frame_numbers, ignore_edit_list):
     """Decode the given frame numbers, returning {frame_number: ndarray}."""
     collected = {}
 
-    def _cb(image, frame_number, _total):
+    def _cb(image, frame_number, _total, _metadata=None):
         collected[frame_number] = image.get_data().copy()
         return image
 
