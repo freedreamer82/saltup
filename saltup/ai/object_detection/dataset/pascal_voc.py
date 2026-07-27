@@ -46,6 +46,7 @@ from saltup.utils.data.s3.s3_utils import S3
 from botocore.exceptions import ClientError
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
+from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.utils import configure_logging
 
 
@@ -54,16 +55,18 @@ class PascalVOCLoader(BaseDataloader):
         self,
         images_dir: Union[str, Path],
         annotations_dir: Union[str, Path],
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        label_map: Optional[LabelMap] = None
     ):
         """
         Initialize Pascal VOC dataset loader.
-        
+
         Args:
             image_dir: Directory containing images
             annotations_dir: Directory containing XML annotations
             color_mode: Color mode for loading images
-            
+            label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+
         Raises:
             FileNotFoundError: If directories don't exist
         """
@@ -79,8 +82,9 @@ class PascalVOCLoader(BaseDataloader):
         self.image_dir = Path(images_dir)
         self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
+        self._label_map = label_map
         self._current_index = 0
-        
+
         # Load image-annotation pairs
         self.image_annotation_pairs = self._load_image_annotation_pairs()
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
@@ -148,7 +152,7 @@ class PascalVOCLoader(BaseDataloader):
         image = self.load_image(image_path, self.color_mode)
         annotations = read_annotation(annotation_path)
 
-        return Path(image_path), image, annotations
+        return Path(image_path), image, self._apply_label_map(annotations)
 
     def split(self, ratio):
         """Split dataset into subsets based on given ratio."""
@@ -199,7 +203,8 @@ class PascalVOCS3Loader(BaseDataloader):
         s3_client: S3,
         download_file: bool = False,
         max_files: int = -1,
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        label_map: Optional[LabelMap] = None
     ):
         """
         Initialize Pascal VOC S3 dataset loader.
@@ -211,6 +216,7 @@ class PascalVOCS3Loader(BaseDataloader):
             max_files: Maximum number of files to download from S3 (-1 for all)
             download_file: Whether to download files from S3
             color_mode: Color mode for loading images
+            label_map: Optional LabelMap collapsing or renaming labels as they are loaded
 
         Raises:
             FileNotFoundError: If directories don't exist
@@ -229,8 +235,9 @@ class PascalVOCS3Loader(BaseDataloader):
         self.images_dir = Path(images_dir)
         self.annotations_dir = Path(annotations_dir)
         self.color_mode = color_mode
+        self._label_map = label_map
         self._current_index = 0
-        
+
         # Load image-annotation pairs
         self.image_annotation_pairs = self._load_image_annotation_pairs()
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
@@ -329,7 +336,7 @@ class PascalVOCS3Loader(BaseDataloader):
             temp_annotation_path = os.path.join(tmpdirname, os.path.basename(annotation_path))
             annotations = read_annotation(temp_annotation_path)
         image_path = os.path.join("s3://", self.s3_client._bucket_name, image_path)
-        return image_path, image, annotations
+        return image_path, image, self._apply_label_map(annotations)
 
     def split(self, ratio):
         """Split dataset into subsets based on given ratio."""

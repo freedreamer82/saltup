@@ -35,12 +35,20 @@ class DataLoaderFactory:
         Args:
             root_dir (str or Path): Path to the dataset root directory.
             *args, **kwargs: Additional arguments passed to the dataloader constructors.
+                Keyword arguments common to every format are forwarded as-is, so for
+                example `label_map=LabelMap.collapse(...)` works whatever the detected
+                format is.
 
         Returns:
             tuple: (train_dataloader, val_dataloader, test_dataloader)
 
         Raises:
             ValueError: If the dataset type is not supported or the path is invalid.
+
+        Example:
+            >>> label_map = LabelMap.collapse(["feeding", "climbing"], into="mouse",
+            ...                               class_names=["mouse", "feeding", "climbing", "food"])
+            >>> train, val, test = DataLoaderFactory.create(root_dir, label_map=label_map)
         """
         if not isinstance(root_dir, Path):
             root_dir = Path(root_dir)

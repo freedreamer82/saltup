@@ -80,6 +80,18 @@ from saltup.ai.object_detection.dataset.loader_factory import DataLoaderFactory
 train_dl, val_dl, test_dl = DataLoaderFactory.get_dataloaders("./your_dataset")
 ```
 
+Collapse labels as you load, without rewriting a single annotation file:
+```python
+from saltup.ai.base_dataformat.label_map import LabelMap
+
+# A dataset labelled mouse / feeding / climbing / food, loaded as mouse / food
+label_map = LabelMap.collapse(["feeding", "climbing"], into="mouse",
+                              class_names=["mouse", "feeding", "climbing", "food"])
+
+train_dl, val_dl, test_dl = DataLoaderFactory.create("./mice", label_map=label_map)
+```
+Behaviour annotations become the object they describe, labels you didn't mention are left alone, and the dataset on disk is never touched. See [docs/label_mapping.md](docs/label_mapping.md).
+
 Saltup automatically handles preprocessing and postprocessing for **all major YOLO variants**. No more manual image resizing, normalization, or output decoding:
 ```python
 from saltup.ai.object_detection.yolo.yolo_factory import YoloFactory
@@ -142,7 +154,7 @@ callbacks = [MLflowCallback(...), MQTTCallback()]
 One interface for .pt, .keras, .onnx, .tflite models. Load once, use everywhere.
 
 **📊 Dataset Flexibility**  
-Auto-detect and work with COCO, Pascal VOC, YOLO formats without manual conversion.
+Auto-detect and work with COCO, Pascal VOC, YOLO formats without manual conversion. Collapse or rename labels at load time with [`LabelMap`](docs/label_mapping.md).
 
 **🎯 YOLO Pre/Post-Processing Out-of-the-Box**  
 Built-in preprocessing and postprocessing for all major YOLO variants:
@@ -178,6 +190,10 @@ saltup_yolo_image_inference --model yolov4.keras --type anchors_based --img imag
 # Dataset utilities
 saltup_yolo_count_classes ./dataset        # Analyze your data
 saltup_info                                # Package information
+
+# Collapse labels into a new copy of a dataset (YOLO, COCO or Pascal VOC)
+saltup_collapse_labels ./mice ./mice_collapsed --map feeding=mouse climbing=mouse \
+    --class-names mouse feeding climbing food
 ```
 
 ## Real-World Workflows
