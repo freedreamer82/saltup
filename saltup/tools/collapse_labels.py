@@ -21,7 +21,7 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
@@ -138,7 +138,7 @@ def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, in
 
         if label_map.dedup_iou is not None:
             before = len(kept)
-            kept = _dedup_yolo_lines(kept, label_map)
+            kept = _dedup_yolo_lines(kept, label_map, label_map.dedup_iou)
             if len(kept) != before:
                 dropped += before - len(kept)
                 changed = True
@@ -153,9 +153,16 @@ def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, in
 
 def _dedup_yolo_lines(
     lines: List[Tuple[int, List[str]]],
-    label_map: LabelMap
+    label_map: LabelMap,
+    threshold: float
 ) -> List[Tuple[int, List[str]]]:
-    """Drop same-class YOLO lines overlapping an already-kept line."""
+    """Drop same-class YOLO lines overlapping an already-kept line.
+
+    Args:
+        lines: Surviving (class_id, components) pairs for one label file.
+        label_map: Supplies the IoU variant to compare with.
+        threshold: IoU at or above which a line is considered a duplicate.
+    """
     boxes = [
         BBoxClassId(
             coordinates=[float(c) for c in components[1:5]],
@@ -172,7 +179,7 @@ def _dedup_yolo_lines(
     for i, box in enumerate(boxes):
         if any(
             boxes[j].class_id == box.class_id
-            and box.compute_iou(boxes[j], label_map.iou_type) >= label_map.dedup_iou
+            and box.compute_iou(boxes[j], label_map.iou_type) >= threshold
             for j in kept_indices
         ):
             continue
@@ -255,12 +262,12 @@ def collapse_coco_annotations(annotations_file: Path, label_map: LabelMap) -> Tu
             surviving_names.append(new_name)
 
     # Keep the original category dicts (supercategory and friends) where possible.
-    new_categories = []
+    new_categories: List[Dict[str, Any]] = []
     name_to_new_id: Dict[str, int] = {}
     for position, name in enumerate(surviving_names):
         original = name_to_category.get(name)
         new_id = position if label_map.reindex else (original['id'] if original else position)
-        category = dict(original) if original else {'name': name}
+        category: Dict[str, Any] = dict(original) if original else {'name': name}
         category['id'] = new_id
         category['name'] = name
         new_categories.append(category)

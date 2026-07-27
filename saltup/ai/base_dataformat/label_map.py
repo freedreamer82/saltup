@@ -392,21 +392,25 @@ class LabelMap:
             mapped.append(new_annotation)
 
         if self.dedup_iou is not None:
-            mapped = self._deduplicate(mapped)
+            mapped = self._deduplicate(mapped, self.dedup_iou)
 
         return mapped
 
-    def _deduplicate(self, annotations: List[BBoxClassId]) -> List[BBoxClassId]:
+    def _deduplicate(self, annotations: List[BBoxClassId], threshold: float) -> List[BBoxClassId]:
         """Drop boxes of the same resulting class overlapping an earlier kept box.
 
         BBox requires image dimensions at construction, so every annotation is
         guaranteed to be comparable here.
+
+        Args:
+            annotations: Annotations to filter, already mapped.
+            threshold: IoU at or above which a box is considered a duplicate.
         """
         kept: List[BBoxClassId] = []
         for annotation in annotations:
             duplicate = any(
                 (annotation.class_id, annotation.class_name) == (other.class_id, other.class_name)
-                and annotation.compute_iou(other, self.iou_type) >= self.dedup_iou
+                and annotation.compute_iou(other, self.iou_type) >= threshold
                 for other in kept
             )
             if not duplicate:

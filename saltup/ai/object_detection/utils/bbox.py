@@ -1163,7 +1163,9 @@ class BBoxClassId(BBox):
         return self._class_id
 
     @class_id.setter
-    def class_id(self, value: int):
+    def class_id(self, value: Optional[int]):
+        # Optional to match __init__, which accepts None: Pascal VOC annotations
+        # are identified by name and carry no class id.
         self._class_id = value
 
     @property

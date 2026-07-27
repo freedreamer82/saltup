@@ -6,6 +6,7 @@ import json
 import numpy as np
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import List
 
 from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxClassIdScore, BBoxFormat
@@ -30,6 +31,45 @@ def make_yolo_bbox(class_id, coords=(0.5, 0.5, 0.2, 0.2)):
         coordinates=list(coords), class_id=class_id, class_name="",
         fmt=BBoxFormat.YOLO, img_width=100, img_height=100
     )
+
+
+def annotations_of(item) -> List[BBoxClassId]:
+    """Pull the annotations out of a loader item.
+
+    Loaders yield (path, image, annotations), but `__getitem__` is typed as
+    returning either one such tuple or a list of them, so indexing it directly
+    reads as a union to a type checker.
+    """
+    return item[2]
+
+
+def items_of(sliced) -> List:
+    """Normalize a loader slice result to a list of items.
+
+    Same reason as `annotations_of`: the slice branch of `__getitem__` is not
+    distinguished from the single-item branch by its type.
+    """
+    return sliced
+
+
+def object_names(root) -> List[str]:
+    """Read the <name> of every <object> in a parsed VOC annotation."""
+    names = []
+    for obj in root.findall('object'):
+        name_elem = obj.find('name')
+        assert name_elem is not None and name_elem.text is not None
+        names.append(name_elem.text)
+    return names
+
+
+def object_tags(root, tag: str) -> List[str]:
+    """Read an arbitrary child tag of every <object> in a parsed VOC annotation."""
+    values = []
+    for obj in root.findall('object'):
+        elem = obj.find(tag)
+        assert elem is not None and elem.text is not None
+        values.append(elem.text)
+    return values
 
 
 def make_voc_bbox(class_name, coords=(10, 10, 30, 30)):
@@ -257,7 +297,7 @@ class TestLabelMapValidation:
 
     def test_invalid_label_type(self):
         with pytest.raises(ValueError, match="expected a class id"):
-            LabelMap({1.5: 0})
+            LabelMap({1.5: 0})  # type: ignore[dict-item]  # wrong type is the point
 
     def test_collapse_requires_into_for_sequence(self):
         with pytest.raises(ValueError, match="`into` is required"):
@@ -363,8 +403,8 @@ class TestLoaderIntegration:
             dirs['images']['train'], dirs['labels']['train'], label_map=label_map
         )
         by_iteration = [[b.class_id for b in anns] for _, _, anns in loader]
-        by_index = [[b.class_id for b in loader[i][2]] for i in range(len(loader))]
-        by_slice = [[b.class_id for b in anns] for _, _, anns in loader[:]]
+        by_index = [[b.class_id for b in annotations_of(loader[i])] for i in range(len(loader))]
+        by_slice = [[b.class_id for b in annotations_of(item)] for item in items_of(loader[:])]
         assert by_iteration == by_index == by_slice
 
     def test_repeated_access_does_not_compound(self, yolo_dataset):
@@ -374,9 +414,9 @@ class TestLoaderIntegration:
         loader = YoloDarknetLoader(
             dirs['images']['train'], dirs['labels']['train'], label_map=label_map
         )
-        first = [b.class_id for b in loader[0][2]]
+        first = [b.class_id for b in annotations_of(loader[0])]
         for _ in range(3):
-            assert [b.class_id for b in loader[0][2]] == first
+            assert [b.class_id for b in annotations_of(loader[0])] == first
 
     def test_set_label_map_after_construction(self, yolo_dataset):
         _, dirs = yolo_dataset
@@ -389,7 +429,7 @@ class TestLoaderIntegration:
         _, images_dir, annotations_dir = voc_dataset
         label_map = LabelMap.collapse(['feeding'], into='mouse')
         loader = PascalVOCLoader(images_dir, annotations_dir, label_map=label_map)
-        _, _, annotations = loader[0]
+        annotations = annotations_of(loader[0])
         assert [b.class_name for b in annotations] == ['mouse', 'mouse', 'food']
 
     def test_coco_loader_applies_label_map(self, tmp_path):
@@ -416,13 +456,14 @@ class TestLoaderIntegration:
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=base.get_category_names())
         loader = COCOLoader(images_dir, annotations_file, label_map=label_map)
-        assert [b.class_id for b in loader[0][2]] == [1, 1, 5]
+        assert [b.class_id for b in annotations_of(loader[0])] == [1, 1, 5]
 
     def test_factory_forwards_label_map(self, yolo_dataset):
         dataset_root, _ = yolo_dataset
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES)
         train, _, _ = DataLoaderFactory.create(dataset_root, label_map=label_map)
+        assert train is not None
         assert train.get_label_map() is label_map
         all_ids = sorted(b.class_id for _, _, anns in train for b in anns)
         assert all_ids == [0, 0, 0, 3]
@@ -505,10 +546,9 @@ class TestCollapseLabelsCLI:
         collapse_voc_annotations(annotations_dir, LabelMap.collapse(['feeding'], into='mouse'))
 
         root = ET.parse(annotations_dir / "img1.xml").getroot()
-        assert [o.find('name').text for o in root.findall('object')] == \
-            ['mouse', 'mouse', 'food']
+        assert object_names(root) == ['mouse', 'mouse', 'food']
         # The <difficult> tag is not parsed by read_annotation and must survive.
-        assert [o.find('difficult').text for o in root.findall('object')] == ['0', '1', '0']
+        assert object_tags(root, 'difficult') == ['0', '1', '0']
 
     def test_voc_rewrite_drop_unmapped(self, voc_dataset):
         _, _, annotations_dir = voc_dataset
@@ -516,7 +556,7 @@ class TestCollapseLabelsCLI:
         collapse_voc_annotations(annotations_dir, label_map)
         root = ET.parse(annotations_dir / "img1.xml").getroot()
         # mouse (destination) and feeding (source) survive; food is dropped.
-        assert [o.find('name').text for o in root.findall('object')] == ['mouse', 'mouse']
+        assert object_names(root) == ['mouse', 'mouse']
 
     def test_coco_rewrite_preserves_unparsed_fields(self, tmp_path):
         annotations_file = tmp_path / "instances.json"
