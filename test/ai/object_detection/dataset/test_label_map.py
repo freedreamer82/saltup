@@ -314,6 +314,57 @@ class TestLabelMapValidation:
             label_map.apply([make_yolo_bbox(1)])
 
 
+class TestUnknownClasses:
+    """Classes outside class_names must never disappear silently."""
+
+    def test_unknown_id_passes_through_without_reindex(self):
+        label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
+        result = label_map.apply([make_yolo_bbox(0), make_yolo_bbox(7)])
+        assert [b.class_id for b in result] == [0, 7]
+
+    def test_unknown_id_raises_under_reindex(self):
+        """Renumbering an id class_names does not cover is impossible, not a no-op."""
+        label_map = LabelMap.collapse(['feeding'], into='mouse',
+                                      class_names=CLASS_NAMES, reindex=True)
+        with pytest.raises(ValueError, match="cannot reindex class id 7"):
+            label_map.apply([make_yolo_bbox(7)])
+        with pytest.raises(ValueError, match="cannot reindex class id 7"):
+            label_map.map_class_id(7)
+
+    def test_unknown_id_dropped_when_requested(self):
+        """With drop_unmapped the discard is explicit, so it stays a discard."""
+        label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES,
+                                      drop_unmapped=True, reindex=True)
+        assert label_map.apply([make_yolo_bbox(7)]) == []
+        assert label_map.map_class_id(7) is None
+
+
+class TestFlavourAccessors:
+    def test_name_rules_without_class_names_match_names_only(self):
+        label_map = LabelMap.collapse(['feeding'], into='mouse')
+        assert label_map.matches_names
+        assert not label_map.matches_ids
+
+    def test_id_rules_without_class_names_match_ids_only(self):
+        label_map = LabelMap.collapse([1], into=0)
+        assert label_map.matches_ids
+        assert not label_map.matches_names
+
+    def test_class_names_bridges_both(self):
+        label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
+        assert label_map.matches_ids and label_map.matches_names
+
+    def test_name_is_not_erased_when_destination_has_none(self):
+        """An id rule with no class_names must not blank an annotation's name."""
+        label_map = LabelMap.collapse([1], into=0)
+        annotation = BBoxClassId(coordinates=[0.5, 0.5, 0.2, 0.2], class_id=1,
+                                 class_name="feeding", fmt=BBoxFormat.YOLO,
+                                 img_width=100, img_height=100)
+        result = label_map.apply([annotation])[0]
+        assert result.class_id == 0
+        assert result.class_name == "feeding"
+
+
 class TestLabelMapHelpers:
     def test_map_class_id(self):
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
@@ -592,6 +643,96 @@ class TestCollapseLabelsCLI:
         assert data['licenses'] == [{"id": 1, "name": "CC"}]
         assert data['annotations'][0]['segmentation'] == [[0, 0, 5, 0, 5, 5]]
         assert data['categories'][0]['supercategory'] == 'animal'
+
+    def test_yolo_refuses_name_rules_without_class_names(self, yolo_dataset, tmp_path):
+        """Name rules cannot match YOLO ids -- this must fail, not quietly no-op."""
+        dataset_root, _ = yolo_dataset
+        label_map = LabelMap.collapse(['feeding'], into='mouse')
+        with pytest.raises(ValueError, match="name-based"):
+            collapse_dataset(dataset_root, tmp_path / "out", label_map)
+
+    def test_voc_refuses_id_rules(self, voc_dataset, tmp_path):
+        """Id rules cannot match VOC names -- this must fail, not quietly no-op."""
+        root, _, _ = voc_dataset
+        with pytest.raises(ValueError, match="id-based"):
+            collapse_dataset(root, tmp_path / "out", LabelMap.collapse([1], into=0))
+
+    def test_failed_run_leaves_no_half_collapsed_copy(self, yolo_dataset, tmp_path):
+        dataset_root, _ = yolo_dataset
+        output = tmp_path / "out"
+        label_map = LabelMap.collapse(['feeding'], into='mouse')
+        with pytest.raises(ValueError):
+            collapse_dataset(dataset_root, output, label_map)
+        assert not output.exists()
+
+    def test_coco_accepts_id_rules(self, tmp_path):
+        """`--map 4=1` means category ids for COCO, and must actually apply."""
+        annotations_file = tmp_path / "instances.json"
+        annotations_file.write_text(json.dumps({
+            "images": [{"id": 1, "file_name": "img1.jpg", "width": 10, "height": 10}],
+            "categories": [{"id": 1, "name": "mouse"}, {"id": 4, "name": "feeding"}],
+            "annotations": [{"id": 1, "image_id": 1, "category_id": 4,
+                             "bbox": [0, 0, 5, 5]}],
+        }))
+        remapped, dropped = collapse_coco_annotations(annotations_file, LabelMap({4: 1}))
+        data = json.loads(annotations_file.read_text())
+
+        assert (remapped, dropped) == (1, 0)
+        assert [a['category_id'] for a in data['annotations']] == [1]
+        assert [c['name'] for c in data['categories']] == ['mouse']
+
+    def test_coco_reindex_orders_by_lowest_original_id(self, tmp_path):
+        """The CLI must renumber the way LabelMap does, not by list position."""
+        annotations_file = tmp_path / "instances.json"
+        annotations_file.write_text(json.dumps({
+            "images": [],
+            # Listed out of id order on purpose.
+            "categories": [{"id": 9, "name": "food"}, {"id": 2, "name": "mouse"},
+                           {"id": 5, "name": "feeding"}],
+            "annotations": [],
+        }))
+        label_map = LabelMap.collapse(['feeding'], into='mouse', reindex=True,
+                                      class_names={2: 'mouse', 5: 'feeding', 9: 'food'})
+        collapse_coco_annotations(annotations_file, label_map)
+        data = json.loads(annotations_file.read_text())
+
+        assert [(c['id'], c['name']) for c in data['categories']] == [(0, 'mouse'), (1, 'food')]
+        assert label_map.get_class_names() == ['mouse', 'food']
+
+    def test_coco_preserves_pretty_printing(self, tmp_path):
+        annotations_file = tmp_path / "instances.json"
+        annotations_file.write_text(json.dumps({
+            "images": [],
+            "categories": [{"id": 1, "name": "mouse"}, {"id": 2, "name": "feeding"}],
+            "annotations": [],
+        }, indent=2))
+        collapse_coco_annotations(annotations_file, LabelMap.collapse(['feeding'], into='mouse'))
+        assert "\n  " in annotations_file.read_text()
+
+    def test_coco_keeps_compact_json_compact(self, tmp_path):
+        annotations_file = tmp_path / "instances.json"
+        annotations_file.write_text(json.dumps({
+            "images": [],
+            "categories": [{"id": 1, "name": "mouse"}, {"id": 2, "name": "feeding"}],
+            "annotations": [],
+        }))
+        collapse_coco_annotations(annotations_file, LabelMap.collapse(['feeding'], into='mouse'))
+        assert "\n" not in annotations_file.read_text()
+
+    def test_yolo_preserves_unparseable_lines(self, tmp_path):
+        """A malformed line must survive, not be silently deleted."""
+        labels_dir = tmp_path / "labels"
+        labels_dir.mkdir()
+        (labels_dir / "a.txt").write_text(
+            "0 0.5 0.5 0.2 0.2\nthis is not an annotation\n1 0.4 0.4 0.1 0.1\n"
+        )
+        modified, dropped = collapse_yolo_labels(labels_dir, LabelMap({1: 0}))
+        lines = (labels_dir / "a.txt").read_text().splitlines()
+
+        assert (modified, dropped) == (1, 0)
+        assert lines == ["0 0.5 0.5 0.2 0.2",
+                         "this is not an annotation",
+                         "0 0.4 0.4 0.1 0.1"]
 
     def test_coco_rewrite_drop_unmapped(self, tmp_path):
         annotations_file = tmp_path / "instances.json"

@@ -17,12 +17,14 @@ Example:
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
+from saltup.utils import configure_logging
 from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxFormat
 from saltup.ai.object_detection.dataset.yolo_darknet import (
@@ -98,12 +100,41 @@ def _check_output_dir(input_dir: Path, output_dir: Path, force: bool) -> None:
 _IOU_REFERENCE_SIZE = 1000
 
 
+def _parse_class_id(components: List[str]) -> Optional[int]:
+    """Class id of a YOLO label line, or None if the line is not an annotation.
+
+    A line qualifies only if it has at least five fields, an integer class id and
+    four numeric coordinates -- anything else is passed through untouched.
+    """
+    if len(components) < 5:
+        return None
+    try:
+        class_id = int(components[0])
+        for coordinate in components[1:5]:
+            float(coordinate)
+    except ValueError:
+        return None
+    return class_id
+
+
+class _YoloLine(NamedTuple):
+    """One line of a YOLO label file, ready to be written back.
+
+    `class_id` is None for a line that is not a valid annotation; such a line is
+    preserved verbatim and never deduplicated.
+    """
+    class_id: Optional[int]
+    text: str
+    coordinates: Optional[List[str]] = None
+
+
 def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, int]:
     """Rewrite class ids in the YOLO label files of a directory.
 
     Only the class id field is rewritten; the coordinate text of each surviving
     line is preserved verbatim, so no precision is lost to a parse/format round
-    trip.
+    trip. A line that is not a valid annotation is passed through untouched
+    rather than discarded.
 
     Args:
         labels_dir: Directory of `.txt` label files to rewrite in place.
@@ -112,6 +143,7 @@ def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, in
     Returns:
         Tuple of (files modified, annotations dropped).
     """
+    logger = configure_logging.get_logger(__name__)
     modified = 0
     dropped = 0
 
@@ -119,13 +151,18 @@ def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, in
         with open(label_file, 'r') as f:
             lines = f.readlines()
 
-        kept: List[Tuple[int, List[str]]] = []
+        kept: List[_YoloLine] = []
         changed = False
         for line in lines:
             components = line.split()
-            if len(components) < 5:
+            old_id = _parse_class_id(components)
+            if old_id is None:
+                if components:      # not a blank line: keep it, don't silently drop
+                    logger.warning(
+                        f"{label_file}: keeping unparseable line {line.strip()!r}"
+                    )
+                    kept.append(_YoloLine(None, line.rstrip('\n')))
                 continue
-            old_id = int(components[0])
             new_id = label_map.map_class_id(old_id)
             if new_id is None:
                 dropped += 1
@@ -134,7 +171,7 @@ def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, in
             if new_id != old_id:
                 changed = True
             components[0] = str(new_id)
-            kept.append((new_id, components))
+            kept.append(_YoloLine(new_id, " ".join(components), components[1:5]))
 
         if label_map.dedup_iou is not None:
             before = len(kept)
@@ -145,47 +182,54 @@ def collapse_yolo_labels(labels_dir: Path, label_map: LabelMap) -> Tuple[int, in
 
         if changed:
             with open(label_file, 'w') as f:
-                f.writelines(" ".join(components) + "\n" for _, components in kept)
+                f.writelines(entry.text + "\n" for entry in kept)
             modified += 1
 
     return modified, dropped
 
 
 def _dedup_yolo_lines(
-    lines: List[Tuple[int, List[str]]],
+    lines: List['_YoloLine'],
     label_map: LabelMap,
     threshold: float
-) -> List[Tuple[int, List[str]]]:
+) -> List['_YoloLine']:
     """Drop same-class YOLO lines overlapping an already-kept line.
 
+    Lines that are not annotations (`class_id is None`) are passed through and
+    never compared.
+
     Args:
-        lines: Surviving (class_id, components) pairs for one label file.
+        lines: Surviving lines for one label file.
         label_map: Supplies the IoU variant to compare with.
         threshold: IoU at or above which a line is considered a duplicate.
     """
-    boxes = [
-        BBoxClassId(
-            coordinates=[float(c) for c in components[1:5]],
-            class_id=class_id,
+    def as_box(entry: '_YoloLine') -> Optional[BBoxClassId]:
+        if entry.class_id is None or entry.coordinates is None:
+            return None
+        return BBoxClassId(
+            coordinates=[float(c) for c in entry.coordinates],
+            class_id=entry.class_id,
             class_name="",
             fmt=BBoxFormat.YOLO,
             img_width=_IOU_REFERENCE_SIZE,
             img_height=_IOU_REFERENCE_SIZE
         )
-        for class_id, components in lines
-    ]
 
-    kept_indices: List[int] = []
-    for i, box in enumerate(boxes):
-        if any(
-            boxes[j].class_id == box.class_id
-            and box.compute_iou(boxes[j], label_map.iou_type) >= threshold
-            for j in kept_indices
+    kept: List[_YoloLine] = []
+    kept_boxes: List[BBoxClassId] = []
+    for entry in lines:
+        box = as_box(entry)
+        if box is not None and any(
+            other.class_id == box.class_id
+            and box.compute_iou(other, label_map.iou_type) >= threshold
+            for other in kept_boxes
         ):
             continue
-        kept_indices.append(i)
+        kept.append(entry)
+        if box is not None:
+            kept_boxes.append(box)
 
-    return [lines[i] for i in kept_indices]
+    return kept
 
 
 def collapse_voc_annotations(annotations_dir: Path, label_map: LabelMap) -> Tuple[int, int]:
@@ -243,23 +287,40 @@ def collapse_coco_annotations(annotations_file: Path, label_map: LabelMap) -> Tu
     Returns:
         Tuple of (annotations remapped, annotations dropped).
     """
-    with open(annotations_file, 'r') as f:
-        data = json.load(f)
+    raw = annotations_file.read_text()
+    data = json.loads(raw)
 
     categories = data.get('categories', [])
     id_to_name = {cat['id']: cat['name'] for cat in categories}
     name_to_category = {cat['name']: cat for cat in categories}
 
-    # Resolve every original category to the category it collapses into.
-    resolved: Dict[int, Optional[str]] = {
-        cat['id']: label_map.map_class_name(cat['name']) for cat in categories
-    }
+    # Resolve every original category to the category it collapses into. Name
+    # rules are used when the mapping has any, otherwise the rules are keyed by
+    # category id -- which is what a bare `--map 4=1` means for COCO.
+    resolved: Dict[int, Optional[str]] = {}
+    for cat in categories:
+        if label_map.matches_names:
+            resolved[cat['id']] = label_map.map_class_name(cat['name'])
+            continue
+        destination_id = label_map.map_class_id(cat['id'])
+        if destination_id is None:
+            resolved[cat['id']] = None
+        elif destination_id in id_to_name:
+            resolved[cat['id']] = id_to_name[destination_id]
+        else:
+            raise ValueError(
+                f"category id {cat['id']} maps to {destination_id}, which is not a "
+                f"category of {annotations_file.name} (ids {sorted(id_to_name)})"
+            )
 
-    surviving_names: List[str] = []
+    # Order surviving categories by the lowest original id that maps to them, so
+    # that --reindex renumbers the same way LabelMap does.
+    lowest_id: Dict[str, int] = {}
     for cat in categories:
         new_name = resolved[cat['id']]
-        if new_name is not None and new_name not in surviving_names:
-            surviving_names.append(new_name)
+        if new_name is not None:
+            lowest_id.setdefault(new_name, cat['id'])
+    surviving_names: List[str] = sorted(lowest_id, key=lambda name: lowest_id[name])
 
     # Keep the original category dicts (supercategory and friends) where possible.
     new_categories: List[Dict[str, Any]] = []
@@ -291,8 +352,11 @@ def collapse_coco_annotations(annotations_file: Path, label_map: LabelMap) -> Tu
     data['categories'] = new_categories
     data['annotations'] = new_annotations
 
+    # Keep the file roughly as we found it: rewriting a pretty-printed COCO file
+    # as one long line makes it unreadable and undiffable.
+    indent = 2 if re.search(r'\n\s+"', raw[:4096]) else None
     with open(annotations_file, 'w') as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=indent)
 
     return remapped, dropped
 
@@ -335,6 +399,21 @@ def collapse_dataset(
     else:
         raise ValueError(f"Unsupported or unknown dataset type in directory: {input_dir}")
 
+    # A rule can only bite if its flavour matches how the format names a class.
+    # Without this the tool would copy the dataset and change nothing, reporting
+    # success.
+    if fmt == 'yolo' and not label_map.matches_ids:
+        raise ValueError(
+            "the mapping is name-based, but YOLO Darknet labels carry only class ids. "
+            "Pass --class-names so the names can be resolved to ids."
+        )
+    if fmt == 'voc' and not label_map.matches_names:
+        raise ValueError(
+            "the mapping is id-based, but Pascal VOC annotations are identified by "
+            "name. Pass --class-names so the ids can be resolved to names, or write "
+            "the rules with class names."
+        )
+
     if label_map.dedup_iou is not None and fmt != 'yolo':
         print(
             f"Warning: --dedup-iou is ignored for {fmt.upper()} datasets, which are "
@@ -342,11 +421,66 @@ def collapse_dataset(
             file=sys.stderr
         )
 
+    if fmt != 'coco':
+        print(f"Class mapping: {label_map.get_class_mapping()}")
+        if label_map.reindex:
+            print(f"Resulting classes: {label_map.get_class_names()}")
+
     _check_output_dir(input_dir, output_dir, force)
 
     print(f"Detected {fmt.upper()} dataset, copying {input_dir} -> {output_dir}")
     shutil.copytree(input_dir, output_dir, symlinks=True)
 
+    total_modified = 0
+    total_dropped = 0
+
+    try:
+        total_modified, total_dropped = _rewrite_annotations(
+            fmt, output_dir, label_map, verbose
+        )
+    except Exception:
+        # Never leave a half-collapsed dataset behind.
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise
+
+    if fmt == 'coco':
+        categories = _coco_categories(output_dir)
+        if categories:
+            print(f"Resulting categories: {categories}")
+
+    print(f"Done: {total_modified} {'files' if fmt != 'coco' else 'annotations'} modified, "
+          f"{total_dropped} annotations dropped")
+
+    if total_modified == 0 and total_dropped == 0:
+        print(
+            "Warning: nothing changed -- no annotation matched any rule. Check that "
+            "the labels in --map exist in this dataset.",
+            file=sys.stderr
+        )
+
+    return fmt
+
+
+def _coco_categories(output_dir: Path) -> List[Tuple[int, str]]:
+    """Read back the categories actually written, so we report the truth."""
+    categories: List[Tuple[int, str]] = []
+    for annotations_file in [get_coco_paths(output_dir)[i] for i in (1, 3, 5)]:
+        if not annotations_file:
+            continue
+        data = json.loads(Path(annotations_file).read_text())
+        for cat in data.get('categories', []):
+            if (cat['id'], cat['name']) not in categories:
+                categories.append((cat['id'], cat['name']))
+    return categories
+
+
+def _rewrite_annotations(
+    fmt: str,
+    output_dir: Path,
+    label_map: LabelMap,
+    verbose: bool
+) -> Tuple[int, int]:
+    """Rewrite every split of the copied dataset. Returns (modified, dropped)."""
     total_modified = 0
     total_dropped = 0
 
@@ -386,9 +520,7 @@ def collapse_dataset(
             if verbose:
                 print(f"  {annotation_file}: {remapped} annotations remapped, {dropped} dropped")
 
-    print(f"Done: {total_modified} {'files' if fmt != 'coco' else 'annotations'} modified, "
-          f"{total_dropped} annotations dropped")
-    return fmt
+    return total_modified, total_dropped
 
 
 def get_args():
@@ -451,9 +583,9 @@ def main():
             dedup_iou=args.dedup_iou
         )
 
-        print(f"Label mapping: {label_map.get_class_mapping()}")
-        if args.reindex:
-            print(f"Resulting classes: {label_map.get_class_names()}")
+        # The resolved class mapping is printed by collapse_dataset, which knows
+        # the format and so which id space the mapping is actually in.
+        print(f"Rules: {label_map.mapping}")
 
         collapse_dataset(
             Path(args.input_dir),

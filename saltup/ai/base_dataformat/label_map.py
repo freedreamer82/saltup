@@ -142,23 +142,27 @@ class LabelMap:
             name: class_id for class_id, name in self._id_to_name.items()
         }
 
+        # Each distinct destination is resolved once and shared by every rule
+        # pointing at it.
+        destinations = {d: self._resolve(d, role="destination")
+                        for d in set(self.mapping.values())}
+
         # Rules split by the flavour of the key, so an annotation can be matched
         # on whichever of id / name it carries.
         self._by_id: Dict[int, _Target] = {}
         self._by_name: Dict[str, _Target] = {}
         for source, destination in self.mapping.items():
-            target = self._resolve(destination, role="destination")
-            source_id, source_name = self._resolve_source(source)
-            if source_id is not None:
-                self._by_id[source_id] = target
-            if source_name is not None:
-                self._by_name[source_name] = target
+            target = destinations[destination]
+            source_target = self._resolve(source, role="source")
+            if source_target.class_id is not None:
+                self._by_id[source_target.class_id] = target
+            if source_target.class_name is not None:
+                self._by_name[source_target.class_name] = target
 
         # A destination class is implicitly kept: collapsing "feeding" into "mouse"
         # must never drop "mouse" itself when drop_unmapped is set. Rules given
         # explicitly take precedence, so chained rules still work.
-        for destination in set(self.mapping.values()):
-            target = self._resolve(destination, role="destination")
+        for target in destinations.values():
             if target.class_id is not None and target.class_id not in self._by_id:
                 self._by_id[target.class_id] = target
             if target.class_name is not None and target.class_name not in self._by_name:
@@ -196,10 +200,15 @@ class LabelMap:
 
         return _Target(class_id=None, class_name=label, label=label)
 
-    def _resolve_source(self, label: Label) -> Tuple[Optional[int], Optional[str]]:
-        """Resolve a source label to the id and/or name it should match on."""
-        target = self._resolve(label, role="source")
-        return target.class_id, target.class_name
+    @property
+    def matches_ids(self) -> bool:
+        """Whether any rule can match an id-carrying annotation (YOLO, COCO)."""
+        return bool(self._by_id)
+
+    @property
+    def matches_names(self) -> bool:
+        """Whether any rule can match a name-carrying annotation (Pascal VOC)."""
+        return bool(self._by_name)
 
     def _build_class_mapping(self) -> None:
         """Precompute, for every original class id, the class it ends up as."""
@@ -246,11 +255,9 @@ class LabelMap:
             since the full set of classes is unknown.
         """
         if self.class_names is None:
-            return {
-                source: target.label
-                for source, target in
-                [(s, self._resolve(d, role="destination")) for s, d in self.mapping.items()]
-            }
+            # Without class_names the full set of classes is unknown, so the rules
+            # themselves are the whole story.
+            return dict(self.mapping)
 
         result: Dict[Label, Optional[Label]] = {}
         for class_id, target in self._collapsed.items():
@@ -287,7 +294,65 @@ class LabelMap:
             return None
         if self.reindex:
             return len(self._final_class_names or [])
-        return len({v for v in self.get_class_mapping().values() if v is not None})
+        return len({target.class_id for target in self._collapsed.values()
+                    if target is not None and target.class_id is not None})
+
+    def _map_one(
+        self,
+        class_id: Optional[int],
+        class_name: Optional[str]
+    ) -> Optional[Tuple[Optional[int], Optional[str]]]:
+        """Resolve one label to its final (class_id, class_name).
+
+        This is the single place where a label's fate is decided; `apply`,
+        `map_class_id` and `map_class_name` all go through it.
+
+        Args:
+            class_id: The label's class id, or None if it carries none (VOC).
+            class_name: The label's class name, or None/"" if it carries none (YOLO).
+
+        Returns:
+            The resulting (class_id, class_name), or None if the label is dropped.
+
+        Raises:
+            ValueError: If an id-carrying label maps to a destination with no
+                numeric class id, or if `reindex` cannot renumber an id that
+                `class_names` does not cover.
+        """
+        target = None
+        if class_id is not None and class_id in self._by_id:
+            target = self._by_id[class_id]
+        elif class_name and class_name in self._by_name:
+            target = self._by_name[class_name]
+
+        if target is None:
+            if self.drop_unmapped:
+                return None
+            new_id, new_name = class_id, class_name
+        else:
+            if class_id is not None and target.class_id is None:
+                raise ValueError(
+                    f"cannot map class id {class_id} to {target.label!r}: the destination "
+                    f"has no numeric class id. Pass class_names to LabelMap so names can "
+                    f"be resolved to ids."
+                )
+            # Write back in the flavour the label already used, so that
+            # BBoxClassId.get_data() keeps returning the same kind of value.
+            new_id = target.class_id if class_id is not None else class_id
+            new_name = (target.class_name or class_name) if class_name else class_name
+
+        if self.reindex and new_id is not None:
+            if new_id not in self._reindex_map:
+                # Reachable only for a class class_names does not cover: with
+                # drop_unmapped it would already have been dropped above.
+                raise ValueError(
+                    f"cannot reindex class id {new_id}: class_names covers ids "
+                    f"{sorted(self._id_to_name)}. Extend class_names, or pass "
+                    f"drop_unmapped=True to discard classes outside it."
+                )
+            new_id = self._reindex_map[new_id]
+
+        return new_id, new_name
 
     def map_class_id(self, class_id: int) -> Optional[int]:
         """Map a single class id, without going through an annotation object.
@@ -299,24 +364,10 @@ class LabelMap:
             The resulting class id, or None if the class is dropped.
 
         Raises:
-            ValueError: If the destination has no numeric class id.
+            ValueError: See `_map_one`.
         """
-        target = self._by_id.get(class_id)
-        if target is None:
-            if self.drop_unmapped:
-                return None
-            new_id = class_id
-        else:
-            if target.class_id is None:
-                raise ValueError(
-                    f"cannot map class id {class_id} to {target.label!r}: the destination "
-                    f"has no numeric class id. Pass class_names to LabelMap."
-                )
-            new_id = target.class_id
-
-        if self.reindex:
-            return self._reindex_map.get(new_id)
-        return new_id
+        result = self._map_one(class_id, None)
+        return None if result is None else result[0]
 
     def map_class_name(self, class_name: str) -> Optional[str]:
         """Map a single class name, without going through an annotation object.
@@ -327,10 +378,8 @@ class LabelMap:
         Returns:
             The resulting class name, or None if the class is dropped.
         """
-        target = self._by_name.get(class_name)
-        if target is None:
-            return None if self.drop_unmapped else class_name
-        return target.class_name if target.class_name is not None else class_name
+        result = self._map_one(None, class_name)
+        return None if result is None else result[1]
 
     def apply(self, annotations: List[BBoxClassId]) -> List[BBoxClassId]:
         """Apply the mapping to a list of annotations.
@@ -355,36 +404,10 @@ class LabelMap:
         mapped: List[BBoxClassId] = []
 
         for annotation in annotations:
-            class_id = annotation.class_id
-            class_name = annotation.class_name
-
-            target = None
-            if class_id is not None and class_id in self._by_id:
-                target = self._by_id[class_id]
-            elif class_name and class_name in self._by_name:
-                target = self._by_name[class_name]
-
-            if target is None:
-                if self.drop_unmapped:
-                    continue
-                new_id, new_name = class_id, class_name
-            else:
-                if class_id is not None and target.class_id is None:
-                    raise ValueError(
-                        f"cannot map class id {class_id} to {target.label!r}: the destination "
-                        f"has no numeric class id. Pass class_names to LabelMap so names can "
-                        f"be resolved to ids."
-                    )
-                # Write back in the flavour the annotation already used, so that
-                # BBoxClassId.get_data() keeps returning the same kind of value.
-                new_id = target.class_id if class_id is not None else class_id
-                new_name = target.class_name if class_name else class_name
-
-            if self.reindex and new_id is not None:
-                if new_id not in self._reindex_map:
-                    # Only reachable when the class is dropped by drop_unmapped.
-                    continue
-                new_id = self._reindex_map[new_id]
+            result = self._map_one(annotation.class_id, annotation.class_name)
+            if result is None:
+                continue
+            new_id, new_name = result
 
             new_annotation = copy.copy(annotation)
             new_annotation.class_id = new_id

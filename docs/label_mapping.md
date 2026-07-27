@@ -253,3 +253,9 @@ The tool is deliberately conservative:
   for COCO pass `loader.get_category_names()` as a `{id: name}` mapping instead.
 - **`reindex` and `dedup_iou` are lossy in different ways** — one changes ids, the other drops
   boxes. Both are off by default; turn them on deliberately.
+- **`reindex` requires `class_names` to cover every class actually present.** An annotation whose
+  class is outside `class_names` cannot be renumbered, so it raises rather than disappearing. Extend
+  `class_names`, or pass `drop_unmapped=True` to discard such classes deliberately.
+- **A rule only bites if its flavour matches the format.** Name rules need `class_names` to reach
+  YOLO's integer ids; id rules need it to reach VOC's names. The CLI refuses the mismatch outright
+  instead of copying your dataset and changing nothing.
