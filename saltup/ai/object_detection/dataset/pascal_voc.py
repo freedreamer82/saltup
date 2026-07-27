@@ -419,9 +419,14 @@ def is_pascal_voc_dataset(root_dir: Union[str, Path]) -> bool:
     """
     Checks whether the given directory contains a dataset in Pascal VOC format.
 
-    This function verifies the presence of typical Pascal VOC subdirectories 
-    ('images', 'annotations') for train/val/test splits and checks for at least one XML 
-    annotation file.
+    This function locates the dataset's image and annotation directories via
+    `get_dataset_paths` -- which accepts both the split layout
+    ('images'/'annotations' with train/val/test subdirectories) and a flat,
+    unsplit one ('JPEGImages'/'Annotations', or plain 'images'/'annotations') --
+    and then requires at least one XML annotation file to be present.
+
+    The XML requirement is what keeps this from matching a COCO dataset, whose
+    annotations directory holds JSON.
 
     Args:
         root_dir: The root directory to check for Pascal VOC dataset structure.
@@ -448,12 +453,36 @@ def is_pascal_voc_dataset(root_dir: Union[str, Path]) -> bool:
     return False
 
 
+# Image/annotation directory pairs recognized for a flat, unsplit dataset. The
+# canonical Pascal VOC layout (as shipped in VOCdevkit) comes first.
+_FLAT_LAYOUTS = (
+    ('JPEGImages', 'Annotations'),
+    ('images', 'annotations'),
+)
+
+
 def get_dataset_paths(root_dir: Union[str, Path]) -> Tuple[
-    Optional[Union[str, Path]], Optional[Union[str, Path]], 
-    Optional[Union[str, Path]], Optional[Union[str, Path]], 
+    Optional[Union[str, Path]], Optional[Union[str, Path]],
+    Optional[Union[str, Path]], Optional[Union[str, Path]],
     Optional[Union[str, Path]], Optional[Union[str, Path]]
 ]:
     """Get directory paths for dataset in Pascal VOC format.
+
+    Two layouts are recognized:
+
+    1. Split directories, `images/<split>` and `annotations/<split>` for
+       train/val/test, as produced by `create_dataset_structure`.
+    2. A flat, unsplit dataset: the canonical `JPEGImages/` + `Annotations/`
+       pair used by VOCdevkit, or a plain `images/` + `annotations/` pair.
+       These are reported as the train split, with val and test set to None.
+
+    The split layout takes precedence: the flat fallback is only considered when
+    no split directory is found.
+
+    Note that the official train/val/test membership of a canonical VOC dataset
+    lives in `ImageSets/Main/*.txt`, which is not interpreted here -- the whole
+    directory is returned as a single split. A warning is logged when those files
+    are present so the ignored split is not silent.
 
     Args:
         root_dir: Dataset root directory
@@ -474,7 +503,7 @@ def get_dataset_paths(root_dir: Union[str, Path]) -> Tuple[
     test_images_dir = check_dir(os.path.join(root_dir, 'images', 'test'))
     test_annotations_dir = check_dir(os.path.join(root_dir, 'annotations', 'test'))
 
-    return (
+    split_paths = (
         train_images_dir,
         train_annotations_dir,
         val_images_dir,
@@ -482,6 +511,22 @@ def get_dataset_paths(root_dir: Union[str, Path]) -> Tuple[
         test_images_dir,
         test_annotations_dir
     )
+    if any(split_paths):
+        return split_paths
+
+    # No split directories: fall back to a flat, unsplit dataset.
+    for images_name, annotations_name in _FLAT_LAYOUTS:
+        images_dir = check_dir(os.path.join(root_dir, images_name))
+        annotations_dir = check_dir(os.path.join(root_dir, annotations_name))
+        if images_dir and annotations_dir:
+            if os.path.isdir(os.path.join(root_dir, 'ImageSets', 'Main')):
+                configure_logging.get_logger(__name__).warning(
+                    f"{root_dir} has ImageSets/Main, but its train/val/test membership "
+                    f"is not applied: the whole dataset is returned as a single split."
+                )
+            return (images_dir, annotations_dir, None, None, None, None)
+
+    return split_paths
 
 
 def validate_dataset_structure(root_dir: str) -> Dict[str, Dict[str, Union[int, List[str]]]]:

@@ -158,6 +158,90 @@ class TestPascalVOCDataset:
         assert os.path.exists(train_annotations_dir) and any(Path(train_annotations_dir).iterdir())
 
 
+class TestPascalVOCFlatLayout:
+    """A flat, unsplit dataset must be detected as well as the split layout."""
+
+    XML = """<annotation>
+  <filename>img1.jpg</filename>
+  <size><width>64</width><height>64</height><depth>3</depth></size>
+  <object><name>person</name>
+    <bndbox><xmin>1</xmin><ymin>1</ymin><xmax>20</xmax><ymax>20</ymax></bndbox></object>
+</annotation>"""
+
+    def _build(self, root, images_name, annotations_name):
+        images_dir = root / images_name
+        annotations_dir = root / annotations_name
+        images_dir.mkdir(parents=True)
+        annotations_dir.mkdir(parents=True)
+        Image.new('RGB', (64, 64), color='black').save(str(images_dir / "img1.jpg"))
+        (annotations_dir / "img1.xml").write_text(self.XML)
+        return images_dir, annotations_dir
+
+    @pytest.mark.parametrize("images_name,annotations_name", [
+        ("JPEGImages", "Annotations"),   # canonical VOCdevkit layout
+        ("images", "annotations"),       # plain unsplit pair
+    ])
+    def test_flat_layout_detected(self, tmp_path, images_name, annotations_name):
+        root = tmp_path / "voc"
+        images_dir, annotations_dir = self._build(root, images_name, annotations_name)
+
+        assert is_pascal_voc_dataset(str(root))
+        paths = get_dataset_paths(str(root))
+        assert paths[0] == str(images_dir)
+        assert paths[1] == str(annotations_dir)
+        assert paths[2:] == (None, None, None, None)
+
+    def test_flat_layout_loads(self, tmp_path):
+        root = tmp_path / "voc"
+        images_dir, annotations_dir = self._build(root, "JPEGImages", "Annotations")
+
+        loader = PascalVOCLoader(images_dir, annotations_dir)
+        assert len(loader) == 1
+        assert [b.class_name for b in loader[0][2]] == ["person"]
+
+    def test_split_layout_takes_precedence(self, tmp_path):
+        """A dataset with split dirs must not be reinterpreted as flat."""
+        root = tmp_path / "voc"
+        create_dataset_structure(str(root))
+        images_dir = root / "images" / "train"
+        annotations_dir = root / "annotations" / "train"
+        Image.new('RGB', (64, 64), color='black').save(str(images_dir / "img1.jpg"))
+        (annotations_dir / "img1.xml").write_text(self.XML)
+
+        paths = get_dataset_paths(str(root))
+        assert paths[0] == str(images_dir)
+        assert paths[1] == str(annotations_dir)
+
+    def test_flat_layout_without_xml_rejected(self, tmp_path):
+        """The XML requirement is what stops a COCO dataset matching."""
+        root = tmp_path / "coco_like"
+        images_dir = root / "images"
+        annotations_dir = root / "annotations"
+        images_dir.mkdir(parents=True)
+        annotations_dir.mkdir(parents=True)
+        Image.new('RGB', (64, 64), color='black').save(str(images_dir / "img1.jpg"))
+        (annotations_dir / "instances.json").write_text('{"images": []}')
+
+        assert not is_pascal_voc_dataset(str(root))
+
+    def test_imagesets_split_is_flagged(self, tmp_path, caplog):
+        """Ignoring ImageSets/Main membership must not be silent."""
+        root = tmp_path / "voc"
+        self._build(root, "JPEGImages", "Annotations")
+        (root / "ImageSets" / "Main").mkdir(parents=True)
+        (root / "ImageSets" / "Main" / "train.txt").write_text("img1\n")
+
+        with caplog.at_level("WARNING"):
+            get_dataset_paths(str(root))
+        assert any("ImageSets/Main" in record.message for record in caplog.records)
+
+    def test_empty_directory_still_rejected(self, tmp_path):
+        root = tmp_path / "empty"
+        root.mkdir()
+        assert not is_pascal_voc_dataset(str(root))
+        assert get_dataset_paths(str(root)) == (None,) * 6
+
+
 class TestPascalVOCLoader:
     @pytest.fixture
     def sample_pascal_voc_data(self):
