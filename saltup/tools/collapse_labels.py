@@ -335,6 +335,13 @@ def collapse_dataset(
     else:
         raise ValueError(f"Unsupported or unknown dataset type in directory: {input_dir}")
 
+    if label_map.dedup_iou is not None and fmt != 'yolo':
+        print(
+            f"Warning: --dedup-iou is ignored for {fmt.upper()} datasets, which are "
+            f"rewritten in their original container.",
+            file=sys.stderr
+        )
+
     _check_output_dir(input_dir, output_dir, force)
 
     print(f"Detected {fmt.upper()} dataset, copying {input_dir} -> {output_dir}")
@@ -443,13 +450,6 @@ def main():
             reindex=args.reindex,
             dedup_iou=args.dedup_iou
         )
-
-        if args.dedup_iou is not None:
-            print(
-                "Warning: --dedup-iou is ignored for COCO and Pascal VOC datasets, "
-                "which are rewritten in their original containers.",
-                file=sys.stderr
-            )
 
         print(f"Label mapping: {label_map.get_class_mapping()}")
         if args.reindex:
