@@ -12,6 +12,7 @@ import pickle
 from tqdm import tqdm
 
 from saltup.ai.object_detection.utils.bbox import BBoxClassId
+from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.utils.data.image.image_utils import Image, ColorMode
 
 
@@ -29,6 +30,11 @@ class BaseDataloader(ABC):
 
     _name: str = ""
 
+    # Declared as class attributes, not set in an __init__: this base class has no
+    # __init__ and subclasses do not call super().__init__(), so an instance
+    # attribute would never be initialized.
+    _label_map: Optional[LabelMap] = None
+
     def set_name(self, name: str):
         """Set the name of the dataloader."""
         self._name = name
@@ -36,6 +42,30 @@ class BaseDataloader(ABC):
     def get_name(self) -> str:
         """Get the name of the dataloader."""
         return self._name
+
+    def set_label_map(self, label_map: Optional[LabelMap]):
+        """Set the label map applied to annotations as they are loaded."""
+        self._label_map = label_map
+
+    def get_label_map(self) -> Optional[LabelMap]:
+        """Get the label map applied to annotations as they are loaded."""
+        return self._label_map
+
+    def _apply_label_map(self, annotations: List[BBoxClassId]) -> List[BBoxClassId]:
+        """Apply the configured label map to annotations, if any.
+
+        Returns the annotations unchanged when no label map is set, so loaders can
+        call this unconditionally.
+
+        Args:
+            annotations: Annotations loaded for a single item.
+
+        Returns:
+            The mapped annotations, or the input list when no label map is set.
+        """
+        if self._label_map is None:
+            return annotations
+        return self._label_map.apply(annotations)
 
     @abstractmethod
     def __iter__(self):

@@ -19,6 +19,7 @@ from saltup.utils.data.s3.s3_utils import S3, list_files_by_date
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxClassId, BBoxFormat
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
 from saltup.ai.base_dataformat.base_dataset import Dataset
+from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.utils import configure_logging
 
 
@@ -27,16 +28,18 @@ class YoloDarknetLoader(BaseDataloader):
         self,
         images_dir: Union[str, Path],
         labels_dir: Union[str, Path],
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        label_map: Optional[LabelMap] = None
     ):
         """
         Initialize YoloDarknet dataset loader.
-        
+
         Args:
             image_dir: Directory containing images
             labels_dir: Directory containing labels
             color_mode: Color mode for loading images
-            
+            label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+
         Raises:
             FileNotFoundError: If directories don't exist
         """
@@ -52,8 +55,9 @@ class YoloDarknetLoader(BaseDataloader):
         self._images_dir = Path(images_dir)
         self._labels_dir = Path(labels_dir)
         self.color_mode = color_mode
+        self._label_map = label_map
         self._current_index = 0
-        
+
         # Load image-label pairs
         self.image_label_pairs = self._load_image_label_pairs()
         self.__logger.info(f"Found {len(self.image_label_pairs)} image-label pairs")
@@ -128,7 +132,7 @@ class YoloDarknetLoader(BaseDataloader):
             img_height=image_height
         ) for lbl in read_label(label_path)]
 
-        return Path(image_path), image, annotations
+        return Path(image_path), image, self._apply_label_map(annotations)
 
     def __len__(self):
         """Return total number of samples in dataset."""
@@ -184,6 +188,7 @@ class YoloDarknetS3Loader(BaseDataloader):
         color_mode: ColorMode = ColorMode.RGB,
         download_file: bool = False,
         max_files: int = -1,
+        label_map: Optional[LabelMap] = None
     ):
         """
         Initialize YoloDarknetS3Loader for datasets stored on S3.
@@ -195,6 +200,7 @@ class YoloDarknetS3Loader(BaseDataloader):
             download_file: If True, download files from S3 to local temporary directories when iterating
             color_mode: Color mode for loading images
             max_files: Maximum number of files to download when download_file is True (-1 for unlimited)
+            label_map: Optional LabelMap collapsing or renaming labels as they are loaded
 
         Raises:
             FileNotFoundError: If local directories don't exist when download_file is False
@@ -216,8 +222,9 @@ class YoloDarknetS3Loader(BaseDataloader):
         self._images_dir = Path(images_dir)
         self._labels_dir = Path(labels_dir)
         self.color_mode = color_mode
+        self._label_map = label_map
         self._current_index = 0
-        
+
         # Load image-label pairs
         self.image_label_pairs = self._load_image_label_pairs()
         self.__logger.info(f"Found {len(self.image_label_pairs)} image-label pairs")
@@ -325,8 +332,8 @@ class YoloDarknetS3Loader(BaseDataloader):
             ) for lbl in read_label(temp_label_path)]
 
         image_path = os.path.join("s3://", self.s3_client._bucket_name, image_path)
-        return image_path, image, annotations
-    
+        return image_path, image, self._apply_label_map(annotations)
+
     def _update_s3_image_dimensions(
         self,
         bucket_name: str,

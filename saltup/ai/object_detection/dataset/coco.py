@@ -39,6 +39,7 @@ from saltup.utils.data.s3.s3_utils import S3
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxClassId, BBoxFormat
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader, ColorMode
+from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.utils.configure_logging import logging
 
 
@@ -47,7 +48,8 @@ class COCOLoader(BaseDataloader):
         self,
         images_dir: Union[str, Path],
         annotations_file: Union[str, Path],
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        label_map: Optional[LabelMap] = None
     ):
         """
         Initialize COCO dataset loader.
@@ -56,7 +58,8 @@ class COCOLoader(BaseDataloader):
             image_dir: Directory containing images
             annotations_file: Path to COCO annotations JSON file
             color_mode: Color mode for loading images
-        
+            label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+
         Raises:
             ValueError: If paths are invalid
             FileNotFoundError: If directories or files don't exist
@@ -73,13 +76,18 @@ class COCOLoader(BaseDataloader):
         self.image_dir = Path(images_dir)
         self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
+        self._label_map = label_map
         self._current_index = 0
-        
+
         # Load annotations and create pairs
         self.annotations = self._load_annotations()
         self.image_annotation_pairs = self._create_image_annotation_pairs()
-        
+
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
+
+    def get_category_names(self) -> Dict[int, str]:
+        """Return the dataset categories as a {category_id: name} mapping."""
+        return {cat['id']: cat['name'] for cat in self.annotations.get('categories', [])}
 
     def __iter__(self):
         """Return iterator object (self in this case)."""
@@ -143,7 +151,9 @@ class COCOLoader(BaseDataloader):
         image_path, annotations = self.image_annotation_pairs[idx]
         image = self.load_image(image_path, self.color_mode)
 
-        return image_path, image, annotations
+        # The annotations are built once and cached, so the label map must not
+        # mutate them: _apply_label_map returns copies.
+        return image_path, image, self._apply_label_map(annotations)
 
     def _load_annotations(self) -> Dict:
         """Load COCO annotations from JSON file."""
@@ -220,7 +230,8 @@ class COCOS3Loader(BaseDataloader):
         s3_client: S3,
         download_file: bool = False,
         max_files: int = -1,
-        color_mode: ColorMode = ColorMode.RGB
+        color_mode: ColorMode = ColorMode.RGB,
+        label_map: Optional[LabelMap] = None
     ):
         """
         Initialize COCO dataset loader from S3.
@@ -232,6 +243,7 @@ class COCOS3Loader(BaseDataloader):
             download_file: Whether to download files from S3 if not present locally
             max_files: Maximum number of files to download from S3
             color_mode: Color mode for loading images
+            label_map: Optional LabelMap collapsing or renaming labels as they are loaded
 
         Raises:
             ValueError: If paths are invalid
@@ -252,13 +264,18 @@ class COCOS3Loader(BaseDataloader):
         self.image_dir = Path(images_dir)
         self.annotations_file = Path(annotations_file)
         self.color_mode = color_mode
+        self._label_map = label_map
         self._current_index = 0
-        
+
         # Load annotations and create pairs
         self.annotations = self._load_annotations()
         self.image_annotation_pairs = self._create_image_annotation_pairs()
-        
+
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
+
+    def get_category_names(self) -> Dict[int, str]:
+        """Return the dataset categories as a {category_id: name} mapping."""
+        return {cat['id']: cat['name'] for cat in self.annotations.get('categories', [])}
 
     def __iter__(self):
         """Return iterator object (self in this case)."""
@@ -338,7 +355,9 @@ class COCOS3Loader(BaseDataloader):
             image = None
         full_image_path = os.path.join("s3://", self.s3_client._bucket_name, image_path)
 
-        return full_image_path, image, annotations
+        # The annotations are built once and cached, so the label map must not
+        # mutate them: _apply_label_map returns copies.
+        return full_image_path, image, self._apply_label_map(annotations)
 
     def _load_annotations(self) -> Dict:
         """Load COCO annotations from JSON file."""
