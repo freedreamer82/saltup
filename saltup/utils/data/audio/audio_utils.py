@@ -219,9 +219,18 @@ def _normalise_pcm(audio_data: np.ndarray, raw_format: str) -> np.ndarray:
 # Header parsing
 # =============================================================================
  
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 from saltup.utils.data.image.image_utils import FileExtensionType
+from saltup.utils.data.header_info import (
+    DEFAULT_CHUNK,
+    MAX_HEADER_SIZE,
+    HeaderInfo,
+    PathOrUrl,
+    extension_from_source,
+    parse_header_from_path,
+)
 
 _WAV_AUDIO_FORMATS = {
     1: "PCM",
@@ -238,40 +247,6 @@ def _get_wav_audio_format_name(audio_format_code: int | None) -> str | None:
         return None
     return _WAV_AUDIO_FORMATS.get(audio_format_code, f"UNKNOWN_{audio_format_code}")
 
-def get_header(path: Union[str, Path]) -> bytes:
-    """Read a safe slice of bytes from an audio file based on its type.
-
-    For WAV/FLAC/MP3 files, reads the first 256 KB to cover typical header
-    sizes.  For raw files, reads the first 4 KB (enough for basic sanity
-    checks but not much more).
-
-    Args:
-        path: Path to the audio file.
-    Returns:
-        A bytes object containing the header slice.
-    """
-    p = Path(path)
-
-    read_audio_size = 64 * 1024
-    m4a_audio_size = 5000 * 1024
-    try:
-        extension = FileExtensionType(p.suffix.lower().lstrip("."))
-        if extension in {FileExtensionType.WAV, FileExtensionType.FLAC, FileExtensionType.MP3, FileExtensionType.AAC, FileExtensionType.OGG, FileExtensionType.WMA}:
-            with open(p, "rb") as file:
-                return file.read(read_audio_size)
-        elif extension == FileExtensionType.M4A:
-            with open(p, "rb") as file:
-                return file.read(m4a_audio_size)
-        else:
-            with open(p, "rb") as file:
-                return file.read(4096)
-    except ValueError:
-        with open(p, "rb") as file:
-            return file.read(4096)
-    except Exception as exc:
-        raise IOError(f"Cannot read file {path}: {exc}") from exc
-    
-    
 def parse_wav_header(data: bytes) -> dict:
     """Parse a RIFF/WAVE header from bytes and return basic fields.
 
@@ -412,31 +387,140 @@ def parse_mp3_header(data: bytes) -> dict:
 
     return {"format": "MP3", "error": "No frame header found"}
 
-def parse_audio_header(path: Union[str, Path]) -> dict:
-    """Read a small header slice from *path* and dispatch to the appropriate parser.
-
-    Supports WAV, MP3, FLAC detection by signature and returns the parser result.
-    """
-    p = Path(path)
-    extension_name = p.suffix.lower().lstrip(".")
-
+def _extension_hint(source: PathOrUrl) -> Optional[FileExtensionType]:
+    """Map the extension of a path/URI to a FileExtensionType, or None."""
     try:
-        extension = FileExtensionType(extension_name)
+        return FileExtensionType(extension_from_source(source))
     except ValueError:
-        return {"error": f"Unsupported extension: {extension_name or 'none'}"}
-    try:
-        data = get_header(p)
-    except Exception as exc:
-        return {"error": f"Cannot read file: {exc}"}
+        return None
 
-    if extension == FileExtensionType.WAV:
-        return parse_wav_header(data)
-    if extension == FileExtensionType.FLAC:
-        return parse_flac_header(data)
-    if extension == FileExtensionType.MP3:
-        return parse_mp3_header(data)
 
-    return {"error": "Unsupported or unknown audio format"}
+def parse_audio_header(
+    source: PathOrUrl,
+    *,
+    chunk: int = DEFAULT_CHUNK,
+    max_header_size: int = MAX_HEADER_SIZE,
+) -> "AudioHeaderInfo":
+    """Read an audio header incrementally (from a path or URL) and decode it.
+
+    A first slice of *chunk* bytes is read and grown only as far as needed to
+    decode the header (see
+    :func:`~saltup.utils.data.header_info.parse_header_from_path`); no file size
+    is required. The format is auto-detected from the magic bytes
+    (WAV / FLAC / MP3), falling back to the extension recovered from the
+    path/URL only when detection fails.
+
+    Args:
+        source: Audio file path or ``http(s)://`` URL (e.g. a presigned URL).
+        chunk: Bytes to read per step while probing the header.
+        max_header_size: Hard ceiling on bytes read, so a corrupt file whose
+            header never resolves cannot be read in full. A smaller file stops
+            earlier at end-of-stream.
+
+    Returns:
+        An :class:`AudioHeaderInfo` (truthy when metadata was decoded).
+    """
+    fallback = _extension_hint(source)
+
+    def _parse(data: bytes, _unused=None) -> "AudioHeaderInfo":
+        info = parse_header(data)
+        if not info and fallback is not None:
+            info = parse_header(data, hint=fallback)
+        return info
+
+    return parse_header_from_path(
+        source, _parse, initial_read=chunk, max_read=max_header_size
+    )
+
+
+# ---- Byte-buffer header parsing (format auto-detected from magic bytes) ----
+
+_AUDIO_PARSERS = {
+    FileExtensionType.WAV: parse_wav_header,
+    FileExtensionType.FLAC: parse_flac_header,
+    FileExtensionType.MP3: parse_mp3_header,
+}
+
+
+@dataclass
+class AudioHeaderInfo(HeaderInfo):
+    """Metadata decoded from an audio header. See :class:`HeaderInfo`."""
+
+    sample_rate: Optional[int] = None
+    channels: Optional[int] = None
+    bit_depth: Optional[int] = None
+    audio_format: Optional[object] = None
+    audio_format_name: Optional[str] = None
+    total_samples: Optional[int] = None
+
+    @classmethod
+    def supported_formats(cls) -> Tuple[FileExtensionType, ...]:
+        """Audio formats this header parser can decode."""
+        return tuple(_AUDIO_PARSERS)
+
+    @classmethod
+    def _from_parser_dict(cls, parsed: dict) -> "AudioHeaderInfo":
+        error = parsed.get("error")
+        return cls(
+            format=parsed.get("format"),
+            has_metadata=error is None,
+            error=error,
+            sample_rate=parsed.get("sample_rate"),
+            channels=parsed.get("channels"),
+            bit_depth=parsed.get("bit_depth"),
+            audio_format=parsed.get("audio_format"),
+            audio_format_name=parsed.get("audio_format_name"),
+            total_samples=parsed.get("total_samples"),
+        )
+
+
+def _detect_audio_format(data: bytes) -> Optional[FileExtensionType]:
+    """Detect an audio format from the leading *magic bytes* of a buffer.
+
+    Returns the matching :class:`FileExtensionType`, or ``None`` when the buffer
+    does not start with any recognized audio signature.
+    """
+    if len(data) < 4:
+        return None
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return FileExtensionType.WAV
+    if data[:4] == b"fLaC":
+        return FileExtensionType.FLAC
+    if data[:3] == b"ID3":
+        return FileExtensionType.MP3
+    if data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:  # MPEG audio syncword
+        return FileExtensionType.MP3
+    return None
+
+
+def parse_header(data: bytes, hint: Optional[FileExtensionType] = None) -> AudioHeaderInfo:
+    """Parse an audio header directly from a byte buffer.
+
+    The format is auto-detected from the leading magic bytes, dispatched to the
+    matching per-format parser, and the result reports whether metadata was
+    successfully decoded.
+
+    Args:
+        data: Raw bytes containing at least the file header.
+        hint: Optional expected format. When given it takes precedence over
+            magic-byte detection; when omitted the format is detected.
+
+    Returns:
+        An :class:`AudioHeaderInfo`. It is truthy (``bool(info) is True``) when
+        metadata was read; otherwise ``info.error`` explains why not.
+    """
+    if not data:
+        return AudioHeaderInfo(error="Empty buffer")
+
+    fmt = hint if hint is not None else _detect_audio_format(data)
+    if fmt is None:
+        return AudioHeaderInfo(error="Unrecognized audio format")
+
+    parser = _AUDIO_PARSERS.get(fmt)
+    if parser is None:
+        return AudioHeaderInfo(error=f"No audio parser for format: {fmt.value}")
+
+    return AudioHeaderInfo._from_parser_dict(parser(data))
 
 
 

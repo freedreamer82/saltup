@@ -1,12 +1,22 @@
 import copy
 import random
 import struct
+from dataclasses import dataclass
 from enum import IntEnum, auto, Enum
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import cv2
 import numpy as np
+
+from saltup.utils.data.header_info import (
+    DEFAULT_CHUNK,
+    MAX_HEADER_SIZE,
+    HeaderInfo,
+    PathOrUrl,
+    extension_from_source,
+    parse_header_from_path,
+)
 
 
 class ColorsBGR(Enum):
@@ -91,63 +101,6 @@ class FileExtensionType(Enum):
 
 # ---------------- Header parsing helpers ----------------
 # Read and parse image headers (JPEG / PNG / WEBP / GIF / TIFF / HEIC)
-def get_header(path: Union[str, Path]) -> bytes:
-    """Read a safe slice of bytes from an image file based on its type.
-
-    Safe read sizes:
-    - JPEG, PNG, WebP: first 64 KB
-    - HEIC, TIFF: first 256 KB
-    """
-    file_path = Path(path)
-    extension_name = file_path.suffix.lower().lstrip(".")
-
-    read_sizes = {
-        "nano": 54,  # enough for BMP header
-        "micro": 4 * 1024,
-        "small": 64 * 1024,
-        "medium": 256 * 1024,
-    }
-
-    first_54b_ext = {FileExtensionType.BMP}
-    first_4kb_ext = {FileExtensionType.SVG}
-
-    first_64kb_ext = {
-        FileExtensionType.JPG,
-        FileExtensionType.JPEG,
-        FileExtensionType.PNG,
-        FileExtensionType.WEBP,
-        FileExtensionType.GIF,
-    }
-    first_256kb_ext = {
-        FileExtensionType.HEIC,
-        FileExtensionType.HEIF,
-        FileExtensionType.TIF,
-        FileExtensionType.TIFF,
-    }
-
-    try:
-        extension = FileExtensionType(extension_name)
-    except ValueError:
-        extension = None
-
-    if extension in first_54b_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["nano"])
-    if extension in first_4kb_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["micro"])
-        
-    if extension in first_64kb_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["small"])
-
-    if extension in first_256kb_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["medium"])
-
-    with open(file_path, "rb") as file:
-        return file.read(4)
-
 def parse_jpeg_header(data: bytes) -> dict:
     if len(data) < 4 or data[:2] != b"\xFF\xD8":
         return {"format": "JPEG", "error": "Invalid JPEG signature"}
@@ -545,36 +498,164 @@ def parse_svg_header(data: bytes) -> dict:
 
     return result
 
-def parse_image_header(path: Union[str, Path]) -> dict:
-    file_path = Path(path)
-    extension_name = file_path.suffix.lower().lstrip(".")
-
+def _extension_hint(source: PathOrUrl) -> Optional[FileExtensionType]:
+    """Map the extension of a path/URI to a FileExtensionType, or None."""
     try:
-        extension = FileExtensionType(extension_name)
+        return FileExtensionType(extension_from_source(source))
     except ValueError:
-        return {"error": f"Unsupported extension: {extension_name or 'none'}"}
+        return None
 
-    data = get_header(file_path)
 
-    if extension in {FileExtensionType.JPG, FileExtensionType.JPEG}:
-        return parse_jpeg_header(data)
-    if extension == FileExtensionType.PNG:
-        return parse_png_header(data)
-    if extension == FileExtensionType.WEBP:
-        return parse_webp_header(data)
-    if extension == FileExtensionType.GIF:
-        return parse_gif_header(data)
-    if extension in {FileExtensionType.TIF, FileExtensionType.TIFF}:
-        return parse_tiff_header(data)
-    if extension in {FileExtensionType.HEIC, FileExtensionType.HEIF}:
-        return parse_heic_header(data)
-    if extension == FileExtensionType.SVG:
-        return parse_svg_header(data)
-    if extension == FileExtensionType.BMP:
-        return parse_bmp_header(data)
+def parse_image_header(
+    source: PathOrUrl,
+    *,
+    chunk: int = DEFAULT_CHUNK,
+    max_header_size: int = MAX_HEADER_SIZE,
+) -> "ImageHeaderInfo":
+    """Read an image header incrementally (from a path or URL) and decode it.
 
-    return {"error": f"No parser available for extension: {extension.value}"}
-    
+    A first slice of *chunk* bytes is read and grown only as far as needed to
+    decode the header (see
+    :func:`~saltup.utils.data.header_info.parse_header_from_path`); no file size
+    is required. The format is auto-detected from the magic bytes — so this
+    works for files with a wrong or missing extension — and only falls back to
+    the extension recovered from the path/URL when detection comes up empty.
+
+    Args:
+        source: Image file path or ``http(s)://`` URL (e.g. a presigned URL).
+        chunk: Bytes to read per step while probing the header.
+        max_header_size: Hard ceiling on bytes read, so a corrupt file whose
+            header never resolves cannot be read in full. A smaller file stops
+            earlier at end-of-stream.
+
+    Returns:
+        An :class:`ImageHeaderInfo` (truthy when metadata was decoded).
+    """
+    fallback = _extension_hint(source)
+
+    def _parse(data: bytes, _unused=None) -> "ImageHeaderInfo":
+        info = parse_header(data)
+        if not info and fallback is not None:
+            info = parse_header(data, hint=fallback)
+        return info
+
+    return parse_header_from_path(
+        source, _parse, initial_read=chunk, max_read=max_header_size
+    )
+
+
+# ---- Byte-buffer header parsing (format auto-detected from magic bytes) ----
+
+# HEIC/HEIF brands found right after the 'ftyp' box.
+_HEIC_BRANDS = {
+    b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx",
+    b"heif", b"mif1", b"msf1",
+}
+
+_IMAGE_PARSERS = {
+    FileExtensionType.JPEG: parse_jpeg_header,
+    FileExtensionType.JPG: parse_jpeg_header,
+    FileExtensionType.PNG: parse_png_header,
+    FileExtensionType.WEBP: parse_webp_header,
+    FileExtensionType.GIF: parse_gif_header,
+    FileExtensionType.TIFF: parse_tiff_header,
+    FileExtensionType.TIF: parse_tiff_header,
+    FileExtensionType.HEIC: parse_heic_header,
+    FileExtensionType.HEIF: parse_heic_header,
+    FileExtensionType.BMP: parse_bmp_header,
+    FileExtensionType.SVG: parse_svg_header,
+}
+
+
+@dataclass
+class ImageHeaderInfo(HeaderInfo):
+    """Metadata decoded from an image header. See :class:`HeaderInfo`."""
+
+    width: Optional[int] = None
+    height: Optional[int] = None
+    channels: Optional[int] = None
+    bit_depth: Optional[int] = None
+    color_mode: Optional[str] = None
+
+    @classmethod
+    def supported_formats(cls) -> Tuple[FileExtensionType, ...]:
+        """Image formats this header parser can decode."""
+        return tuple(_IMAGE_PARSERS)
+
+    @classmethod
+    def _from_parser_dict(cls, parsed: dict) -> "ImageHeaderInfo":
+        error = parsed.get("error")
+        return cls(
+            format=parsed.get("format"),
+            has_metadata=error is None,
+            error=error,
+            width=parsed.get("width"),
+            height=parsed.get("height"),
+            channels=parsed.get("channels"),
+            bit_depth=parsed.get("bit_depth"),
+            color_mode=parsed.get("color_mode"),
+        )
+
+
+def _detect_image_format(data: bytes) -> Optional[FileExtensionType]:
+    """Detect an image format from the leading *magic bytes* of a buffer.
+
+    Returns the matching :class:`FileExtensionType`, or ``None`` when the buffer
+    does not start with any recognized image signature.
+    """
+    if len(data) < 4:
+        return None
+    if data[:2] == b"\xFF\xD8":
+        return FileExtensionType.JPEG
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return FileExtensionType.PNG
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return FileExtensionType.WEBP
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return FileExtensionType.GIF
+    if data[:4] in (b"II\x2a\x00", b"MM\x00\x2a"):
+        return FileExtensionType.TIFF
+    if data[:2] == b"BM":
+        return FileExtensionType.BMP
+    if data[4:8] == b"ftyp" and data[8:12] in _HEIC_BRANDS:
+        return FileExtensionType.HEIC
+    head = data[:512].lstrip()
+    if head[:5].lower() == b"<?xml" or b"<svg" in data[:512].lower():
+        return FileExtensionType.SVG
+    return None
+
+
+def parse_header(data: bytes, hint: Optional[FileExtensionType] = None) -> ImageHeaderInfo:
+    """Parse an image header directly from a byte buffer.
+
+    The format is auto-detected from the leading magic bytes, dispatched to the
+    matching per-format parser, and the result reports whether metadata was
+    successfully decoded.
+
+    Args:
+        data: Raw bytes containing at least the file header.
+        hint: Optional expected format. When given it takes precedence over
+            magic-byte detection (useful when the signature is ambiguous or the
+            buffer is a partial slice); when omitted the format is detected.
+
+    Returns:
+        An :class:`ImageHeaderInfo`. It is truthy (``bool(info) is True``) when
+        metadata was read; otherwise ``info.error`` explains why not.
+    """
+    if not data:
+        return ImageHeaderInfo(error="Empty buffer")
+
+    fmt = hint if hint is not None else _detect_image_format(data)
+    if fmt is None:
+        return ImageHeaderInfo(error="Unrecognized image format")
+
+    parser = _IMAGE_PARSERS.get(fmt)
+    if parser is None:
+        return ImageHeaderInfo(error=f"No image parser for format: {fmt.value}")
+
+    return ImageHeaderInfo._from_parser_dict(parser(data))
+
+
 # ---------------- End header parsing helpers ----------------
 
 def generate_random_bgr_colors(num_colors):

@@ -1143,91 +1143,21 @@ def filter_segments_by_std(
 # =============================================================================
 
 from saltup.utils.data.image.image_utils import FileExtensionType
+from saltup.utils.data.header_info import (
+    DEFAULT_CHUNK,
+    MAX_HEADER_SIZE,
+    HeaderInfo,
+    PathOrUrl,
+    extension_from_source,
+    open_byte_reader,
+    parse_header_from_reader,
+)
 
-def get_header(path: Union[str, Path]) -> bytes:
-    """
-    Reads the first 256 KB of a file for header parsing.
-    This is sufficient for formats like WAV, FLAC, and MP3 which have headers within this range.
-    """
-    file_path = Path(path)
-    extension_name = file_path.suffix.lower().lstrip(".")
+# Base read unit for video headers. The head is probed up to this size; if the
+# metadata (an ISO-BMFF 'moov' box) is not there, the tail is read and grown in
+# multiples of this unit until 'moov' is fully captured.
+_VIDEO_CHUNK = DEFAULT_CHUNK
 
-    read_sizes = {
-        "micro": 64 * 1024,
-        "small": 2000 * 1024,
-        "medium": 5000 * 1024,
-    }
-
-    first_64kb_ext = {
-        FileExtensionType.WMV,
-        FileExtensionType.FLV,
-        
-    }
-
-    first_2mb_ext = {
-        FileExtensionType.AVI,
-        FileExtensionType.MKV,
-        FileExtensionType.WEBM,
-    }
-    first_5mb_ext = {
-        FileExtensionType.MP4,
-        FileExtensionType.MOV,
-        FileExtensionType.GP,
-        FileExtensionType.M3U8
-    }
-
-    try:
-        extension = FileExtensionType(extension_name)
-    except ValueError:
-        extension = None
-
-    if extension in first_64kb_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["micro"])
-
-    if extension in first_2mb_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["small"])
-
-    if extension in first_5mb_ext:
-        with open(file_path, "rb") as file:
-            return file.read(read_sizes["medium"])
-
-    with open(file_path, "rb") as file:
-        return file.read(4)
-
-
-def get_tail(path: Union[str, Path]) -> bytes:
-    """
-    Reads the last 256 KB of a file for footer parsing.
-    This is useful for formats that may have important metadata at the end of the file.
-    """
-    file_path = Path(path)
-    extension_name = file_path.suffix.lower().lstrip(".")
-
-    read_sizes = {
-        "medium": 5000 * 1024,
-    }
-    last_5mb_ext = {
-        FileExtensionType.MP4,
-        FileExtensionType.MOV,
-    }
-
-    try:
-        extension = FileExtensionType(extension_name)
-    except ValueError:
-        extension = None
-
-    if extension in last_5mb_ext:
-        with open(file_path, "rb") as file:
-            file_size = file.seek(0, os.SEEK_END)
-            file.seek(-min(read_sizes["medium"], file_size), os.SEEK_END)
-            return file.read()
-
-    with open(file_path, "rb") as file:
-        file_size = file.seek(0, os.SEEK_END)
-        file.seek(-min(4, file_size), os.SEEK_END)
-        return file.read(4)
 
 def parse_avi_header(header: bytes) -> dict:
     """
@@ -1409,39 +1339,186 @@ def parse_mov_header(header: bytes) -> dict:
     metadata["format"] = "MOV"
     return metadata
 
-def parse_video_header(path:Union[str, Path]) -> dict:
-    """
-    Parses the video header to extract metadata such as format, resolution, and duration.
-    This function dispatches to specific parsers based on the detected format.
-    """
-    p = Path(path)
-    extension_name = p.suffix.lower().lstrip(".")
+def _video_metadata_complete(info: "VideoHeaderInfo") -> bool:
+    """A video header is 'complete' once we have decoded useful metadata.
 
+    Recognising the container (``has_metadata``) is not enough for ISO-BMFF
+    files, whose ``moov`` box may sit at the end: we require at least a
+    resolution or a duration before we stop probing.
+    """
+    return info.has_metadata and (info.width is not None or info.duration is not None)
+
+
+def _extension_hint(source: PathOrUrl) -> Optional[FileExtensionType]:
+    """Map the extension of a path/URI to a FileExtensionType, or None."""
     try:
-        extension = FileExtensionType(extension_name)
+        return FileExtensionType(extension_from_source(source))
     except ValueError:
-        return {"error": f"Unsupported extension: {extension_name or 'none'}"}
-    try:
-        data = get_header(p)
-    except Exception as exc:
-        return {"error": f"Cannot read file: {exc}"}
-    if extension == FileExtensionType.AVI:
-        return parse_avi_header(data)
-    if extension == FileExtensionType.MP4:
-        if b"moov" in data:
-            return parse_mp4_header(data)
-        try:
-            tail = get_tail(p)
-        except Exception:
-            tail = b""
-        return parse_mp4_header(data + tail)
-    if extension == FileExtensionType.MOV:
-        if b"moov" in data:
-            return parse_mov_header(data)
-        try:
-            tail = get_tail(p)
-        except Exception:
-            tail = b""
-        return parse_mov_header(data + tail)
+        return None
 
-    return {"error": "Unsupported or unknown video format"}
+
+def parse_video_header(
+    source: PathOrUrl,
+    *,
+    chunk: int = _VIDEO_CHUNK,
+    max_header_size: int = MAX_HEADER_SIZE,
+) -> "VideoHeaderInfo":
+    """Read a video header incrementally (from a path or URL) and decode it.
+
+    The head is probed for *chunk* bytes; no file size is required. For MP4/MOV
+    whose ``moov`` box lives at the end of the file, the tail is read and grown
+    in multiples of *chunk* (a suffix range request for remote URLs) and
+    combined with the head until ``moov`` is fully captured. The format is
+    auto-detected from the magic bytes, falling back to the extension recovered
+    from the path/URL only when detection fails.
+
+    Args:
+        source: Video file path or ``http(s)://`` URL (e.g. a presigned URL).
+        chunk: Bytes to read per step while probing head and tail.
+        max_header_size: Hard ceiling on bytes read (head probe and tail
+            growth), so a corrupt file whose ``moov`` never resolves cannot be
+            read in full. A smaller file stops earlier at end-of-stream.
+
+    Returns:
+        A :class:`VideoHeaderInfo` (truthy when metadata was decoded).
+    """
+    fallback = _extension_hint(source)
+    last_head = b""
+
+    def _parse(data: bytes, _unused=None) -> "VideoHeaderInfo":
+        nonlocal last_head
+        last_head = data
+        info = parse_header(data)
+        if not _video_metadata_complete(info) and fallback is not None:
+            alt = parse_header(data, hint=fallback)
+            # Take the fallback when it decodes more, or when detection yielded
+            # nothing usable (so the more specific error surfaces) — but never
+            # clobber a valid detection with a wrong-extension failure.
+            if _video_metadata_complete(alt) or not info.has_metadata:
+                info = alt
+        return info
+
+    with open_byte_reader(source) as reader:
+        info = parse_header_from_reader(
+            reader, _parse, initial_read=chunk, max_read=min(chunk, max_header_size),
+            is_complete=_video_metadata_complete,
+        )
+
+        # ISO-BMFF (MP4/MOV): the 'moov' box may be at the tail, not the head.
+        # 'ftyp' lives in the head, so parse head+tail together. The tail is
+        # grown chunk by chunk because 'moov' (and its early mvhd/tkhd atoms)
+        # can be arbitrarily large; growth stops once the whole file is buffered
+        # or the max_header_size ceiling is reached.
+        if (info.format in ("MP4", "MOV")
+                and not _video_metadata_complete(info)
+                and b"moov" not in last_head):
+            head = last_head
+            tail_len, prev_len = chunk, -1
+            while True:
+                tail_len = min(tail_len, max_header_size)
+                tail = reader.read_tail(tail_len)
+                if b"moov" in tail:
+                    candidate = _parse(head + tail)
+                    if _video_metadata_complete(candidate):
+                        info = candidate
+                        break
+                if len(tail) == prev_len or tail_len >= max_header_size:
+                    break  # whole file buffered, or ceiling reached
+                prev_len = len(tail)
+                tail_len *= 4
+
+    return info
+
+
+# ---- Byte-buffer header parsing (format auto-detected from magic bytes) ----
+
+_VIDEO_PARSERS = {
+    FileExtensionType.AVI: parse_avi_header,
+    FileExtensionType.MP4: parse_mp4_header,
+    FileExtensionType.MOV: parse_mov_header,
+}
+
+
+@dataclass
+class VideoHeaderInfo(HeaderInfo):
+    """Metadata decoded from a video header. See :class:`HeaderInfo`."""
+
+    width: Optional[int] = None
+    height: Optional[int] = None
+    fps: Optional[float] = None
+    bit_depth: Optional[int] = None
+    duration: Optional[float] = None
+    total_frames: Optional[int] = None
+
+    @classmethod
+    def supported_formats(cls) -> Tuple[FileExtensionType, ...]:
+        """Video formats this header parser can decode."""
+        return tuple(_VIDEO_PARSERS)
+
+    @classmethod
+    def _from_parser_dict(cls, parsed: dict) -> "VideoHeaderInfo":
+        error = parsed.get("error")
+        return cls(
+            format=parsed.get("format"),
+            has_metadata=error is None,
+            error=error,
+            width=parsed.get("width"),
+            height=parsed.get("height"),
+            fps=parsed.get("fps"),
+            bit_depth=parsed.get("bit_depth"),
+            duration=parsed.get("duration"),
+            total_frames=parsed.get("total_frames"),
+        )
+
+
+def _detect_video_format(data: bytes) -> Optional[FileExtensionType]:
+    """Detect a video format from the leading *magic bytes* of a buffer.
+
+    Returns the matching :class:`FileExtensionType`, or ``None`` when the buffer
+    does not start with any recognized video signature.
+    """
+    if len(data) < 12:
+        return None
+    if data[:4] == b"RIFF" and data[8:12] == b"AVI ":
+        return FileExtensionType.AVI
+    if data[4:8] == b"ftyp":
+        # 'qt  ' brand marks a QuickTime (MOV) file; everything else -> MP4.
+        return FileExtensionType.MOV if data[8:12] == b"qt  " else FileExtensionType.MP4
+    return None
+
+
+def parse_header(data: bytes, hint: Optional[FileExtensionType] = None) -> VideoHeaderInfo:
+    """Parse a video header directly from a byte buffer.
+
+    The format is auto-detected from the leading magic bytes, dispatched to the
+    matching per-format parser, and the result reports whether metadata was
+    successfully decoded.
+
+    Note:
+        For MP4/MOV the ``moov`` box may live at the *end* of the file. Because
+        this function operates purely on the bytes handed to it, pass a buffer
+        that already contains ``moov`` (the path-based :func:`parse_video_header`
+        handles the head/tail read for you) to recover resolution/duration;
+        otherwise only the format is reported.
+
+    Args:
+        data: Raw bytes containing at least the file header.
+        hint: Optional expected format. When given it takes precedence over
+            magic-byte detection; when omitted the format is detected.
+
+    Returns:
+        A :class:`VideoHeaderInfo`. It is truthy (``bool(info) is True``) when
+        metadata was read; otherwise ``info.error`` explains why not.
+    """
+    if not data:
+        return VideoHeaderInfo(error="Empty buffer")
+
+    fmt = hint if hint is not None else _detect_video_format(data)
+    if fmt is None:
+        return VideoHeaderInfo(error="Unrecognized video format")
+
+    parser = _VIDEO_PARSERS.get(fmt)
+    if parser is None:
+        return VideoHeaderInfo(error=f"No video parser for format: {fmt.value}")
+
+    return VideoHeaderInfo._from_parser_dict(parser(data))

@@ -123,14 +123,59 @@ def test_parse_image_header_dispatch_for_supported_formats(tmp_path):
 		file_path = tmp_path / filename
 		file_path.write_bytes(payload)
 		result = parse_image_header(file_path)
-		assert result["format"] == expected_format
-		assert result["width"] == expected_width
-		assert result["height"] == expected_height
+		assert result  # metadata decoded
+		assert result.format == expected_format
+		assert result.width == expected_width
+		assert result.height == expected_height
 
 
-def test_parse_image_header_unsupported_extension(tmp_path):
+def test_parse_image_header_dispatch_without_extension(tmp_path):
+	# Magic-byte detection works even when the file has no/incorrect extension.
+	file_path = tmp_path / "mystery.bin"
+	file_path.write_bytes(_png_bytes(320, 240))
+	result = parse_image_header(file_path)
+	assert result
+	assert result.format == "PNG"
+	assert (result.width, result.height) == (320, 240)
+
+
+def test_parse_image_header_invalid_signature(tmp_path):
 	file_path = tmp_path / "sample.bmp"
 	file_path.write_bytes(b"BM\x00\x00\x00\x00")
 	result = parse_image_header(file_path)
-	assert "error" in result
-	assert "Invalid BMP signature" in result["error"]
+	assert not result
+	assert "Invalid BMP signature" in result.error
+
+
+def test_parse_image_header_unsupported_format(tmp_path):
+	# ICO is not handled: unknown extension + unrecognized magic -> clean failure.
+	file_path = tmp_path / "favicon.ico"
+	file_path.write_bytes(b"\x00\x00\x01\x00" + b"\x00" * 60)
+	result = parse_image_header(file_path)
+	assert not result
+	assert result.error
+
+
+def test_parse_image_header_over_http(tmp_path):
+	import functools
+	import threading
+	from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+	(tmp_path / "pic.png").write_bytes(_png_bytes(512, 384))
+
+	handler = functools.partial(SimpleHTTPRequestHandler, directory=str(tmp_path))
+	server = HTTPServer(("127.0.0.1", 0), handler)
+	server.RequestHandlerClass.log_message = lambda *a, **k: None  # silence logs
+	port = server.server_address[1]
+	thread = threading.Thread(target=server.serve_forever, daemon=True)
+	thread.start()
+	try:
+		# Presigned-style URL: query string, format recovered from magic bytes.
+		url = f"http://127.0.0.1:{port}/pic.png?X-Amz-Signature=abc"
+		result = parse_image_header(url)
+		assert result
+		assert result.format == "PNG"
+		assert (result.width, result.height) == (512, 384)
+	finally:
+		server.shutdown()
+		thread.join(timeout=5)

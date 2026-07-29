@@ -70,25 +70,86 @@ def test_parse_video_header_mp4_reads_moov_from_tail(tmp_path):
     mp4_path.write_bytes(head + (b"\x00" * 256) + tail)
 
     result = parse_video_header(mp4_path)
-    assert result["format"] == "MP4"
-    assert result["width"] == 1920
-    assert result["height"] == 1080
-    assert result["duration"] == 5.0
+    assert result
+    assert result.format == "MP4"
+    assert result.width == 1920
+    assert result.height == 1080
+    assert result.duration == 5.0
 
 
-def test_parse_video_header_dispatches_avi(tmp_path, monkeypatch):
+def test_parse_video_header_dispatches_avi(tmp_path):
+    avih_data = bytearray(40)
+    avih_data[0:4] = (40_000).to_bytes(4, "little")   # 25 fps
+    avih_data[16:20] = (250).to_bytes(4, "little")
+    avih_data[32:36] = (640).to_bytes(4, "little")
+    avih_data[36:40] = (480).to_bytes(4, "little")
+    payload = (
+        b"RIFF" + (100).to_bytes(4, "little") + b"AVI "
+        + b"JUNK" + b"avih" + (40).to_bytes(4, "little") + bytes(avih_data)
+    )
     avi_path = tmp_path / "sample.avi"
-    avi_path.write_bytes(b"RIFF" + (b"\x00" * 32))
-
-    sentinel = {"format": "AVI", "width": 640, "height": 480, "fps": 30.0, "bit_depth": None}
-    monkeypatch.setattr(video_utils, "parse_avi_header", lambda _data: sentinel)
+    avi_path.write_bytes(payload)
 
     result = parse_video_header(avi_path)
-    assert result == sentinel
+    assert result
+    assert result.format == "AVI"
+    assert result.width == 640
+    assert result.height == 480
+    assert result.fps == 25.0
 
 
-def test_parse_video_header_unsupported_extension(tmp_path):
+def test_parse_video_header_unsupported_bytes(tmp_path):
     file_path = tmp_path / "video.unknown"
     file_path.write_bytes(b"\x00\x01\x02\x03")
     result = parse_video_header(file_path)
-    assert "error" in result
+    assert not result
+    assert result.error
+
+
+def test_parse_video_header_unsupported_format(tmp_path):
+    # Matroska has a known extension but no parser: must fail, not raise.
+    file_path = tmp_path / "clip.mkv"
+    file_path.write_bytes(b"\x1a\x45\xdf\xa3" + b"\x00" * 60)
+    result = parse_video_header(file_path)
+    assert not result          # clean failure, no exception
+    assert result.error
+    assert "mkv" in result.error.lower()
+
+
+def _fast_start_mp4(width=1280, height=720, duration_s=3.0):
+    head = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+    timescale, dur = 1000, int(duration_s * 1000)
+    mvhd = bytearray(b"mvhd" + b"\x00" * 40)
+    mvhd[4] = 0
+    mvhd[16:20] = timescale.to_bytes(4, "big")
+    mvhd[20:24] = dur.to_bytes(4, "big")
+    tkhd = bytearray(b"tkhd" + b"\x00" * 100)
+    tkhd[4] = 0
+    tkhd[80:84] = (width << 16).to_bytes(4, "big")
+    tkhd[84:88] = (height << 16).to_bytes(4, "big")
+    return head + b"moov" + bytes(mvhd) + b"trak" + bytes(tkhd)
+
+
+def test_parse_video_header_over_http(tmp_path):
+    import functools
+    import threading
+    from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+    (tmp_path / "v.mp4").write_bytes(_fast_start_mp4(1280, 720, 3.0))
+
+    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = HTTPServer(("127.0.0.1", 0), handler)
+    server.RequestHandlerClass.log_message = lambda *a, **k: None
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        result = parse_video_header(f"http://127.0.0.1:{port}/v.mp4?sig=x")
+        assert result
+        assert result.format == "MP4"
+        assert result.width == 1280
+        assert result.height == 720
+        assert result.duration == 3.0
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)

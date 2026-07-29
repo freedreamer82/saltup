@@ -83,14 +83,49 @@ def test_parse_audio_header_dispatch_supported_formats(tmp_path):
 		file_path = tmp_path / filename
 		file_path.write_bytes(payload)
 		result = parse_audio_header(file_path)
-		assert result["format"] == expected_format
-		assert result["sample_rate"] == expected_sr
-		assert result["channels"] == expected_channels
+		assert result
+		assert result.format == expected_format
+		assert result.sample_rate == expected_sr
+		assert result.channels == expected_channels
 
 
-def test_parse_audio_header_unsupported_extension(tmp_path):
+def test_parse_audio_header_unrecognized_bytes(tmp_path):
 	file_path = tmp_path / "sample.xyz"
 	file_path.write_bytes(b"not-audio")
 	result = parse_audio_header(file_path)
-	assert "error" in result
-	assert "Unsupported extension" in result["error"]
+	assert not result
+	assert result.error
+
+
+def test_parse_audio_header_unsupported_format(tmp_path):
+	# OGG has a known extension but no parser: must fail, not raise.
+	file_path = tmp_path / "song.ogg"
+	file_path.write_bytes(b"OggS" + b"\x00" * 60)
+	result = parse_audio_header(file_path)
+	assert not result
+	assert result.error
+	assert "ogg" in result.error.lower()
+
+
+def test_parse_audio_header_over_http(tmp_path):
+	import functools
+	import threading
+	from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+	(tmp_path / "a.wav").write_bytes(_wav_bytes(16000, 1, 16))
+
+	handler = functools.partial(SimpleHTTPRequestHandler, directory=str(tmp_path))
+	server = HTTPServer(("127.0.0.1", 0), handler)
+	server.RequestHandlerClass.log_message = lambda *a, **k: None
+	port = server.server_address[1]
+	thread = threading.Thread(target=server.serve_forever, daemon=True)
+	thread.start()
+	try:
+		result = parse_audio_header(f"http://127.0.0.1:{port}/a.wav?sig=x")
+		assert result
+		assert result.format == "WAV"
+		assert result.sample_rate == 16000
+		assert result.channels == 1
+	finally:
+		server.shutdown()
+		thread.join(timeout=5)
