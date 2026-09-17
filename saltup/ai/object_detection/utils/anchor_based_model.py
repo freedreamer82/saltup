@@ -1,6 +1,5 @@
 import os
 import numpy as np
-from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -41,6 +40,15 @@ def compute_anchors(boxes: np.ndarray, num_anchors: int) -> np.ndarray:
         raise ValueError(f"num_anchors ({num_anchors}) cannot be greater than number of boxes ({boxes.shape[0]})")
 
     # Perform K-means clustering
+    # scikit-learn is only needed to compute anchors (a training-time step),
+    # so import it lazily to keep inference-only installs light.
+    try:
+        from sklearn.cluster import KMeans
+    except ImportError as e:
+        raise ImportError(
+            "scikit-learn is required by compute_anchors. "
+            'Install it with: pip install "saltup[training]" or pip install scikit-learn'
+        ) from e
     kmeans = KMeans(n_clusters=num_anchors, random_state=0, n_init=10)
     kmeans.fit(boxes)
 

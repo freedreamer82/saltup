@@ -5,7 +5,6 @@ from typing import Union, Tuple, Dict
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from tqdm import tqdm
 from torch.utils.data import DataLoader as pytorch_DataGenerator
 
@@ -104,6 +103,13 @@ def evaluate_model(
     # ==== Confusion Matrix ====
     if conf_matrix:
         labels_range = [i for i in range(len(class_names))]
+        try:
+            from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+        except ImportError as e:
+            raise ImportError(
+                "scikit-learn is required to build the confusion matrix. "
+                'Install it with: pip install "saltup[training]" or pip install scikit-learn'
+            ) from e
         cm = confusion_matrix(all_true_labels, all_pred_labels, labels=labels_range)
         plt.figure(figsize=(10, 7))
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)

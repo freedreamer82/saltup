@@ -102,6 +102,7 @@ convert = [
 training = [
     "saltup[keras,torch]",
     "albumentations",
+    "scikit-learn",    # anchor clustering (compute_anchors), confusion matrix
     "mlflow",
     "paho-mqtt",
 ]
