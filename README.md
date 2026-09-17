@@ -31,8 +31,55 @@ Data processing and dataset utilities without ML frameworks:
 pip install git+https://github.com/freedreamer82/saltup.git
 ```
 
+### Inference-only Installation
+Install just the backend(s) matching the model formats you need to run.
+Extras can be combined freely:
+
+| Extra        | Model formats              | Pulls in                                  |
+|--------------|----------------------------|-------------------------------------------|
+| `onnx`       | `.onnx`                    | `onnxruntime` (CPU), `onnx`               |
+| `onnx-gpu`   | `.onnx`                    | `onnxruntime-gpu` (CUDA), `onnx`          |
+| `keras-cpu`  | `.keras`, `.h5`, `.tflite` | `tensorflow-cpu`, `keras`                 |
+| `keras`      | `.keras`, `.h5`, `.tflite` | `tensorflow` (GPU-capable), `keras`       |
+| `torch`      | `.pt`, `.pth`              | `torch`, `torchvision` (CPU: see below)   |
+| `inference`  | all of the above           | `onnx` + `keras-cpu` + `torch`            |
+
+Do not install `keras` and `keras-cpu` in the same environment: `tensorflow` and `tensorflow-cpu` conflict.
+
+```bash
+# ONNX Runtime only (smallest inference install)
+pip install "saltup[onnx] @ git+https://github.com/freedreamer82/saltup.git"
+
+# Keras / TFLite models on CPU
+pip install "saltup[keras-cpu] @ git+https://github.com/freedreamer82/saltup.git"
+
+# ONNX + PyTorch
+pip install "saltup[onnx,torch] @ git+https://github.com/freedreamer82/saltup.git"
+
+# Every inference backend (CPU flavours)
+pip install "saltup[inference] @ git+https://github.com/freedreamer82/saltup.git"
+```
+
+**PyTorch on CPU only.** PyPI only ships the CUDA-enabled `torch` wheel (~2GB). The CPU wheel lives
+on the PyTorch index, and package metadata cannot pick an index, so add the flag to any command
+that includes the `torch` extra:
+```bash
+pip install "saltup[torch] @ git+https://github.com/freedreamer82/saltup.git" \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+Loading a model whose backend is not installed raises an `ImportError` that names the extra to install.
+
+### Other Extras
+| Extra      | Adds                                                        |
+|------------|-------------------------------------------------------------|
+| `convert`  | Keras/Torch → ONNX conversion and ONNX quantization (`tf2onnx`, `onnx2torch`) |
+| `training` | Training loop, MLflow tracking, MQTT callbacks               |
+| `audio`    | Audio utilities (`librosa`, `soundfile`, `cmsisdsp`)         |
+| `dev`      | Notebooks and tests (`IPython`, `pytest`, `moto`)            |
+
 ### Full Installation (~4GB)
-All features including ML training, inference, and model conversion:
+All features including ML training, inference (with `onnxruntime-gpu`), and model conversion:
 ```bash
 pip install "saltup[full] @ git+https://github.com/freedreamer82/saltup.git"
 ```

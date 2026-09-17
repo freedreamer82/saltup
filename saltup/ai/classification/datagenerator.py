@@ -1,6 +1,7 @@
 
 
-from tkinter import Image
+from __future__ import annotations
+
 from typing import List
 import numpy as np
 
@@ -8,7 +9,20 @@ from saltup.ai.base_dataformat.base_datagen import BaseDatagenerator
 from saltup.ai.classification.dataloader import ClassificationDataloader
 from saltup.utils.data.image.image_utils import Image
 
-from tensorflow.keras.utils import Sequence, to_categorical #type: ignore
+# Optional framework wrappers.
+# Keras and PyTorch are optional dependencies (``saltup[keras]`` / ``saltup[torch]``):
+# the generators below are always importable, but instantiating one without its
+# framework installed raises an ImportError explaining what to install.
+try:
+    from keras.utils import Sequence, to_categorical  # type: ignore
+    _KERAS_AVAILABLE = True
+except ImportError:
+    _KERAS_AVAILABLE = False
+    to_categorical = None
+
+    class Sequence:  # minimal stand-in so the class below can still be defined
+        pass
+
 
 class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
     def __init__(
@@ -22,6 +36,11 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
         apply_padding=False,
         seed=None
     ):
+        if not _KERAS_AVAILABLE:
+            raise ImportError(
+                "keras_ClassificationDataGenerator requires Keras. "
+                'Install it with: pip install "saltup[keras]"'
+            )
         super().__init__(dataloader, target_size, num_classes, batch_size, preprocess, transform, apply_padding, seed)
         self.on_epoch_end()
     
@@ -106,9 +125,19 @@ class keras_ClassificationDataGenerator(BaseDatagenerator, Sequence):
         self._rng.shuffle(self._indexes)
 
 
-from torch.utils.data import Dataset
-import torch.nn.functional as F
-import torch
+try:
+    import torch
+    import torch.nn.functional as F
+    from torch.utils.data import Dataset
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    F = None
+    _TORCH_AVAILABLE = False
+
+    class Dataset:  # minimal stand-in so the class below can still be defined
+        pass
+
 
 class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
     def __init__(
@@ -123,6 +152,11 @@ class pytorch_ClassificationDataGenerator(BaseDatagenerator, Dataset):
         seed=None
     ):
         
+        if not _TORCH_AVAILABLE:
+            raise ImportError(
+                "pytorch_ClassificationDataGenerator requires PyTorch. "
+                'Install it with: pip install "saltup[torch]"'
+            )
         super().__init__(dataloader, target_size, num_classes, batch_size, preprocess, transform, apply_padding, seed)
         #self.do_augment = True if transform else False
         

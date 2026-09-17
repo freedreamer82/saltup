@@ -1,18 +1,72 @@
 from typing import List, Tuple, Any
-import torch
 import os
-import onnxruntime as ort
-import onnx
+import sys
 import numpy as np
-
-import tensorflow as tf
-#from tf_keras.saving import load_model
-import keras
 import time
+from enum import IntEnum
 
 from saltup.utils.misc import suppress_stdout
 from saltup.saltup_env import SaltupEnv
-from enum import IntEnum
+
+# Framework imports are lazy: each backend is imported only when a model of
+# that type is actually loaded, so that a lightweight install (e.g. only
+# ``pip install saltup[onnx]``) can run inference without the other frameworks.
+
+_EXTRA_HINT = {
+    "torch": "torch",
+    "keras": "keras",
+    "tensorflow": "keras",
+    "onnx": "onnx",
+    "onnxruntime": "onnx",
+}
+
+
+def _lazy_import(module_name: str):
+    """Import an optional framework module, raising a helpful error if missing."""
+    import importlib
+    try:
+        return importlib.import_module(module_name)
+    except ImportError as e:
+        extra = _EXTRA_HINT.get(module_name, module_name)
+        raise ImportError(
+            f"'{module_name}' is required for this model type but is not installed. "
+            f"Install it with: pip install \"saltup[{extra}]\""
+        ) from e
+
+
+def _import_onnxruntime():
+    """Import onnxruntime, accepting both the CPU and the GPU distribution."""
+    try:
+        import onnxruntime as ort  # provided by onnxruntime or onnxruntime-gpu
+        return ort
+    except ImportError as e:
+        raise ImportError(
+            "'onnxruntime' is required for ONNX models but is not installed. "
+            "Install it with: pip install \"saltup[onnx]\" (or saltup[onnx-gpu])"
+        ) from e
+
+
+def _isinstance_if_loaded(obj: Any, module_name: str, attr_path: str) -> bool:
+    """
+    Check ``isinstance(obj, module.attr)`` without importing the module.
+
+    If the module is not already imported the object cannot be an instance of
+    one of its classes, so the check returns False without triggering a
+    (possibly heavy or failing) import.
+    """
+    mod = sys.modules.get(module_name)
+    if mod is None:
+        return False
+    target = mod
+    for part in attr_path.split("."):
+        target = getattr(target, part, None)
+        if target is None:
+            return False
+    try:
+        return isinstance(obj, target)
+    except TypeError:
+        return False
+
 
 class ModelType(IntEnum):
     KERAS = 1
@@ -62,16 +116,19 @@ class NeuralNetworkModel:
                 return ModelType.ONNX
             elif model_or_path.endswith(".tflite"):
                 return ModelType.TFLITE
-        elif isinstance(model_or_path, torch.nn.Module):
+        elif _isinstance_if_loaded(model_or_path, "torch", "nn.Module"):
             return ModelType.TORCH
-        elif isinstance(model_or_path, keras.Model):
+        elif _isinstance_if_loaded(model_or_path, "keras", "Model"):
             return ModelType.KERAS
-        elif isinstance(model_or_path, ort.InferenceSession):
+        elif _isinstance_if_loaded(model_or_path, "onnxruntime", "InferenceSession"):
             return ModelType.ONNX
-        elif isinstance(model_or_path, tf.lite.Interpreter):
+        elif _isinstance_if_loaded(model_or_path, "tensorflow", "lite.Interpreter"):
             return ModelType.TFLITE
-        else:
-            raise ValueError("Cannot determine model type from the given input.")
+        raise ValueError(
+            "Cannot determine model type from the given input. "
+            "Pass a model path (.pt/.pth/.keras/.h5/.onnx/.tflite) or an already "
+            "instantiated torch/keras/onnxruntime/tflite model object."
+        )
         
     @property
     def is_loaded(self) -> bool:
@@ -120,6 +177,7 @@ class NeuralNetworkModel:
         
         with suppress_stdout():
             if self._model_type == ModelType.TORCH:
+                torch = _lazy_import("torch")
                 # Device configuration
                 device_config = SaltupEnv.SALTUP_PYTORCH_DEVICE
                 if device_config == "auto":
@@ -166,7 +224,7 @@ class NeuralNetworkModel:
                 return self.model, self.input_shape, self.output_shape
                 
             elif self._model_type == ModelType.KERAS:
-                
+                keras = _lazy_import("keras")
                 if not isinstance(model_or_path, str):
                     self.model = model_or_path
                 else:
@@ -188,6 +246,7 @@ class NeuralNetworkModel:
 
             
             elif self._model_type == ModelType.ONNX:
+                ort = _import_onnxruntime()
                 use_gpu = SaltupEnv.SALTUP_NN_MNG_USE_GPU
                 providers = ort.get_available_providers()
                 
@@ -204,11 +263,17 @@ class NeuralNetworkModel:
                     self.model = ort.InferenceSession(self.model_path, providers=providers)
                     # Model size and parameters
                     self.model_size_bytes = os.path.getsize(self.model_path)
-                    # Count ONNX parameters (sum all initializers)
-                    model_proto = onnx.load(self.model_path)
-                    self.num_parameters = sum(
-                        int(np.prod(init.dims)) for init in model_proto.graph.initializer
-                    )
+                    # Count ONNX parameters (sum all initializers).
+                    # The 'onnx' package is optional: skip the count if missing.
+                    try:
+                        import onnx
+                    except ImportError:
+                        self.num_parameters = None
+                    else:
+                        model_proto = onnx.load(self.model_path)
+                        self.num_parameters = sum(
+                            int(np.prod(init.dims)) for init in model_proto.graph.initializer
+                        )
                 input_metadata = self.model.get_inputs()[0]
                 self.input_shape = tuple(input_metadata.shape)
                 output_metadata = self.model.get_outputs()[0]
@@ -217,7 +282,7 @@ class NeuralNetworkModel:
                 return self.model, self.input_shape, self.output_shape
 
             elif self._model_type == ModelType.TFLITE:
-                
+                tf = _lazy_import("tensorflow")
                 if not isinstance(model_or_path, str):
                     self.model = model_or_path
                 else:
@@ -269,6 +334,7 @@ class NeuralNetworkModel:
 
         with suppress_stdout():
             if self._model_type == ModelType.TORCH:
+                torch = _lazy_import("torch")
                 # TORCH inference
                 with torch.no_grad():
                     # Device configuration
@@ -289,7 +355,7 @@ class NeuralNetworkModel:
 #                output = self.model.predict(input_data)
                 output = self.model(input_data, training=False).numpy()
             elif self._model_type == ModelType.ONNX:
-                if isinstance(input_data, torch.Tensor):
+                if _isinstance_if_loaded(input_data, "torch", "Tensor"):
                     input_data = input_data.cpu().numpy()
                 elif not isinstance(input_data, np.ndarray):
                     input_data = np.array(input_data)                

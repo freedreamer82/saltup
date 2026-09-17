@@ -6,7 +6,7 @@ and in-memory byte streams.  It supports both encoded formats (wav, mp3,
 flac, …) via ``librosa`` and headerless raw PCM.
 
 **Dependency note** — ``librosa`` is an *optional* dependency
-(part of the ``saltup[full]`` extra).  Functions in this module raise
+(part of the ``saltup[audio]`` or ``saltup[full]`` extras).  Functions in this module raise
 a clear ``ImportError`` at call time if ``librosa`` is not installed,
 keeping the base ``saltup`` package lightweight.
 
@@ -44,7 +44,7 @@ def _ensure_librosa():
         except ImportError as exc:
             raise ImportError(
                 "librosa is required for audio processing utilities. "
-                "Install it with:  pip install saltup[full]  or  pip install librosa"
+                "Install it with:  pip install 'saltup[audio]'  or  pip install librosa"
             ) from exc
     return _librosa
 

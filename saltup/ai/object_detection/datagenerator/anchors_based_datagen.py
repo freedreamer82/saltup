@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 import albumentations as A
 import numpy as np
@@ -399,8 +401,21 @@ class AnchorsBasedDatagen(BaseDatagenerator):
     def merge(dg1, dg2):
         raise NotImplementedError
 
-import keras
-from keras.utils import Sequence #type: ignore
+# Optional framework wrappers.
+# Keras and PyTorch are optional dependencies (``saltup[keras]`` / ``saltup[torch]``):
+# the wrappers below are always importable, but instantiating one without its
+# framework installed raises an ImportError explaining what to install.
+try:
+    import keras
+    from keras.utils import Sequence  # type: ignore
+    _KERAS_AVAILABLE = True
+except ImportError:
+    keras = None
+    _KERAS_AVAILABLE = False
+
+    class Sequence:  # minimal stand-in so the class below can still be defined
+        pass
+
 
 class KerasAnchorBasedDatagen(AnchorsBasedDatagen, Sequence):
     """
@@ -431,6 +446,11 @@ class KerasAnchorBasedDatagen(AnchorsBasedDatagen, Sequence):
         Args match parent class AnchorsBasedDataloader.
         See AnchorsBasedDataloader documentation for details.
         """
+        if not _KERAS_AVAILABLE:
+            raise ImportError(
+                "KerasAnchorBasedDatagen requires Keras. "
+                'Install it with: pip install "saltup[keras]"'
+            )
         AnchorsBasedDatagen.__init__(
             self,
             dataloader=dataloader,
@@ -472,8 +492,17 @@ class KerasAnchorBasedDatagen(AnchorsBasedDatagen, Sequence):
         super().on_epoch_end()
 
 
-from torch.utils.data import Dataset
-import torch
+try:
+    import torch
+    from torch.utils.data import Dataset
+    _TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    _TORCH_AVAILABLE = False
+
+    class Dataset:  # minimal stand-in so the class below can still be defined
+        pass
+
 
 class PyTorchAnchorBasedDatagen(AnchorsBasedDatagen, Dataset):
     """
@@ -514,6 +543,11 @@ class PyTorchAnchorBasedDatagen(AnchorsBasedDatagen, Dataset):
             preprocess: Optional custom preprocessing function
             transform: Optional albumentations transforms for augmentation
         """
+        if not _TORCH_AVAILABLE:
+            raise ImportError(
+                "PyTorchAnchorBasedDatagen requires PyTorch. "
+                'Install it with: pip install "saltup[torch]"'
+            )
         AnchorsBasedDatagen.__init__(
             self,
             dataloader=dataloader,

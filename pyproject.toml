@@ -42,43 +42,90 @@ dependencies = [
 ]
 
 # OPTIONAL DEPENDENCIES
+#
+# Pick only the inference backend(s) you need, e.g.:
+#   pip install "saltup[onnx]"            # ONNX Runtime (CPU)
+#   pip install "saltup[onnx-gpu]"        # ONNX Runtime with CUDA
+#   pip install "saltup[keras-cpu]"       # Keras/TFLite models, tensorflow-cpu (lighter)
+#   pip install "saltup[keras]"           # Keras/TFLite models, full tensorflow (GPU-capable)
+#   pip install "saltup[torch]"           # PyTorch models (see CPU note below)
+#   pip install "saltup[onnx,torch]"      # any mix of backends
+#   pip install "saltup[inference]"       # every inference backend, CPU flavours
+#   pip install "saltup[full]"            # everything: training, conversion, tracking
+#
+# PyTorch CPU-only: PyPI ships only the CUDA-enabled 'torch' wheel. The CPU wheel
+# lives on the PyTorch index and package metadata cannot select an index, so add
+# the flag yourself:
+#   pip install "saltup[torch]" --extra-index-url https://download.pytorch.org/whl/cpu
 [project.optional-dependencies]
 
-# FULL version: Adds ML frameworks, training, inference (~4GB total)
-full = [
-    # Deep Learning Frameworks
-    "tensorflow==2.18.0",
-    "keras==3.12.0",
-    "torch",
-    "torchvision",
-    "torchaudio",
-    
-    # ONNX Runtime & Conversion
+# --- Inference backends (one per model format) ---
+# .onnx models
+onnx = [
+    "onnxruntime",
+    "onnx",
+]
+onnx-gpu = [
     "onnxruntime-gpu",
     "onnx",
+]
+# .keras / .h5 / .tflite models (Keras 3 needs a backend: TensorFlow here).
+# 'keras' uses the regular tensorflow wheel (GPU-capable, larger);
+# 'keras-cpu' uses tensorflow-cpu. Never install both in the same environment.
+keras = [
+    "tensorflow==2.18.0",
+    "keras==3.12.0",
+]
+keras-cpu = [
+    "tensorflow-cpu==2.18.0",
+    "keras==3.12.0",
+]
+# .pt / .pth models. torchvision is included because many exported models
+# pickle torchvision layers/ops. For CPU-only see the note above.
+torch = [
+    "torch",
+    "torchvision",
+]
+# All inference backends together, CPU flavours (ONNX Runtime CPU, tensorflow-cpu)
+inference = [
+    "saltup[onnx,keras-cpu,torch]",
+]
+
+# --- Model conversion & quantization (Keras/Torch -> ONNX, ONNX quantization) ---
+convert = [
+    "saltup[onnx,keras,torch]",
     "tf2onnx==1.16.1",
     "onnx2torch",
-    
-    # Data Augmentation
+]
+
+# --- Training (data augmentation, experiment tracking, callbacks) ---
+training = [
+    "saltup[keras,torch]",
     "albumentations",
-    
-    # Experiment Tracking
     "mlflow",
-    
-    # Audio Processing
+    "paho-mqtt",
+]
+
+# --- Audio processing ---
+audio = [
     "librosa",
     "soundfile",
     "cmsisdsp",
-    
-    # Development & IoT
+]
+
+# --- Development, notebooks & tests ---
+dev = [
     "IPython",
     "ipykernel",
     "nbformat",
-    "paho-mqtt",
     "pytest",
+    "moto[s3]",
+]
 
-    # Cloud & Utilities
-    "moto[s3]"
+# FULL version: everything above (~4GB total). Uses onnxruntime-gpu.
+full = [
+    "saltup[onnx-gpu,keras,torch,convert,training,audio,dev]",
+    "torchaudio",
 ]
 
 [project.scripts]
