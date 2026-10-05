@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Tuple, Union, cast, Callable
+from typing import Any, Iterable, Iterator, List, Optional, Tuple, TypeVar, Union, cast, Callable
 
 import base64
 import io
@@ -13,7 +13,10 @@ from tqdm import tqdm
 
 from saltup.ai.object_detection.utils.bbox import BBoxClassId
 from saltup.ai.base_dataformat.label_map import LabelMap
+from saltup.utils import configure_logging
 from saltup.utils.data.image.image_utils import Image, ColorMode
+
+_Pair = TypeVar("_Pair")
 
 
 class StorageFormat(Enum):
@@ -34,6 +37,7 @@ class BaseDataloader(ABC):
     # __init__ and subclasses do not call super().__init__(), so an instance
     # attribute would never be initialized.
     _label_map: Optional[LabelMap] = None
+    _pruned_empty: bool = False
 
     def set_name(self, name: str):
         """Set the name of the dataloader."""
@@ -44,7 +48,17 @@ class BaseDataloader(ABC):
         return self._name
 
     def set_label_map(self, label_map: Optional[LabelMap]):
-        """Set the label map applied to annotations as they are loaded."""
+        """Set the label map applied to annotations as they are loaded.
+
+        Items already removed by `drop_empty` at construction are not brought back,
+        and items are not re-checked against the new map; a warning is logged when
+        that applies.
+        """
+        if self._pruned_empty and label_map is not self._label_map:
+            configure_logging.get_logger(__name__).warning(
+                "Replacing the label map of a loader built with drop_empty: items were "
+                "already pruned against the previous map and are not re-checked"
+            )
         self._label_map = label_map
 
     def get_label_map(self) -> Optional[LabelMap]:
@@ -66,6 +80,51 @@ class BaseDataloader(ABC):
         if self._label_map is None:
             return annotations
         return self._label_map.apply(annotations)
+
+    def _prune_empty(
+        self,
+        pairs: List[_Pair],
+        labels_of: Callable[[_Pair], Iterable[Tuple[Optional[int], Optional[str]]]]
+    ) -> List[_Pair]:
+        """Drop the pairs that have no annotation left once the label map is applied.
+
+        Only the raw labels are inspected, never the images, so this is cheap. It
+        runs against the label map set at construction time. Without a label map,
+        this drops the items that were unannotated to begin with.
+
+        Args:
+            pairs: The loader's image/annotation pairs.
+            labels_of: Returns the `(class_id, class_name)` of every label of a pair.
+
+        Returns:
+            The pairs with at least one surviving annotation, in their original order.
+            A pair whose labels cannot be read is kept, with a warning naming it, so
+            the error surfaces when the item is accessed rather than failing the
+            whole loader here.
+        """
+        logger = configure_logging.get_logger(__name__)
+        label_map = self._label_map
+        self._pruned_empty = True
+
+        kept: List[_Pair] = []
+        for pair in pairs:
+            try:
+                labels = list(labels_of(pair))
+            except Exception as e:
+                logger.warning(f"drop_empty could not read the labels of {pair!r}, "
+                               f"keeping it: {e}")
+                kept.append(pair)
+                continue
+            if any(label_map is None or label_map.keeps(class_id, class_name)
+                   for class_id, class_name in labels):
+                kept.append(pair)
+
+        if len(kept) < len(pairs):
+            logger.info(
+                f"drop_empty removed {len(pairs) - len(kept)} of {len(pairs)} items "
+                f"with no annotations left"
+            )
+        return kept
 
     @abstractmethod
     def __iter__(self):

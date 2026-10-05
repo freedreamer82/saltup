@@ -49,7 +49,8 @@ class COCOLoader(BaseDataloader):
         images_dir: Union[str, Path],
         annotations_file: Union[str, Path],
         color_mode: ColorMode = ColorMode.RGB,
-        label_map: Optional[LabelMap] = None
+        label_map: Optional[LabelMap] = None,
+        drop_empty: bool = True
     ):
         """
         Initialize COCO dataset loader.
@@ -59,6 +60,9 @@ class COCOLoader(BaseDataloader):
             annotations_file: Path to COCO annotations JSON file
             color_mode: Color mode for loading images
             label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+            drop_empty: If True, items left with no annotations once the label map is
+                applied (or with none to begin with) are removed from the loader.
+                Only labels are read, never images. Defaults to True.
 
         Raises:
             ValueError: If paths are invalid
@@ -82,6 +86,11 @@ class COCOLoader(BaseDataloader):
         # Load annotations and create pairs
         self.annotations = self._load_annotations()
         self.image_annotation_pairs = self._create_image_annotation_pairs()
+        if drop_empty:
+            self.image_annotation_pairs = self._prune_empty(
+                self.image_annotation_pairs,
+                lambda pair: ((a.class_id, a.class_name) for a in pair[1])
+            )
 
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
 
@@ -231,7 +240,8 @@ class COCOS3Loader(BaseDataloader):
         download_file: bool = False,
         max_files: int = -1,
         color_mode: ColorMode = ColorMode.RGB,
-        label_map: Optional[LabelMap] = None
+        label_map: Optional[LabelMap] = None,
+        drop_empty: bool = True
     ):
         """
         Initialize COCO dataset loader from S3.
@@ -244,6 +254,9 @@ class COCOS3Loader(BaseDataloader):
             max_files: Maximum number of files to download from S3
             color_mode: Color mode for loading images
             label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+            drop_empty: If True, items left with no annotations once the label map is
+                applied (or with none to begin with) are removed from the loader.
+                Only labels are read, never images. Defaults to True.
 
         Raises:
             ValueError: If paths are invalid
@@ -270,6 +283,11 @@ class COCOS3Loader(BaseDataloader):
         # Load annotations and create pairs
         self.annotations = self._load_annotations()
         self.image_annotation_pairs = self._create_image_annotation_pairs()
+        if drop_empty:
+            self.image_annotation_pairs = self._prune_empty(
+                self.image_annotation_pairs,
+                lambda pair: ((a.class_id, a.class_name) for a in pair[1])
+            )
 
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
 

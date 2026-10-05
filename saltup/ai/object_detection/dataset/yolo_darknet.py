@@ -29,7 +29,8 @@ class YoloDarknetLoader(BaseDataloader):
         images_dir: Union[str, Path],
         labels_dir: Union[str, Path],
         color_mode: ColorMode = ColorMode.RGB,
-        label_map: Optional[LabelMap] = None
+        label_map: Optional[LabelMap] = None,
+        drop_empty: bool = True
     ):
         """
         Initialize YoloDarknet dataset loader.
@@ -39,6 +40,9 @@ class YoloDarknetLoader(BaseDataloader):
             labels_dir: Directory containing labels
             color_mode: Color mode for loading images
             label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+            drop_empty: If True, items left with no annotations once the label map is
+                applied (or with none to begin with) are removed from the loader.
+                Only labels are read, never images. Defaults to True.
 
         Raises:
             FileNotFoundError: If directories don't exist
@@ -60,6 +64,11 @@ class YoloDarknetLoader(BaseDataloader):
 
         # Load image-label pairs
         self.image_label_pairs = self._load_image_label_pairs()
+        if drop_empty:
+            self.image_label_pairs = self._prune_empty(
+                self.image_label_pairs,
+                lambda pair: ((lbl[0], "") for lbl in read_label(pair[1]))
+            )
         self.__logger.info(f"Found {len(self.image_label_pairs)} image-label pairs")
 
     def __iter__(self):

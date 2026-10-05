@@ -520,6 +520,172 @@ class TestLoaderIntegration:
         assert all_ids == [0, 0, 0, 3]
 
 
+class TestDropEmpty:
+    """`drop_empty` removes items with no annotation left, reading labels only."""
+
+    MOUSE_ONLY = LabelMap({'mouse': 'mouse'}, class_names=CLASS_NAMES,
+                          drop_unmapped=True)
+
+    @pytest.fixture
+    def sparse_yolo(self, tmp_path):
+        """mouse+food, food only, mouse only, and an unannotated image."""
+        dirs = create_dataset_structure(str(tmp_path / "sparse"))
+        samples = {
+            "both": "0 0.5 0.5 0.2 0.3\n3 0.7 0.3 0.2 0.4",
+            "food_only": "3 0.7 0.3 0.2 0.4",
+            "mouse_only": "0 0.5 0.5 0.2 0.3",
+            "background": "",
+        }
+        for name, content in samples.items():
+            cv2.imwrite(str(Path(dirs['images']['train']) / f"{name}.jpg"),
+                        np.zeros((10, 10, 3), dtype=np.uint8))
+            (Path(dirs['labels']['train']) / f"{name}.txt").write_text(content)
+        return tmp_path / "sparse", dirs
+
+    @staticmethod
+    def names(loader):
+        return sorted(Path(path).stem for path, _, _ in loader)
+
+    def test_keeps_helper(self):
+        assert self.MOUSE_ONLY.keeps(0, "")
+        assert not self.MOUSE_ONLY.keeps(3, "")
+        assert self.MOUSE_ONLY.keeps(None, 'mouse')
+        assert not self.MOUSE_ONLY.keeps(None, 'food')
+
+    def test_enabled_by_default(self, sparse_yolo):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   label_map=self.MOUSE_ONLY)
+        assert len(loader) == 2
+
+    def test_can_be_disabled(self, sparse_yolo):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   label_map=self.MOUSE_ONLY, drop_empty=False)
+        assert len(loader) == 4
+
+    def test_yolo_drops_items_emptied_by_label_map(self, sparse_yolo):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   label_map=self.MOUSE_ONLY, drop_empty=True)
+        assert len(loader) == 2
+        assert self.names(loader) == ['both', 'mouse_only']
+        assert all(anns for _, _, anns in loader)
+
+    def test_yolo_without_label_map_drops_unannotated_only(self, sparse_yolo):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   drop_empty=True)
+        assert self.names(loader) == ['both', 'food_only', 'mouse_only']
+
+    def test_without_drop_unmapped_nothing_is_emptied(self, sparse_yolo):
+        """A collapse alone never removes a label, so only the unannotated one goes."""
+        _, dirs = sparse_yolo
+        label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   label_map=label_map, drop_empty=True)
+        assert len(loader) == 3
+
+    def test_indexing_and_slicing_agree_with_len(self, sparse_yolo):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   label_map=self.MOUSE_ONLY, drop_empty=True)
+        assert len(items_of(loader[:])) == len(list(loader)) == len(loader)
+        with pytest.raises(IndexError):
+            loader[len(loader)]
+
+    def test_factory_forwards_drop_empty(self, sparse_yolo):
+        dataset_root, _ = sparse_yolo
+        train, _, _ = DataLoaderFactory.create(
+            dataset_root, label_map=self.MOUSE_ONLY, drop_empty=True)
+        assert train is not None
+        assert len(train) == 2
+
+    def test_unreadable_label_keeps_item_and_fails_on_access(self, sparse_yolo, caplog):
+        """A corrupt file must not make the whole loader fail to construct."""
+        _, dirs = sparse_yolo
+        (Path(dirs['labels']['train']) / "mouse_only.txt").write_text("0 0.5 0.5\n")
+        with caplog.at_level("WARNING"):
+            loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                       label_map=self.MOUSE_ONLY, drop_empty=True)
+        assert "mouse_only.txt" in caplog.text
+        assert self.names_unloaded(loader) == ['both', 'mouse_only']
+        bad = next(i for i, (img, _) in enumerate(loader.image_label_pairs)
+                   if Path(img).stem == 'mouse_only')
+        with pytest.raises(ValueError):
+            loader[bad]
+
+    @staticmethod
+    def names_unloaded(loader):
+        return sorted(Path(img).stem for img, _ in loader.image_label_pairs)
+
+    def test_label_map_config_errors_are_not_swallowed(self, sparse_yolo):
+        """Only unreadable labels are tolerated, not a bad LabelMap."""
+        _, dirs = sparse_yolo
+        bad_map = LabelMap({0: 0}, class_names=['mouse'], reindex=True)  # id 3 not covered
+        with pytest.raises(ValueError):
+            YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                              label_map=bad_map, drop_empty=True)
+
+    def test_set_label_map_warns_after_pruning(self, sparse_yolo, caplog):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   label_map=self.MOUSE_ONLY, drop_empty=True)
+        with caplog.at_level("WARNING"):
+            loader.set_label_map(LabelMap.collapse([1], into=0))
+        assert "not re-checked" in caplog.text
+
+    def test_set_label_map_is_silent_without_pruning(self, sparse_yolo, caplog):
+        _, dirs = sparse_yolo
+        loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
+                                   drop_empty=False)
+        with caplog.at_level("WARNING"):
+            loader.set_label_map(self.MOUSE_ONLY)
+        assert "not re-checked" not in caplog.text
+
+    def test_voc_drops_items_emptied_by_label_map(self, tmp_path):
+        images_dir = tmp_path / "JPEGImages"
+        annotations_dir = tmp_path / "Annotations"
+        images_dir.mkdir()
+        annotations_dir.mkdir()
+        template = ("<annotation><size><width>10</width><height>10</height></size>{objs}"
+                    "</annotation>")
+        obj = ("<object><name>{n}</name><bndbox><xmin>1</xmin><ymin>1</ymin>"
+               "<xmax>5</xmax><ymax>5</ymax></bndbox></object>")
+        for name, classes in {"a": ["mouse", "food"], "b": ["food"], "c": []}.items():
+            cv2.imwrite(str(images_dir / f"{name}.jpg"), np.zeros((10, 10, 3), dtype=np.uint8))
+            (annotations_dir / f"{name}.xml").write_text(
+                template.format(objs="".join(obj.format(n=c) for c in classes)))
+
+        label_map = LabelMap({'mouse': 'mouse'}, drop_unmapped=True)
+        loader = PascalVOCLoader(images_dir, annotations_dir,
+                                 label_map=label_map, drop_empty=True)
+        assert self.names(loader) == ['a']
+
+    def test_coco_drops_items_emptied_by_label_map(self, tmp_path):
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        for i in (1, 2, 3):
+            cv2.imwrite(str(images_dir / f"img{i}.jpg"), np.zeros((10, 10, 3), dtype=np.uint8))
+        annotations_file = tmp_path / "ann.json"
+        annotations_file.write_text(json.dumps({
+            "images": [{"id": i, "file_name": f"img{i}.jpg", "width": 10, "height": 10}
+                       for i in (1, 2, 3)],
+            "categories": [{"id": 1, "name": "mouse"}, {"id": 5, "name": "food"}],
+            "annotations": [
+                {"id": 1, "image_id": 1, "category_id": 1, "bbox": [0, 0, 5, 5]},
+                {"id": 2, "image_id": 1, "category_id": 5, "bbox": [6, 6, 3, 3]},
+                {"id": 3, "image_id": 2, "category_id": 5, "bbox": [6, 6, 3, 3]},
+            ],
+        }))
+        label_map = LabelMap({1: 1}, class_names={1: 'mouse', 5: 'food'},
+                             drop_unmapped=True)
+        loader = COCOLoader(images_dir, annotations_file,
+                            label_map=label_map, drop_empty=True)
+        assert self.names(loader) == ['img1']
+        assert [b.class_id for b in annotations_of(loader[0])] == [1]
+
+
 class TestCollapseLabelsCLI:
     def test_parse_mapping(self):
         assert _parse_mapping(['feeding=mouse', '2=0']) == {'feeding': 'mouse', 2: 0}
