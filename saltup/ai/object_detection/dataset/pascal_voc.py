@@ -56,7 +56,8 @@ class PascalVOCLoader(BaseDataloader):
         images_dir: Union[str, Path],
         annotations_dir: Union[str, Path],
         color_mode: ColorMode = ColorMode.RGB,
-        label_map: Optional[LabelMap] = None
+        label_map: Optional[LabelMap] = None,
+        drop_empty: bool = True
     ):
         """
         Initialize Pascal VOC dataset loader.
@@ -66,6 +67,9 @@ class PascalVOCLoader(BaseDataloader):
             annotations_dir: Directory containing XML annotations
             color_mode: Color mode for loading images
             label_map: Optional LabelMap collapsing or renaming labels as they are loaded
+            drop_empty: If True, items left with no annotations once the label map is
+                applied (or with none to begin with) are removed from the loader.
+                Only labels are read, never images. Defaults to True.
 
         Raises:
             FileNotFoundError: If directories don't exist
@@ -87,6 +91,11 @@ class PascalVOCLoader(BaseDataloader):
 
         # Load image-annotation pairs
         self.image_annotation_pairs = self._load_image_annotation_pairs()
+        if drop_empty:
+            self.image_annotation_pairs = self._prune_empty(
+                self.image_annotation_pairs,
+                lambda pair: ((a.class_id, a.class_name) for a in read_annotation(pair[1]))
+            )
         self.logger.info(f"Found {len(self.image_annotation_pairs)} image-annotation pairs")
 
     def __iter__(self):

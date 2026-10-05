@@ -381,6 +381,24 @@ class LabelMap:
         result = self._map_one(None, class_name)
         return None if result is None else result[1]
 
+    def keeps(self, class_id: Optional[int], class_name: Optional[str] = None) -> bool:
+        """Whether a label survives the mapping, without building an annotation.
+
+        Lets a loader decide if an item would end up with no annotations from the
+        raw labels alone, without loading its image.
+
+        Args:
+            class_id: The label's class id, or None if it carries none (VOC).
+            class_name: The label's class name, or None/"" if it carries none (YOLO).
+
+        Returns:
+            False if the label is dropped (`drop_unmapped`), True otherwise.
+
+        Raises:
+            ValueError: See `_map_one`.
+        """
+        return self._map_one(class_id, class_name) is not None
+
     def apply(self, annotations: List[BBoxClassId]) -> List[BBoxClassId]:
         """Apply the mapping to a list of annotations.
 
