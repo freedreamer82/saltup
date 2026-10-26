@@ -100,8 +100,16 @@ For development with all features:
 ```bash
 git clone https://github.com/freedreamer82/saltup.git
 cd saltup
-pip install -e .[full]
+pip install -e ".[full]"
 # or use: ./makePackage.sh -d
+```
+
+All dependencies are declared in `pyproject.toml` (base list plus the extras above); there is no `requirements.txt`. For a smaller dev environment, pick only the extras you need, e.g. `pip install -e ".[dev,onnx]"`.
+
+`./makePackage.sh -d` picks the extras for you: `full` (GPU flavours) when an NVIDIA GPU is detected, otherwise the CPU flavours (`onnxruntime`, `tensorflow-cpu`, CPU `torch` from the PyTorch index). Use `-e` to choose the extras yourself and `-c` to force CPU:
+```bash
+./makePackage.sh -d -e onnx,dev   # editable install, only ONNX Runtime + test tools
+./makePackage.sh -d -c            # editable install, everything, CPU only
 ```
 
 ## The Magic
