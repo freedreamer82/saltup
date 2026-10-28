@@ -203,8 +203,10 @@ class MLflowCallback(BaseCallback):
         """Called at the end of training."""
         # Log final metrics
         self._log_all_metrics(step=getattr(context, 'epochs', None))
+        final_loss = getattr(context, 'loss', None)
         final_metrics = {
-            "final_loss": getattr(context, 'loss', None),
+            # Same 4-decimal precision as the epoch metrics (CallbackContext.update_metrics)
+            "final_loss": round(float(final_loss), 4) if final_loss is not None else None,
         }
         self.log_metrics_dict(final_metrics)
         # Optionally close the MLflow run
