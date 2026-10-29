@@ -63,7 +63,17 @@ def convert_keras_to_onnx(
         shape_override=None
     )
 
-    # 4. Save ONNX model
+    # 4. tf2onnx exports fixed-size Resizing as float32 scales (e.g. 3 * 6.6666665 for 3->20),
+    # which onnxruntime floors one pixel short: bump non-unit scales to the next float32 up
+    initializers = {init.name: init for init in model_proto.graph.initializer}
+    for node in model_proto.graph.node:
+        if node.op_type == "Resize" and len(node.input) > 2 and node.input[2] in initializers:
+            scales_init = initializers[node.input[2]]
+            scales = onnx.numpy_helper.to_array(scales_init).astype(np.float32)
+            scales = np.where(scales == 1, scales, np.nextafter(scales, np.float32(np.inf)))
+            scales_init.CopyFrom(onnx.numpy_helper.from_array(scales, scales_init.name))
+
+    # 5. Save ONNX model
     onnx.save(model_proto, onnx_path)
     # Return both ONNX and Keras models for testing
     return model_proto, model
