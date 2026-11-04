@@ -824,44 +824,165 @@ class Image:
         # Update the color mode
         self.color_mode = new_color_mode
 
-    def to_jpeg(self, quality: int = 95, save_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+    # Mapping between supported raster formats and the extension passed to cv2.imencode
+    _ENCODE_EXTENSIONS = {
+        FileExtensionType.JPEG: ".jpg",
+        FileExtensionType.JPG: ".jpg",
+        FileExtensionType.PNG: ".png",
+        FileExtensionType.BMP: ".bmp",
+        FileExtensionType.WEBP: ".webp",
+        FileExtensionType.TIF: ".tif",
+        FileExtensionType.TIFF: ".tif",
+    }
+
+    def _prepare_for_encoding(self) -> np.ndarray:
         """
-        Encode the image to JPEG format and return as numpy array.
-        
-        Args:
-            quality: JPEG quality (0-100). Default is 95.
-            save_path: Optional path to save the JPEG file. If None, only returns the buffer.
-        
-        Returns:
-            np.ndarray: JPEG encoded image as a 1D numpy array (uint8).
+        Return a copy of the image data laid out as cv2.imencode expects it:
+        HWC, BGR for color images and a 2D array for grayscale images.
         """
-        # Convert to BGR if necessary (cv2.imencode requires BGR format)
         image_to_encode = copy.deepcopy(self.__image)
-        
-        # Handle grayscale images (remove channel dimension if present)
-        if self.color_mode == ColorMode.GRAY and len(image_to_encode.shape) == 3:
-            image_to_encode = np.squeeze(image_to_encode, axis=-1)
+
+        if self.image_format == ImageFormat.CHW:
+            image_to_encode = np.transpose(image_to_encode, (1, 2, 0))
+
+        if self.color_mode == ColorMode.GRAY:
+            # Remove the channel dimension if present
+            if image_to_encode.ndim == 3:
+                image_to_encode = np.squeeze(image_to_encode, axis=-1)
         elif self.color_mode == ColorMode.RGB:
             # Convert RGB to BGR for cv2.imencode
             image_to_encode = cv2.cvtColor(image_to_encode, cv2.COLOR_RGB2BGR)
         # If already BGR, use as is
-        
-        # Encode to JPEG format
-        encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
-        success, buffer = cv2.imencode('.jpg', image_to_encode, encode_params)
-        
+
+        return image_to_encode
+
+    def _encode(
+        self,
+        file_format: Union[FileExtensionType, str],
+        encode_params: Optional[list] = None,
+        save_path: Optional[Union[str, Path]] = None,
+    ) -> np.ndarray:
+        """
+        Encode the image in the given raster format and return the encoded bytes as a numpy array.
+
+        Args:
+            file_format: Target format, as a FileExtensionType or its extension string
+                (e.g. "png", ".png"). Supported: jpg/jpeg, png, bmp, webp, tif/tiff.
+            encode_params: Optional list of cv2.imencode parameters (e.g. [cv2.IMWRITE_PNG_COMPRESSION, 3]).
+            save_path: Optional path to save the encoded file. If None, only returns the buffer.
+
+        Returns:
+            np.ndarray: Encoded image as a 1D numpy array (uint8).
+        """
+        if isinstance(file_format, str):
+            try:
+                file_format = FileExtensionType(file_format.lower().lstrip("."))
+            except ValueError:
+                raise ValueError(f"Unsupported image format: {file_format!r}")
+
+        ext = self._ENCODE_EXTENSIONS.get(file_format)
+        if ext is None:
+            supported = ", ".join(sorted({f.value for f in self._ENCODE_EXTENSIONS}))
+            raise ValueError(
+                f"Unsupported image format for encoding: {file_format.value!r}. "
+                f"Supported formats: {supported}"
+            )
+
+        image_to_encode = self._prepare_for_encoding()
+
+        success, buffer = cv2.imencode(ext, image_to_encode, encode_params or [])
         if not success:
-            raise RuntimeError("Failed to encode image to JPEG format")
-        
+            raise RuntimeError(f"Failed to encode image to {file_format.value.upper()} format")
+
         # Save to file if path is provided
         if save_path is not None:
-            save_path = Path(save_path) if isinstance(save_path, str) else save_path
+            save_path = Path(save_path)
             with open(save_path, 'wb') as f:
                 f.write(buffer.tobytes())
-        
-        # Return the JPEG buffer as numpy array
+
         return buffer.flatten()
-    
+
+    def to_jpeg(self, quality: int = 95, save_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+        """
+        Encode the image to JPEG format and return as numpy array.
+
+        Args:
+            quality: JPEG quality (0-100). Default is 95.
+            save_path: Optional path to save the JPEG file. If None, only returns the buffer.
+
+        Returns:
+            np.ndarray: JPEG encoded image as a 1D numpy array (uint8).
+        """
+        if not 0 <= quality <= 100:
+            raise ValueError(f"JPEG quality must be in [0, 100], got {quality}")
+        return self._encode(
+            FileExtensionType.JPEG,
+            encode_params=[cv2.IMWRITE_JPEG_QUALITY, quality],
+            save_path=save_path,
+        )
+
+    def to_png(self, compression: int = 3, save_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+        """
+        Encode the image to PNG format (lossless) and return as numpy array.
+
+        Args:
+            compression: PNG compression level (0-9). Higher means smaller file and slower encoding. Default is 3.
+            save_path: Optional path to save the PNG file. If None, only returns the buffer.
+
+        Returns:
+            np.ndarray: PNG encoded image as a 1D numpy array (uint8).
+        """
+        if not 0 <= compression <= 9:
+            raise ValueError(f"PNG compression must be in [0, 9], got {compression}")
+        return self._encode(
+            FileExtensionType.PNG,
+            encode_params=[cv2.IMWRITE_PNG_COMPRESSION, compression],
+            save_path=save_path,
+        )
+
+    def to_bmp(self, save_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+        """
+        Encode the image to BMP (bitmap, uncompressed) format and return as numpy array.
+
+        Args:
+            save_path: Optional path to save the BMP file. If None, only returns the buffer.
+
+        Returns:
+            np.ndarray: BMP encoded image as a 1D numpy array (uint8).
+        """
+        return self._encode(FileExtensionType.BMP, save_path=save_path)
+
+    def to_webp(self, quality: int = 95, save_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+        """
+        Encode the image to WebP format and return as numpy array.
+
+        Args:
+            quality: WebP quality (1-100). Values above 100 select lossless encoding. Default is 95.
+            save_path: Optional path to save the WebP file. If None, only returns the buffer.
+
+        Returns:
+            np.ndarray: WebP encoded image as a 1D numpy array (uint8).
+        """
+        if quality < 1:
+            raise ValueError(f"WebP quality must be >= 1, got {quality}")
+        return self._encode(
+            FileExtensionType.WEBP,
+            encode_params=[cv2.IMWRITE_WEBP_QUALITY, quality],
+            save_path=save_path,
+        )
+
+    def to_tiff(self, save_path: Optional[Union[str, Path]] = None) -> np.ndarray:
+        """
+        Encode the image to TIFF format and return as numpy array.
+
+        Args:
+            save_path: Optional path to save the TIFF file. If None, only returns the buffer.
+
+        Returns:
+            np.ndarray: TIFF encoded image as a 1D numpy array (uint8).
+        """
+        return self._encode(FileExtensionType.TIFF, save_path=save_path)
+
     def copy(self) -> 'Image':
         """
         Create a deep copy of the current Image instance.

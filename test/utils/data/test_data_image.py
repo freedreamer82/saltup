@@ -228,3 +228,82 @@ class TestImageProcessing:
         # Test
         result = Image.pad_image(image, target_h, target_w, ImageFormat.HWC)
         np.testing.assert_array_equal(result, expected_output)
+
+class TestImageEncoding:
+    @pytest.fixture
+    def color_image(self):
+        """RGB Image instance with distinct per-channel values"""
+        img = np.zeros((20, 30, 3), dtype=np.uint8)
+        img[:, :, 0] = 200  # R
+        img[:, :, 1] = 100  # G
+        img[:, :, 2] = 50   # B
+        return Image(img, color_mode=ColorMode.RGB)
+
+    @pytest.fixture
+    def gray_image(self):
+        img = np.linspace(0, 255, 20 * 30, dtype=np.uint8).reshape(20, 30, 1)
+        return Image(img, color_mode=ColorMode.GRAY)
+
+    @pytest.mark.parametrize(
+        "method, kwargs, magic",
+        [
+            ("to_jpeg", {}, b"\xff\xd8\xff"),
+            ("to_png", {}, b"\x89PNG"),
+            ("to_bmp", {}, b"BM"),
+            ("to_webp", {}, b"RIFF"),
+            ("to_tiff", {}, b"II*\x00"),
+        ],
+    )
+    def test_encode_returns_buffer_with_expected_signature(self, color_image, method, kwargs, magic):
+        buffer = getattr(color_image, method)(**kwargs)
+        assert isinstance(buffer, np.ndarray)
+        assert buffer.ndim == 1 and buffer.dtype == np.uint8
+        assert buffer.tobytes().startswith(magic)
+
+    @pytest.mark.parametrize("method, ext", [
+        ("to_png", "png"), ("to_bmp", "bmp"), ("to_tiff", "tif"),
+    ])
+    def test_lossless_roundtrip_preserves_rgb_pixels(self, color_image, method, ext, tmp_path):
+        out = tmp_path / f"img.{ext}"
+        buffer = getattr(color_image, method)(save_path=out)
+
+        assert out.exists()
+        assert out.read_bytes() == buffer.tobytes()
+
+        decoded = cv2.imdecode(buffer, cv2.IMREAD_COLOR)  # BGR
+        decoded_rgb = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+        np.testing.assert_array_equal(decoded_rgb, color_image.get_data())
+
+    def test_png_roundtrip_grayscale(self, gray_image):
+        decoded = cv2.imdecode(gray_image.to_png(), cv2.IMREAD_UNCHANGED)
+        assert decoded.ndim == 2
+        np.testing.assert_array_equal(decoded, gray_image.get_data()[:, :, 0])
+
+    def test_jpeg_quality_affects_size(self, gray_image):
+        assert gray_image.to_jpeg(quality=10).size < gray_image.to_jpeg(quality=100).size
+
+    def test_png_compression_affects_size(self, gray_image):
+        assert gray_image.to_png(compression=9).size <= gray_image.to_png(compression=0).size
+
+    def test_encode_accepts_string_format(self, color_image):
+        assert color_image._encode("png").tobytes().startswith(b"\x89PNG")
+        assert color_image._encode(".BMP").tobytes().startswith(b"BM")
+
+    def test_encode_rejects_unsupported_format(self, color_image):
+        with pytest.raises(ValueError):
+            color_image._encode("mp4")
+        with pytest.raises(ValueError):
+            color_image._encode("notaformat")
+
+    def test_invalid_parameters(self, color_image):
+        with pytest.raises(ValueError):
+            color_image.to_jpeg(quality=101)
+        with pytest.raises(ValueError):
+            color_image.to_png(compression=10)
+
+    def test_encode_does_not_mutate_image(self, color_image):
+        before = color_image.get_data().copy()
+        color_image.to_png()
+        color_image.to_bmp()
+        np.testing.assert_array_equal(color_image.get_data(), before)
+        assert color_image.get_color_mode() == ColorMode.RGB
