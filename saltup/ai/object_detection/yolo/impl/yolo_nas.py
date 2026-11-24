@@ -11,15 +11,26 @@ class YoloNas(BaseYolo):
     """
     A class that extends BaseYolo to handle supergrad YOLO models.
     """
-    def __init__(self, model: NeuralNetworkModel, number_class: int) -> None:
+    def __init__(
+        self,
+        model: NeuralNetworkModel,
+        number_class: int,
+        class_agnostic_nms: bool = False,
+    ) -> None:
         """
         Initialize the supergrad YOLO model.
 
         :param yolot: Type of YOLO model (e.g., YoloType.YOLOv3, YoloType.YOLOv4).
         :param model_path: Path to the model file.
         :param number_class: The number of classes in the model.
+        :param class_agnostic_nms: If False (default, same as super-gradients, which uses
+                                   PPYoloEPostPredictionCallback with class_agnostic_nms=False), NMS runs per class: overlapping boxes of
+                                   different classes are all kept. If True, NMS runs once over
+                                   all classes and keeps only the highest-scoring box (saltup's
+                                   behaviour before this parameter existed).
         """
         super().__init__(YoloType.SUPERGRAD, model, number_class)  # Initialize the BaseYolo class
+        self.class_agnostic_nms = class_agnostic_nms
     
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
         input_shape = self._model_input_shape[1:]  # Rimuove il batch size
@@ -155,7 +166,10 @@ class YoloNas(BaseYolo):
                 probs.append(prob)
                 class_ids.append(class_id) 
                         
-        selected_boxes = nms(boxes, probs, iou_threshold)
+        selected_boxes = nms(
+            boxes, probs, iou_threshold,
+            class_ids=None if self.class_agnostic_nms else class_ids,
+        )
         selected_indices = [boxes.index(box) for box in selected_boxes]
         selected_scores = [probs[indices] for indices in selected_indices]
         selected_class_ids = [class_ids[indices] for indices in selected_indices]

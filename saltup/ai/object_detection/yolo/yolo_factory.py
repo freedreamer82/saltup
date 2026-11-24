@@ -31,7 +31,7 @@ class YoloFactory:
         **kwargs
             Additional keyword arguments required for specific YOLO types (e.g., 'anchors' for ANCHORS_BASED).
             'class_agnostic_nms' (bool) selects class-agnostic (True) or per-class (False, default)
-            NMS for ANCHORS_BASED and ULTRALYTICS.
+            NMS for ANCHORS_BASED, ULTRALYTICS, SUPERGRAD and DAMO.
 
         Returns
         -------

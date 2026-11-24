@@ -113,6 +113,23 @@ def test_postprocess(yolo_nas_with_temp_model: YoloNas) -> None:
         assert isinstance(class_id, int)
         assert 0 <= score <= 1
 
+def test_postprocess_class_agnostic_nms(yolo_nas_with_temp_model: YoloNas) -> None:
+    # Two identical boxes: the first scores 0.9 for class 0, the second 0.8 for class 1
+    bboxes = np.array([[[10, 10, 60, 60], [10, 10, 60, 60]]], dtype=float)
+    scores = np.zeros((1, 2, 4))
+    scores[0, 0, 0] = 0.9
+    scores[0, 1, 1] = 0.8
+
+    yolo = yolo_nas_with_temp_model
+    assert yolo.class_agnostic_nms is False
+    per_class = yolo.postprocess([bboxes, scores], 480, 640)
+    assert sorted(c for _, c, _ in per_class) == [0, 1]
+
+    yolo.class_agnostic_nms = True
+    agnostic = yolo.postprocess([bboxes, scores], 480, 640)
+    assert [c for _, c, _ in agnostic] == [0]
+
+
 # Run the tests
 if __name__ == "__main__":
     pytest.main()
