@@ -1,19 +1,19 @@
+from typing import Iterator
+
 import pytest
 import numpy as np
 import os
 os.environ["SALTUP_BACKEND"] = "keras_tensorflow"
 import onnx
-import onnxruntime as ort
 from onnx import helper, TensorProto
 import tempfile
-from saltup.ai.object_detection.yolo.yolo import YoloType
-from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.yolo.impl.yolo_damo import YoloDamo
 from saltup.ai.nn_model import NeuralNetworkModel
 
 # Function to create a simple ONNX model (mimicking YOLO output)
-def create_simple_yolo_onnx_model(output_path):
+def create_simple_yolo_onnx_model(output_path: str) -> None:
     input_shape = [1, 3, 320, 320]
     output_shape = [1, 8, 100]
 
@@ -39,7 +39,7 @@ def create_simple_yolo_onnx_model(output_path):
 
 # Fixture for creating a YoloAnchorsBased instance with a temporary ONNX model
 @pytest.fixture
-def yolo_damo_with_temp_model():
+def yolo_damo_with_temp_model() -> Iterator[YoloDamo]:
     # Create a temporary file for the ONNX model
     with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as temp_file:
         temp_file_path = temp_file.name
@@ -61,7 +61,7 @@ def yolo_damo_with_temp_model():
             os.remove(temp_file_path)
 
 # Test preprocess method
-def test_preprocess(yolo_damo_with_temp_model):
+def test_preprocess(yolo_damo_with_temp_model: YoloDamo) -> None:
     # Generate a random image tensor
     raw_image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
     image = Image(raw_image)
@@ -78,7 +78,7 @@ def test_preprocess(yolo_damo_with_temp_model):
     assert processed_image.dtype == np.float32
 
 # Test postprocess method
-def test_postprocess(yolo_damo_with_temp_model):
+def test_postprocess(yolo_damo_with_temp_model: YoloDamo) -> None:
 
     # Generate the first tensor with scores between 0 and 1
     scores = np.random.rand(1, 100, 4)  # Random values between 0 and 1

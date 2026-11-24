@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from typing import Union, Any, List, Tuple
+from typing import Callable, Union, Any, List, Tuple
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.utils.data.image.image_utils import  Image, ColorMode ,ImageFormat
@@ -11,11 +11,7 @@ class YoloDamo(BaseYolo):
     """
     A class that extends BaseYolo to handle damo YOLO models.
     """
-    def __init__(
-        self,
-        model: NeuralNetworkModel,
-        number_class: int
-        ):
+    def __init__(self, model: NeuralNetworkModel, number_class: int) -> None:
         """
         Initialize the Damo YOLO model.
 
@@ -36,11 +32,11 @@ class YoloDamo(BaseYolo):
     @staticmethod
     def preprocess(
         image: Union[np.ndarray, Image],
-        target_height:int, 
-        target_width:int,        
-        normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+        target_height: int,
+        target_width: int,
+        normalize_method: Callable[[np.ndarray], np.ndarray] = lambda x: x.astype(np.float32) / 255.0,
         apply_padding: bool = True,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> np.ndarray:
         """Process input image according to DAMO model requirements.
 
@@ -81,12 +77,14 @@ class YoloDamo(BaseYolo):
         image_data = np.expand_dims(image_data, axis=0).astype(np.float32)
         return image_data
 
-    def postprocess(self, 
-                    raw_output: np.ndarray,
-                    image_height:int, 
-                    image_width:int, 
-                    confidence_thr:float=0.5, 
-                    iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
+    def postprocess(  # pyright: ignore[reportIncompatibleMethodOverride]  # BaseYolo annotates BBoxClassIdScore, but every implementation returns plain tuples
+        self,
+        raw_output: Union[np.ndarray, List[np.ndarray]],
+        image_height: int,
+        image_width: int,
+        confidence_thr: float = 0.5,
+        iou_threshold: float = 0.5,
+    ) -> List[Tuple[BBox, int, float]]:
         """
         Postprocess the output from the damo-yolo model.
         Args:

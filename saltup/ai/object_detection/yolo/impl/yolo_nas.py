@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from typing import Union, Any, List, Tuple
+from typing import Callable, Union, Any, List, Tuple
 
 from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, Image
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
@@ -11,11 +11,7 @@ class YoloNas(BaseYolo):
     """
     A class that extends BaseYolo to handle supergrad YOLO models.
     """
-    def __init__(
-        self,
-        model:NeuralNetworkModel,
-        number_class: int
-        ):
+    def __init__(self, model: NeuralNetworkModel, number_class: int) -> None:
         """
         Initialize the supergrad YOLO model.
 
@@ -36,11 +32,11 @@ class YoloNas(BaseYolo):
     @staticmethod
     def preprocess(
         image: Union[np.ndarray, Image],
-        target_height:int, 
-        target_width:int,        
-        normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+        target_height: int,
+        target_width: int,
+        normalize_method: Callable[[np.ndarray], np.ndarray] = lambda x: x.astype(np.float32) / 255.0,
         apply_padding: bool = True,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> np.ndarray:
         """Process input image according to supergrad model requirements.
 
@@ -76,8 +72,7 @@ class YoloNas(BaseYolo):
             height = image.get_height()
             width = image.get_width()
         else:
-            height = image.shape[1]
-            width = image.shape[0]
+            height, width = np.shape(image)[:2]
 
         # Calculate size preserving aspect ratio
         aspect_ratio = min(target_width / width, target_height / height)
@@ -102,12 +97,14 @@ class YoloNas(BaseYolo):
         
         return image_data
 
-    def postprocess(self, 
-                    raw_output: np.ndarray,
-                    image_height:int, 
-                    image_width:int, 
-                    confidence_thr:float=0.5, 
-                    iou_threshold:float=0.5) -> List[Tuple[BBox, int, float]]:
+    def postprocess(  # pyright: ignore[reportIncompatibleMethodOverride]  # BaseYolo annotates BBoxClassIdScore, but every implementation returns plain tuples
+        self,
+        raw_output: Union[np.ndarray, List[np.ndarray]],
+        image_height: int,
+        image_width: int,
+        confidence_thr: float = 0.5,
+        iou_threshold: float = 0.5,
+    ) -> List[Tuple[BBox, int, float]]:
         """
         Postprocess the output from the supergrad-yolo model.
         Args:
