@@ -6,7 +6,7 @@ import json
 import numpy as np
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List
+from typing import Any, Iterable, List, Sequence, Tuple
 
 from saltup.ai.base_dataformat.label_map import LabelMap
 from saltup.ai.object_detection.utils.bbox import BBoxClassId, BBoxClassIdScore, BBoxFormat
@@ -24,8 +24,20 @@ from saltup.tools.collapse_labels import (
 
 CLASS_NAMES = ['mouse', 'feeding', 'climbing', 'food']
 
+# Fixture results: (dataset root, create_dataset_structure dirs) and (root, images, annotations)
+YoloDataset = Tuple[Path, dict]
+VocDataset = Tuple[Path, Path, Path]
+LoaderItems = Iterable[Tuple[Any, Any, List[BBoxClassId]]]
 
-def make_yolo_bbox(class_id, coords=(0.5, 0.5, 0.2, 0.2)):
+
+def class_ids_of(loader: LoaderItems) -> List[int]:
+    """Sorted class ids of every annotation: YOLO and COCO annotations always carry one."""
+    ids = [b.class_id for _, _, anns in loader for b in anns]
+    assert None not in ids
+    return sorted(i for i in ids if i is not None)
+
+
+def make_yolo_bbox(class_id: int, coords: Sequence[float] = (0.5, 0.5, 0.2, 0.2)) -> BBoxClassId:
     """Build a YOLO-flavoured annotation: id-carrying, empty class name."""
     return BBoxClassId(
         coordinates=list(coords), class_id=class_id, class_name="",
@@ -33,7 +45,7 @@ def make_yolo_bbox(class_id, coords=(0.5, 0.5, 0.2, 0.2)):
     )
 
 
-def annotations_of(item) -> List[BBoxClassId]:
+def annotations_of(item: Any) -> List[BBoxClassId]:
     """Pull the annotations out of a loader item.
 
     Loaders yield (path, image, annotations), but `__getitem__` is typed as
@@ -43,7 +55,7 @@ def annotations_of(item) -> List[BBoxClassId]:
     return item[2]
 
 
-def items_of(sliced) -> List:
+def items_of(sliced: Any) -> List:
     """Normalize a loader slice result to a list of items.
 
     Same reason as `annotations_of`: the slice branch of `__getitem__` is not
@@ -52,7 +64,7 @@ def items_of(sliced) -> List:
     return sliced
 
 
-def object_names(root) -> List[str]:
+def object_names(root: ET.Element) -> List[str]:
     """Read the <name> of every <object> in a parsed VOC annotation."""
     names = []
     for obj in root.findall('object'):
@@ -62,7 +74,7 @@ def object_names(root) -> List[str]:
     return names
 
 
-def object_tags(root, tag: str) -> List[str]:
+def object_tags(root: ET.Element, tag: str) -> List[str]:
     """Read an arbitrary child tag of every <object> in a parsed VOC annotation."""
     values = []
     for obj in root.findall('object'):
@@ -72,7 +84,7 @@ def object_tags(root, tag: str) -> List[str]:
     return values
 
 
-def make_voc_bbox(class_name, coords=(10, 10, 30, 30)):
+def make_voc_bbox(class_name: str, coords: Sequence[float] = (10, 10, 30, 30)) -> BBoxClassId:
     """Build a VOC-flavoured annotation: name-carrying, class_id is None."""
     return BBoxClassId(
         coordinates=list(coords), class_id=None, class_name=class_name,
@@ -81,35 +93,35 @@ def make_voc_bbox(class_name, coords=(10, 10, 30, 30)):
 
 
 class TestLabelMapCore:
-    def test_collapse_by_name(self):
+    def test_collapse_by_name(self) -> None:
         label_map = LabelMap.collapse(
             ['feeding', 'climbing'], into='mouse', class_names=CLASS_NAMES
         )
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0, 0, 3]
 
-    def test_collapse_by_id(self):
+    def test_collapse_by_id(self) -> None:
         label_map = LabelMap.collapse([1, 2], into=0)
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0, 0, 3]
 
-    def test_collapse_from_dict(self):
+    def test_collapse_from_dict(self) -> None:
         label_map = LabelMap.collapse({'feeding': 'mouse', 'climbing': 'mouse'},
                                       class_names=CLASS_NAMES)
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0, 0, 3]
 
-    def test_mixed_id_and_name_rules(self):
+    def test_mixed_id_and_name_rules(self) -> None:
         label_map = LabelMap({1: 'mouse', 'climbing': 0}, class_names=CLASS_NAMES)
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0, 0, 3]
 
-    def test_unmapped_labels_pass_through(self):
+    def test_unmapped_labels_pass_through(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         result = label_map.apply([make_yolo_bbox(3)])
         assert [b.class_id for b in result] == [3]
 
-    def test_drop_unmapped(self):
+    def test_drop_unmapped(self) -> None:
         """mouse (destination) and feeding (source) survive; climbing and food do not."""
         label_map = LabelMap.collapse(
             ['feeding'], into='mouse', class_names=CLASS_NAMES, drop_unmapped=True
@@ -117,7 +129,7 @@ class TestLabelMapCore:
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0]
 
-    def test_original_annotations_are_not_mutated(self):
+    def test_original_annotations_are_not_mutated(self) -> None:
         """The loaders cache annotations (COCO), so apply() must not touch them."""
         annotations = [make_yolo_bbox(i) for i in range(4)]
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
@@ -125,7 +137,7 @@ class TestLabelMapCore:
         label_map.apply(annotations)
         assert [b.class_id for b in annotations] == [0, 1, 2, 3]
 
-    def test_repeated_application_is_stable(self):
+    def test_repeated_application_is_stable(self) -> None:
         """Repeated access to the same cached item must give the same result."""
         annotations = [make_yolo_bbox(i) for i in range(4)]
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
@@ -134,26 +146,26 @@ class TestLabelMapCore:
         second = [b.class_id for b in label_map.apply(annotations)]
         assert first == second == [0, 0, 0, 1]
 
-    def test_yolo_annotations_keep_empty_class_name(self):
+    def test_yolo_annotations_keep_empty_class_name(self) -> None:
         """BBoxClassId.get_data() returns the name when set, so it must stay empty."""
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         result = label_map.apply([make_yolo_bbox(1)])
         assert result[0].class_name == ""
         assert result[0].class_id == 0
 
-    def test_voc_annotations_keep_none_class_id(self):
+    def test_voc_annotations_keep_none_class_id(self) -> None:
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES)
         result = label_map.apply([make_voc_bbox(n) for n in CLASS_NAMES])
         assert [b.class_name for b in result] == ['mouse', 'mouse', 'mouse', 'food']
         assert all(b.class_id is None for b in result)
 
-    def test_voc_mapping_without_class_names(self):
+    def test_voc_mapping_without_class_names(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse')
         result = label_map.apply([make_voc_bbox('feeding'), make_voc_bbox('food')])
         assert [b.class_name for b in result] == ['mouse', 'food']
 
-    def test_subclass_type_and_score_preserved(self):
+    def test_subclass_type_and_score_preserved(self) -> None:
         """A BBoxClassIdScore must not be downcast to BBoxClassId."""
         scored = BBoxClassIdScore(
             coordinates=[0.5, 0.5, 0.2, 0.2], class_id=1, class_name="",
@@ -165,7 +177,7 @@ class TestLabelMapCore:
         assert result.score == 0.87
         assert result.class_id == 0
 
-    def test_coordinates_are_preserved(self):
+    def test_coordinates_are_preserved(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         original = make_yolo_bbox(1, coords=(0.25, 0.75, 0.1, 0.4))
         result = label_map.apply([original])[0]
@@ -174,7 +186,7 @@ class TestLabelMapCore:
             original.get_coordinates(fmt=BBoxFormat.YOLO)
         )
 
-    def test_empty_annotations(self):
+    def test_empty_annotations(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         assert label_map.apply([]) == []
 
@@ -184,56 +196,56 @@ class TestSparseClassNames:
 
     SPARSE = {1: 'mouse', 2: 'feeding', 5: 'food'}
 
-    def test_name_rules_over_sparse_ids(self):
+    def test_name_rules_over_sparse_ids(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=self.SPARSE)
         result = label_map.apply([make_yolo_bbox(c) for c in (1, 2, 5)])
         assert [b.class_id for b in result] == [1, 1, 5]
 
-    def test_class_mapping_over_sparse_ids(self):
+    def test_class_mapping_over_sparse_ids(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=self.SPARSE)
         assert label_map.get_class_mapping() == {1: 1, 2: 1, 5: 5}
         assert label_map.get_num_classes() == 2
 
-    def test_reindex_over_sparse_ids(self):
+    def test_reindex_over_sparse_ids(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=self.SPARSE, reindex=True)
         result = label_map.apply([make_yolo_bbox(c) for c in (1, 2, 5)])
         assert [b.class_id for b in result] == [0, 0, 1]
         assert label_map.get_class_names() == ['mouse', 'food']
 
-    def test_unknown_sparse_id_rejected(self):
+    def test_unknown_sparse_id_rejected(self) -> None:
         with pytest.raises(ValueError, match="not a known class"):
             LabelMap({3: 1}, class_names=self.SPARSE)
 
 
 class TestLabelMapReindex:
-    def test_reindex_compacts_ids(self):
+    def test_reindex_compacts_ids(self) -> None:
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES, reindex=True)
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0, 0, 1]
 
-    def test_reindex_exposes_mapping_and_names(self):
+    def test_reindex_exposes_mapping_and_names(self) -> None:
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES, reindex=True)
         assert label_map.get_class_mapping() == {0: 0, 1: 0, 2: 0, 3: 1}
         assert label_map.get_class_names() == ['mouse', 'food']
         assert label_map.get_num_classes() == 2
 
-    def test_without_reindex_ids_keep_gaps(self):
+    def test_without_reindex_ids_keep_gaps(self) -> None:
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES)
         assert label_map.get_class_mapping() == {0: 0, 1: 0, 2: 0, 3: 3}
         assert label_map.get_num_classes() == 2
 
-    def test_reindex_with_drop_unmapped(self):
+    def test_reindex_with_drop_unmapped(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES,
                                       drop_unmapped=True, reindex=True)
         result = label_map.apply([make_yolo_bbox(i) for i in range(4)])
         assert [b.class_id for b in result] == [0, 0]
         assert label_map.get_class_names() == ['mouse']
 
-    def test_drop_unmapped_keeps_destination_class(self):
+    def test_drop_unmapped_keeps_destination_class(self) -> None:
         """Collapsing feeding into mouse must never drop mouse itself."""
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES,
                                       drop_unmapped=True)
@@ -242,30 +254,30 @@ class TestLabelMapReindex:
         assert label_map.map_class_id(0) == 0
         assert label_map.map_class_id(3) is None
 
-    def test_reindex_requires_class_names(self):
+    def test_reindex_requires_class_names(self) -> None:
         with pytest.raises(ValueError, match="requires class_names"):
             LabelMap({1: 0}, reindex=True)
 
 
 class TestLabelMapDedup:
-    def test_duplicates_kept_by_default(self):
+    def test_duplicates_kept_by_default(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         annotations = [make_yolo_bbox(0), make_yolo_bbox(1)]  # same box, both -> mouse
         assert len(label_map.apply(annotations)) == 2
 
-    def test_dedup_removes_overlapping_same_class(self):
+    def test_dedup_removes_overlapping_same_class(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=CLASS_NAMES, dedup_iou=0.9)
         annotations = [make_yolo_bbox(0), make_yolo_bbox(1)]
         assert len(label_map.apply(annotations)) == 1
 
-    def test_dedup_keeps_distant_boxes(self):
+    def test_dedup_keeps_distant_boxes(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=CLASS_NAMES, dedup_iou=0.9)
         annotations = [make_yolo_bbox(0), make_yolo_bbox(1, coords=(0.9, 0.9, 0.05, 0.05))]
         assert len(label_map.apply(annotations)) == 2
 
-    def test_dedup_keeps_different_classes(self):
+    def test_dedup_keeps_different_classes(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=CLASS_NAMES, dedup_iou=0.9)
         annotations = [make_yolo_bbox(0), make_yolo_bbox(3)]  # mouse + food, same box
@@ -274,40 +286,40 @@ class TestLabelMapDedup:
 
 
 class TestLabelMapValidation:
-    def test_empty_mapping(self):
+    def test_empty_mapping(self) -> None:
         with pytest.raises(ValueError, match="must not be empty"):
             LabelMap({})
 
-    def test_unknown_source_name(self):
+    def test_unknown_source_name(self) -> None:
         with pytest.raises(ValueError, match="not in class_names"):
             LabelMap({'nope': 'mouse'}, class_names=CLASS_NAMES)
 
-    def test_unknown_destination_name(self):
+    def test_unknown_destination_name(self) -> None:
         with pytest.raises(ValueError, match="not in class_names"):
             LabelMap({'feeding': 'rodent'}, class_names=CLASS_NAMES)
 
-    def test_unknown_id(self):
+    def test_unknown_id(self) -> None:
         with pytest.raises(ValueError, match="not a known class"):
             LabelMap({9: 0}, class_names=CLASS_NAMES)
 
     @pytest.mark.parametrize("iou", [0.0, 1.5, -0.5])
-    def test_bad_dedup_iou(self, iou):
+    def test_bad_dedup_iou(self, iou: float) -> None:
         with pytest.raises(ValueError, match="dedup_iou"):
             LabelMap({1: 0}, dedup_iou=iou)
 
-    def test_invalid_label_type(self):
+    def test_invalid_label_type(self) -> None:
         with pytest.raises(ValueError, match="expected a class id"):
             LabelMap({1.5: 0})  # type: ignore[dict-item]  # wrong type is the point
 
-    def test_collapse_requires_into_for_sequence(self):
+    def test_collapse_requires_into_for_sequence(self) -> None:
         with pytest.raises(ValueError, match="`into` is required"):
             LabelMap.collapse(['feeding'])
 
-    def test_collapse_rejects_into_with_dict(self):
+    def test_collapse_rejects_into_with_dict(self) -> None:
         with pytest.raises(ValueError, match="must not be given"):
             LabelMap.collapse({'feeding': 'mouse'}, into='mouse')
 
-    def test_id_annotation_with_nameless_destination_raises(self):
+    def test_id_annotation_with_nameless_destination_raises(self) -> None:
         """Mapping a YOLO id to a bare name is unresolvable without class_names."""
         label_map = LabelMap({1: 'mouse'})
         with pytest.raises(ValueError, match="no numeric class id"):
@@ -317,12 +329,12 @@ class TestLabelMapValidation:
 class TestUnknownClasses:
     """Classes outside class_names must never disappear silently."""
 
-    def test_unknown_id_passes_through_without_reindex(self):
+    def test_unknown_id_passes_through_without_reindex(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         result = label_map.apply([make_yolo_bbox(0), make_yolo_bbox(7)])
         assert [b.class_id for b in result] == [0, 7]
 
-    def test_unknown_id_raises_under_reindex(self):
+    def test_unknown_id_raises_under_reindex(self) -> None:
         """Renumbering an id class_names does not cover is impossible, not a no-op."""
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=CLASS_NAMES, reindex=True)
@@ -331,7 +343,7 @@ class TestUnknownClasses:
         with pytest.raises(ValueError, match="cannot reindex class id 7"):
             label_map.map_class_id(7)
 
-    def test_unknown_id_dropped_when_requested(self):
+    def test_unknown_id_dropped_when_requested(self) -> None:
         """With drop_unmapped the discard is explicit, so it stays a discard."""
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES,
                                       drop_unmapped=True, reindex=True)
@@ -340,21 +352,21 @@ class TestUnknownClasses:
 
 
 class TestFlavourAccessors:
-    def test_name_rules_without_class_names_match_names_only(self):
+    def test_name_rules_without_class_names_match_names_only(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse')
         assert label_map.matches_names
         assert not label_map.matches_ids
 
-    def test_id_rules_without_class_names_match_ids_only(self):
+    def test_id_rules_without_class_names_match_ids_only(self) -> None:
         label_map = LabelMap.collapse([1], into=0)
         assert label_map.matches_ids
         assert not label_map.matches_names
 
-    def test_class_names_bridges_both(self):
+    def test_class_names_bridges_both(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         assert label_map.matches_ids and label_map.matches_names
 
-    def test_name_is_not_erased_when_destination_has_none(self):
+    def test_name_is_not_erased_when_destination_has_none(self) -> None:
         """An id rule with no class_names must not blank an annotation's name."""
         label_map = LabelMap.collapse([1], into=0)
         annotation = BBoxClassId(coordinates=[0.5, 0.5, 0.2, 0.2], class_id=1,
@@ -366,24 +378,24 @@ class TestFlavourAccessors:
 
 
 class TestLabelMapHelpers:
-    def test_map_class_id(self):
+    def test_map_class_id(self) -> None:
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES)
         assert [label_map.map_class_id(i) for i in range(4)] == [0, 0, 0, 3]
 
-    def test_map_class_id_dropped(self):
+    def test_map_class_id_dropped(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse',
                                       class_names=CLASS_NAMES, drop_unmapped=True)
         assert label_map.map_class_id(3) is None
 
-    def test_map_class_name(self):
+    def test_map_class_name(self) -> None:
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
         assert label_map.map_class_name('feeding') == 'mouse'
         assert label_map.map_class_name('food') == 'food'
 
 
 @pytest.fixture
-def yolo_dataset(tmp_path):
+def yolo_dataset(tmp_path: Path) -> YoloDataset:
     """A YOLO dataset with mouse/feeding/climbing/food annotations."""
     dataset_root = tmp_path / "mice"
     dirs = create_dataset_structure(str(dataset_root))
@@ -402,7 +414,7 @@ def yolo_dataset(tmp_path):
 
 
 @pytest.fixture
-def voc_dataset(tmp_path):
+def voc_dataset(tmp_path: Path) -> VocDataset:
     """A minimal Pascal VOC dataset."""
     root = tmp_path / "mice_voc"
     images_dir = root / "JPEGImages"
@@ -428,24 +440,24 @@ def voc_dataset(tmp_path):
 
 
 class TestLoaderIntegration:
-    def test_yolo_loader_applies_label_map(self, yolo_dataset):
+    def test_yolo_loader_applies_label_map(self, yolo_dataset: YoloDataset) -> None:
         _, dirs = yolo_dataset
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES)
         loader = YoloDarknetLoader(
             dirs['images']['train'], dirs['labels']['train'], label_map=label_map
         )
-        all_ids = sorted(b.class_id for _, _, anns in loader for b in anns)
+        all_ids = class_ids_of(loader)
         assert all_ids == [0, 0, 0, 3]
 
-    def test_yolo_loader_without_label_map_is_unchanged(self, yolo_dataset):
+    def test_yolo_loader_without_label_map_is_unchanged(self, yolo_dataset: YoloDataset) -> None:
         _, dirs = yolo_dataset
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'])
-        all_ids = sorted(b.class_id for _, _, anns in loader for b in anns)
+        all_ids = class_ids_of(loader)
         assert all_ids == [0, 1, 2, 3]
         assert loader.get_label_map() is None
 
-    def test_access_paths_agree(self, yolo_dataset):
+    def test_access_paths_agree(self, yolo_dataset: YoloDataset) -> None:
         """__next__, __getitem__ and slicing must all apply the map identically."""
         _, dirs = yolo_dataset
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
@@ -458,7 +470,7 @@ class TestLoaderIntegration:
         by_slice = [[b.class_id for b in annotations_of(item)] for item in items_of(loader[:])]
         assert by_iteration == by_index == by_slice
 
-    def test_repeated_access_does_not_compound(self, yolo_dataset):
+    def test_repeated_access_does_not_compound(self, yolo_dataset: YoloDataset) -> None:
         _, dirs = yolo_dataset
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES, reindex=True)
@@ -469,21 +481,21 @@ class TestLoaderIntegration:
         for _ in range(3):
             assert [b.class_id for b in annotations_of(loader[0])] == first
 
-    def test_set_label_map_after_construction(self, yolo_dataset):
+    def test_set_label_map_after_construction(self, yolo_dataset: YoloDataset) -> None:
         _, dirs = yolo_dataset
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'])
         loader.set_label_map(LabelMap.collapse([1, 2], into=0))
-        all_ids = sorted(b.class_id for _, _, anns in loader for b in anns)
+        all_ids = class_ids_of(loader)
         assert all_ids == [0, 0, 0, 3]
 
-    def test_voc_loader_applies_label_map(self, voc_dataset):
+    def test_voc_loader_applies_label_map(self, voc_dataset: VocDataset) -> None:
         _, images_dir, annotations_dir = voc_dataset
         label_map = LabelMap.collapse(['feeding'], into='mouse')
         loader = PascalVOCLoader(images_dir, annotations_dir, label_map=label_map)
         annotations = annotations_of(loader[0])
         assert [b.class_name for b in annotations] == ['mouse', 'mouse', 'food']
 
-    def test_coco_loader_applies_label_map(self, tmp_path):
+    def test_coco_loader_applies_label_map(self, tmp_path: Path) -> None:
         """The documented COCO recipe: categories straight from the loader."""
         images_dir = tmp_path / "images"
         images_dir.mkdir()
@@ -509,14 +521,14 @@ class TestLoaderIntegration:
         loader = COCOLoader(images_dir, annotations_file, label_map=label_map)
         assert [b.class_id for b in annotations_of(loader[0])] == [1, 1, 5]
 
-    def test_factory_forwards_label_map(self, yolo_dataset):
+    def test_factory_forwards_label_map(self, yolo_dataset: YoloDataset) -> None:
         dataset_root, _ = yolo_dataset
         label_map = LabelMap.collapse(['feeding', 'climbing'], into='mouse',
                                       class_names=CLASS_NAMES)
         train, _, _ = DataLoaderFactory.create(dataset_root, label_map=label_map)
         assert train is not None
         assert train.get_label_map() is label_map
-        all_ids = sorted(b.class_id for _, _, anns in train for b in anns)
+        all_ids = class_ids_of(train)
         assert all_ids == [0, 0, 0, 3]
 
 
@@ -527,7 +539,7 @@ class TestDropEmpty:
                           drop_unmapped=True)
 
     @pytest.fixture
-    def sparse_yolo(self, tmp_path):
+    def sparse_yolo(self, tmp_path: Path) -> YoloDataset:
         """mouse+food, food only, mouse only, and an unannotated image."""
         dirs = create_dataset_structure(str(tmp_path / "sparse"))
         samples = {
@@ -543,28 +555,28 @@ class TestDropEmpty:
         return tmp_path / "sparse", dirs
 
     @staticmethod
-    def names(loader):
+    def names(loader: LoaderItems) -> List[str]:
         return sorted(Path(path).stem for path, _, _ in loader)
 
-    def test_keeps_helper(self):
+    def test_keeps_helper(self) -> None:
         assert self.MOUSE_ONLY.keeps(0, "")
         assert not self.MOUSE_ONLY.keeps(3, "")
         assert self.MOUSE_ONLY.keeps(None, 'mouse')
         assert not self.MOUSE_ONLY.keeps(None, 'food')
 
-    def test_enabled_by_default(self, sparse_yolo):
+    def test_enabled_by_default(self, sparse_yolo: YoloDataset) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    label_map=self.MOUSE_ONLY)
         assert len(loader) == 2
 
-    def test_can_be_disabled(self, sparse_yolo):
+    def test_can_be_disabled(self, sparse_yolo: YoloDataset) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    label_map=self.MOUSE_ONLY, drop_empty=False)
         assert len(loader) == 4
 
-    def test_yolo_drops_items_emptied_by_label_map(self, sparse_yolo):
+    def test_yolo_drops_items_emptied_by_label_map(self, sparse_yolo: YoloDataset) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    label_map=self.MOUSE_ONLY, drop_empty=True)
@@ -572,13 +584,13 @@ class TestDropEmpty:
         assert self.names(loader) == ['both', 'mouse_only']
         assert all(anns for _, _, anns in loader)
 
-    def test_yolo_without_label_map_drops_unannotated_only(self, sparse_yolo):
+    def test_yolo_without_label_map_drops_unannotated_only(self, sparse_yolo: YoloDataset) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    drop_empty=True)
         assert self.names(loader) == ['both', 'food_only', 'mouse_only']
 
-    def test_without_drop_unmapped_nothing_is_emptied(self, sparse_yolo):
+    def test_without_drop_unmapped_nothing_is_emptied(self, sparse_yolo: YoloDataset) -> None:
         """A collapse alone never removes a label, so only the unannotated one goes."""
         _, dirs = sparse_yolo
         label_map = LabelMap.collapse(['feeding'], into='mouse', class_names=CLASS_NAMES)
@@ -586,7 +598,7 @@ class TestDropEmpty:
                                    label_map=label_map, drop_empty=True)
         assert len(loader) == 3
 
-    def test_indexing_and_slicing_agree_with_len(self, sparse_yolo):
+    def test_indexing_and_slicing_agree_with_len(self, sparse_yolo: YoloDataset) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    label_map=self.MOUSE_ONLY, drop_empty=True)
@@ -594,14 +606,18 @@ class TestDropEmpty:
         with pytest.raises(IndexError):
             loader[len(loader)]
 
-    def test_factory_forwards_drop_empty(self, sparse_yolo):
+    def test_factory_forwards_drop_empty(self, sparse_yolo: YoloDataset) -> None:
         dataset_root, _ = sparse_yolo
         train, _, _ = DataLoaderFactory.create(
             dataset_root, label_map=self.MOUSE_ONLY, drop_empty=True)
         assert train is not None
         assert len(train) == 2
 
-    def test_unreadable_label_keeps_item_and_fails_on_access(self, sparse_yolo, caplog):
+    def test_unreadable_label_keeps_item_and_fails_on_access(
+        self,
+        sparse_yolo: YoloDataset,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """A corrupt file must not make the whole loader fail to construct."""
         _, dirs = sparse_yolo
         (Path(dirs['labels']['train']) / "mouse_only.txt").write_text("0 0.5 0.5\n")
@@ -616,10 +632,10 @@ class TestDropEmpty:
             loader[bad]
 
     @staticmethod
-    def names_unloaded(loader):
+    def names_unloaded(loader: YoloDarknetLoader) -> List[str]:
         return sorted(Path(img).stem for img, _ in loader.image_label_pairs)
 
-    def test_label_map_config_errors_are_not_swallowed(self, sparse_yolo):
+    def test_label_map_config_errors_are_not_swallowed(self, sparse_yolo: YoloDataset) -> None:
         """Only unreadable labels are tolerated, not a bad LabelMap."""
         _, dirs = sparse_yolo
         bad_map = LabelMap({0: 0}, class_names=['mouse'], reindex=True)  # id 3 not covered
@@ -627,7 +643,11 @@ class TestDropEmpty:
             YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                               label_map=bad_map, drop_empty=True)
 
-    def test_set_label_map_warns_after_pruning(self, sparse_yolo, caplog):
+    def test_set_label_map_warns_after_pruning(
+        self,
+        sparse_yolo: YoloDataset,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    label_map=self.MOUSE_ONLY, drop_empty=True)
@@ -635,7 +655,11 @@ class TestDropEmpty:
             loader.set_label_map(LabelMap.collapse([1], into=0))
         assert "not re-checked" in caplog.text
 
-    def test_set_label_map_is_silent_without_pruning(self, sparse_yolo, caplog):
+    def test_set_label_map_is_silent_without_pruning(
+        self,
+        sparse_yolo: YoloDataset,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         _, dirs = sparse_yolo
         loader = YoloDarknetLoader(dirs['images']['train'], dirs['labels']['train'],
                                    drop_empty=False)
@@ -643,7 +667,7 @@ class TestDropEmpty:
             loader.set_label_map(self.MOUSE_ONLY)
         assert "not re-checked" not in caplog.text
 
-    def test_voc_drops_items_emptied_by_label_map(self, tmp_path):
+    def test_voc_drops_items_emptied_by_label_map(self, tmp_path: Path) -> None:
         images_dir = tmp_path / "JPEGImages"
         annotations_dir = tmp_path / "Annotations"
         images_dir.mkdir()
@@ -662,7 +686,7 @@ class TestDropEmpty:
                                  label_map=label_map, drop_empty=True)
         assert self.names(loader) == ['a']
 
-    def test_coco_drops_items_emptied_by_label_map(self, tmp_path):
+    def test_coco_drops_items_emptied_by_label_map(self, tmp_path: Path) -> None:
         images_dir = tmp_path / "images"
         images_dir.mkdir()
         for i in (1, 2, 3):
@@ -687,29 +711,29 @@ class TestDropEmpty:
 
 
 class TestCollapseLabelsCLI:
-    def test_parse_mapping(self):
+    def test_parse_mapping(self) -> None:
         assert _parse_mapping(['feeding=mouse', '2=0']) == {'feeding': 'mouse', 2: 0}
 
     @pytest.mark.parametrize("bad", ['feeding', 'feeding=', '=mouse'])
-    def test_parse_mapping_rejects_malformed(self, bad):
+    def test_parse_mapping_rejects_malformed(self, bad: str) -> None:
         with pytest.raises(ValueError, match="invalid --map entry"):
             _parse_mapping([bad])
 
-    def test_rejects_output_equal_to_input(self, tmp_path):
+    def test_rejects_output_equal_to_input(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="must differ from input_dir"):
             _check_output_dir(tmp_path, tmp_path, force=False)
 
-    def test_rejects_output_inside_input(self, tmp_path):
+    def test_rejects_output_inside_input(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="is inside input_dir"):
             _check_output_dir(tmp_path, tmp_path / "out", force=False)
 
-    def test_rejects_output_containing_input(self, tmp_path):
+    def test_rejects_output_containing_input(self, tmp_path: Path) -> None:
         inner = tmp_path / "inner"
         inner.mkdir()
         with pytest.raises(ValueError, match="contains input_dir"):
             _check_output_dir(inner, tmp_path, force=False)
 
-    def test_rejects_non_empty_output(self, tmp_path):
+    def test_rejects_non_empty_output(self, tmp_path: Path) -> None:
         source = tmp_path / "src"
         destination = tmp_path / "dst"
         source.mkdir()
@@ -718,7 +742,7 @@ class TestCollapseLabelsCLI:
         with pytest.raises(ValueError, match="--force"):
             _check_output_dir(source, destination, force=False)
 
-    def test_force_clears_non_empty_output(self, tmp_path):
+    def test_force_clears_non_empty_output(self, tmp_path: Path) -> None:
         source = tmp_path / "src"
         destination = tmp_path / "dst"
         source.mkdir()
@@ -727,7 +751,11 @@ class TestCollapseLabelsCLI:
         _check_output_dir(source, destination, force=True)
         assert not destination.exists()
 
-    def test_yolo_end_to_end_leaves_input_untouched(self, yolo_dataset, tmp_path):
+    def test_yolo_end_to_end_leaves_input_untouched(
+        self,
+        yolo_dataset: YoloDataset,
+        tmp_path: Path,
+    ) -> None:
         dataset_root, dirs = yolo_dataset
         original = Path(dirs['labels']['train'] + "/img1.txt").read_text()
 
@@ -741,16 +769,16 @@ class TestCollapseLabelsCLI:
         assert (output / "labels" / "train" / "img1.txt").read_text().split("\n")[0].startswith("0 ")
 
         loader = YoloDarknetLoader(output / "images" / "train", output / "labels" / "train")
-        assert sorted(b.class_id for _, _, anns in loader for b in anns) == [0, 0, 0, 3]
+        assert class_ids_of(loader) == [0, 0, 0, 3]
 
-    def test_yolo_rewrite_preserves_coordinate_text(self, yolo_dataset):
+    def test_yolo_rewrite_preserves_coordinate_text(self, yolo_dataset: YoloDataset) -> None:
         _, dirs = yolo_dataset
         labels_dir = Path(dirs['labels']['train'])
         collapse_yolo_labels(labels_dir, LabelMap.collapse([1], into=0))
         line = (labels_dir / "img1.txt").read_text().splitlines()[1]
         assert line == "0 0.5 0.5 0.2 0.3"
 
-    def test_yolo_rewrite_dedup(self, yolo_dataset):
+    def test_yolo_rewrite_dedup(self, yolo_dataset: YoloDataset) -> None:
         _, dirs = yolo_dataset
         labels_dir = Path(dirs['labels']['train'])
         label_map = LabelMap.collapse(['feeding'], into='mouse',
@@ -758,7 +786,7 @@ class TestCollapseLabelsCLI:
         collapse_yolo_labels(labels_dir, label_map)
         assert len((labels_dir / "img1.txt").read_text().strip().splitlines()) == 1
 
-    def test_voc_rewrite_preserves_unparsed_tags(self, voc_dataset):
+    def test_voc_rewrite_preserves_unparsed_tags(self, voc_dataset: VocDataset) -> None:
         _, _, annotations_dir = voc_dataset
         collapse_voc_annotations(annotations_dir, LabelMap.collapse(['feeding'], into='mouse'))
 
@@ -767,7 +795,7 @@ class TestCollapseLabelsCLI:
         # The <difficult> tag is not parsed by read_annotation and must survive.
         assert object_tags(root, 'difficult') == ['0', '1', '0']
 
-    def test_voc_rewrite_drop_unmapped(self, voc_dataset):
+    def test_voc_rewrite_drop_unmapped(self, voc_dataset: VocDataset) -> None:
         _, _, annotations_dir = voc_dataset
         label_map = LabelMap.collapse(['feeding'], into='mouse', drop_unmapped=True)
         collapse_voc_annotations(annotations_dir, label_map)
@@ -775,7 +803,7 @@ class TestCollapseLabelsCLI:
         # mouse (destination) and feeding (source) survive; food is dropped.
         assert object_names(root) == ['mouse', 'mouse']
 
-    def test_coco_rewrite_preserves_unparsed_fields(self, tmp_path):
+    def test_coco_rewrite_preserves_unparsed_fields(self, tmp_path: Path) -> None:
         annotations_file = tmp_path / "instances.json"
         annotations_file.write_text(json.dumps({
             "info": {"description": "mice"},
@@ -810,20 +838,28 @@ class TestCollapseLabelsCLI:
         assert data['annotations'][0]['segmentation'] == [[0, 0, 5, 0, 5, 5]]
         assert data['categories'][0]['supercategory'] == 'animal'
 
-    def test_yolo_refuses_name_rules_without_class_names(self, yolo_dataset, tmp_path):
+    def test_yolo_refuses_name_rules_without_class_names(
+        self,
+        yolo_dataset: YoloDataset,
+        tmp_path: Path,
+    ) -> None:
         """Name rules cannot match YOLO ids -- this must fail, not quietly no-op."""
         dataset_root, _ = yolo_dataset
         label_map = LabelMap.collapse(['feeding'], into='mouse')
         with pytest.raises(ValueError, match="name-based"):
             collapse_dataset(dataset_root, tmp_path / "out", label_map)
 
-    def test_voc_refuses_id_rules(self, voc_dataset, tmp_path):
+    def test_voc_refuses_id_rules(self, voc_dataset: VocDataset, tmp_path: Path) -> None:
         """Id rules cannot match VOC names -- this must fail, not quietly no-op."""
         root, _, _ = voc_dataset
         with pytest.raises(ValueError, match="id-based"):
             collapse_dataset(root, tmp_path / "out", LabelMap.collapse([1], into=0))
 
-    def test_failed_run_leaves_no_half_collapsed_copy(self, yolo_dataset, tmp_path):
+    def test_failed_run_leaves_no_half_collapsed_copy(
+        self,
+        yolo_dataset: YoloDataset,
+        tmp_path: Path,
+    ) -> None:
         dataset_root, _ = yolo_dataset
         output = tmp_path / "out"
         label_map = LabelMap.collapse(['feeding'], into='mouse')
@@ -831,7 +867,7 @@ class TestCollapseLabelsCLI:
             collapse_dataset(dataset_root, output, label_map)
         assert not output.exists()
 
-    def test_coco_accepts_id_rules(self, tmp_path):
+    def test_coco_accepts_id_rules(self, tmp_path: Path) -> None:
         """`--map 4=1` means category ids for COCO, and must actually apply."""
         annotations_file = tmp_path / "instances.json"
         annotations_file.write_text(json.dumps({
@@ -847,7 +883,7 @@ class TestCollapseLabelsCLI:
         assert [a['category_id'] for a in data['annotations']] == [1]
         assert [c['name'] for c in data['categories']] == ['mouse']
 
-    def test_coco_reindex_orders_by_lowest_original_id(self, tmp_path):
+    def test_coco_reindex_orders_by_lowest_original_id(self, tmp_path: Path) -> None:
         """The CLI must renumber the way LabelMap does, not by list position."""
         annotations_file = tmp_path / "instances.json"
         annotations_file.write_text(json.dumps({
@@ -865,7 +901,7 @@ class TestCollapseLabelsCLI:
         assert [(c['id'], c['name']) for c in data['categories']] == [(0, 'mouse'), (1, 'food')]
         assert label_map.get_class_names() == ['mouse', 'food']
 
-    def test_coco_preserves_pretty_printing(self, tmp_path):
+    def test_coco_preserves_pretty_printing(self, tmp_path: Path) -> None:
         annotations_file = tmp_path / "instances.json"
         annotations_file.write_text(json.dumps({
             "images": [],
@@ -875,7 +911,7 @@ class TestCollapseLabelsCLI:
         collapse_coco_annotations(annotations_file, LabelMap.collapse(['feeding'], into='mouse'))
         assert "\n  " in annotations_file.read_text()
 
-    def test_coco_keeps_compact_json_compact(self, tmp_path):
+    def test_coco_keeps_compact_json_compact(self, tmp_path: Path) -> None:
         annotations_file = tmp_path / "instances.json"
         annotations_file.write_text(json.dumps({
             "images": [],
@@ -885,7 +921,7 @@ class TestCollapseLabelsCLI:
         collapse_coco_annotations(annotations_file, LabelMap.collapse(['feeding'], into='mouse'))
         assert "\n" not in annotations_file.read_text()
 
-    def test_yolo_preserves_unparseable_lines(self, tmp_path):
+    def test_yolo_preserves_unparseable_lines(self, tmp_path: Path) -> None:
         """A malformed line must survive, not be silently deleted."""
         labels_dir = tmp_path / "labels"
         labels_dir.mkdir()
@@ -900,7 +936,7 @@ class TestCollapseLabelsCLI:
                          "this is not an annotation",
                          "0 0.4 0.4 0.1 0.1"]
 
-    def test_coco_rewrite_drop_unmapped(self, tmp_path):
+    def test_coco_rewrite_drop_unmapped(self, tmp_path: Path) -> None:
         annotations_file = tmp_path / "instances.json"
         annotations_file.write_text(json.dumps({
             "images": [{"id": 1, "file_name": "img1.jpg", "width": 10, "height": 10}],

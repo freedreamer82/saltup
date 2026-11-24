@@ -1,4 +1,5 @@
-import os
+from typing import List, Sequence, Tuple, Union
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -49,7 +50,8 @@ def compute_anchors(boxes: np.ndarray, num_anchors: int) -> np.ndarray:
             "scikit-learn is required by compute_anchors. "
             'Install it with: pip install "saltup[training]" or pip install scikit-learn'
         ) from e
-    kmeans = KMeans(n_clusters=num_anchors, random_state=0, n_init=10)
+    # sklearn is unannotated: pyright infers n_init as str from its "auto" default
+    kmeans = KMeans(n_clusters=num_anchors, random_state=0, n_init=10)  # pyright: ignore[reportArgumentType]
     kmeans.fit(boxes)
 
     # Sort anchors by area (width * height) for deterministic order
@@ -95,11 +97,11 @@ def compute_anchor_iou(wh1: np.ndarray, wh2: np.ndarray) -> float:
 
 
 def convert_to_grid_format(
-   boxes: np.ndarray,
-   class_labels: list[int],
-   grid_size: tuple[int, int],
-   anchors: list[tuple[float, float]],
-   num_classes: int
+    boxes: np.ndarray,
+    class_labels: list[int],
+    grid_size: tuple[int, int],
+    anchors: list[tuple[float, float]],
+    num_classes: int,
 ) -> np.ndarray:
     """
     Convert bounding boxes to YOLO grid format.
@@ -161,9 +163,9 @@ def convert_to_grid_format(
 
 
 def plot_anchors(
-    anchors: np.ndarray, 
-    image_size: tuple[int, int], 
-    title: str = "Anchor Boxes"
+    anchors: np.ndarray,
+    image_size: tuple[int, int],
+    title: str = "Anchor Boxes",
 ) -> None:
    """
    Plot anchor boxes on an image with specified dimensions.
@@ -210,10 +212,10 @@ def plot_anchors(
 
 def postprocess_decode(
     yolo_output: np.ndarray,
-    anchors: list[tuple[float, float]],
+    anchors: Union[np.ndarray, Sequence[Tuple[float, float]]],
     num_classes: int,
-    input_shape: tuple[int, int]
-) -> tuple:
+    input_shape: tuple[int, int],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Decode YOLO output derived from loss function logic.
 
@@ -258,7 +260,13 @@ def postprocess_decode(
     return box_xy, box_wh, box_confidence, box_class_probs
 
 
-def postprocess_filter_boxes(centers_boxes, corners_boxes, box_confidence, box_class_probs, threshold=0.5):
+def postprocess_filter_boxes(
+    centers_boxes: np.ndarray,
+    corners_boxes: np.ndarray,
+    box_confidence: np.ndarray,
+    box_class_probs: np.ndarray,
+    threshold: float = 0.5,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Filters YOLO boxes based on object and class confidence.
 
@@ -292,8 +300,13 @@ def postprocess_filter_boxes(centers_boxes, corners_boxes, box_confidence, box_c
 
 
 def tiny_anchors_based_nms(
-    yolo_outputs, image_shape, max_boxes=30, score_threshold=0.5, iou_threshold=0.3, classes_ids=[0]
-):
+    yolo_outputs: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    image_shape: Sequence[int],
+    max_boxes: int = 30,
+    score_threshold: float = 0.5,
+    iou_threshold: float = 0.3,
+    classes_ids: List[int] = [0],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Applies non-max suppression to the output of Tiny YOLO v2 model.
 

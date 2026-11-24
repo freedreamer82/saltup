@@ -1,11 +1,10 @@
 import numpy as np
-from typing import Union, Any, List, Tuple
-import time
+from typing import Callable, Union, Any, List, Tuple
 import cv2
 
-from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType, YoloOutput
+from saltup.ai.object_detection.yolo.yolo import BaseYolo, YoloType
 from saltup.ai.object_detection.utils.anchor_based_model import (
-    postprocess_decode, postprocess_filter_boxes, tiny_anchors_based_nms
+    postprocess_decode, tiny_anchors_based_nms
 )
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
 from saltup.utils.data.image.image_utils import  ColorMode ,ImageFormat
@@ -24,8 +23,8 @@ class YoloAnchorsBased(BaseYolo):
         model: NeuralNetworkModel,
         number_class: int,
         anchors: np.ndarray,
-        max_output_boxes: int = 10
-    ):
+        max_output_boxes: int = 10,
+    ) -> None:
         """
         Initialize the AnchorsBased YOLO model.
 
@@ -52,9 +51,9 @@ class YoloAnchorsBased(BaseYolo):
         image: Union[np.ndarray, Image],
         target_height: int,
         target_width: int,
-        normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+        normalize_method: Callable[[np.ndarray], np.ndarray] = lambda x: x.astype(np.float32) / 255.0,
         apply_padding: bool = True,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> np.ndarray:
         """Process image for anchor-based object detection.
 
@@ -102,8 +101,7 @@ class YoloAnchorsBased(BaseYolo):
             height = image.get_height()
             width = image.get_width()
         else:
-            height = image.shape[1]
-            width = image.shape[0]
+            height, width = np.shape(image)[:2]
 
         # Handle square padding if needed
         if target_height == target_width and apply_padding:
@@ -133,13 +131,13 @@ class YoloAnchorsBased(BaseYolo):
 
         return raw_img.astype(np.float32)
 
-    def postprocess(
+    def postprocess(  # pyright: ignore[reportIncompatibleMethodOverride]  # BaseYolo annotates BBoxClassIdScore, but every implementation returns plain tuples
         self,
-        raw_output: np.ndarray,
+        raw_output: Union[np.ndarray, List[np.ndarray]],
         image_height: int,
         image_width: int,
         confidence_thr: float = 0.5,
-        iou_threshold: float = 0.5
+        iou_threshold: float = 0.5,
     ) -> List[Tuple[BBox, int, float]]:
         """postprocess output from AnchorsBased YOLO model
 
@@ -169,7 +167,7 @@ class YoloAnchorsBased(BaseYolo):
             max_boxes=self.max_output_boxes,
             score_threshold=confidence_thr,
             iou_threshold=iou_threshold,
-            classes_ids=list(range(0, self._number_class))
+            classes_ids=list(range(0, self._number_class)),
         )
 
         result = []

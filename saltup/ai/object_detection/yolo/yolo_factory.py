@@ -1,4 +1,6 @@
-from enum import IntEnum
+from typing import Any, Union
+
+import numpy as np
 
 from saltup.ai.object_detection.yolo.yolo import BaseYolo
 from saltup.ai.object_detection.yolo.yolo_type import YoloType
@@ -40,7 +42,12 @@ class YoloFactory:
             If an unknown YOLO type is provided.
     """
     @staticmethod
-    def create(yolo_type: YoloType, model_or_path, number_class: int, **kwargs) -> BaseYolo:
+    def create(
+        yolo_type: YoloType,
+        model_or_path: Union[str, NeuralNetworkModel],
+        number_class: int,
+        **kwargs: Any,
+    ) -> BaseYolo:
         # model_or_path can be either a path (str) or an already loaded keras/torch model
         if isinstance(model_or_path, str):
             model = NeuralNetworkModel(model_or_path)
@@ -53,6 +60,8 @@ class YoloFactory:
                 anchors = BaseYolo.load_anchors(anchors)
             elif not isinstance(anchors, (list, tuple)) and not hasattr(anchors, 'shape'):
                 raise ValueError("anchors must be a file path, a list/tuple, or a numpy.ndarray")
+            # YoloAnchorsBased reads anchors.shape: lists and tuples must become an (N, 2) array
+            anchors = np.asarray(anchors).reshape(-1, 2)
             return YoloAnchorsBased(model, number_class, anchors)
         elif yolo_type == YoloType.ULTRALYTICS:
             return YoloUltralytics(model, number_class, **kwargs)

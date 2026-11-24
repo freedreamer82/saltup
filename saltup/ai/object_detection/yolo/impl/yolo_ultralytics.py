@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from typing import Optional, Union, Dict, Any, List, Tuple
+from typing import Callable, Optional, Union, Any, List, Tuple
 
 from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat, nms
 from saltup.utils.data.image.image_utils import  Image, ColorMode ,ImageFormat
@@ -11,11 +11,7 @@ class YoloUltralytics(BaseYolo):
     """
     A class that extends BaseYolo to handle Ultralytics YOLO models.
     """
-    def __init__(
-        self,
-        model:NeuralNetworkModel,  
-        number_class: int
-    ):
+    def __init__(self, model: NeuralNetworkModel, number_class: int) -> None:
         """
         Initialize the Ultralytics YOLO model.
 
@@ -35,15 +31,15 @@ class YoloUltralytics(BaseYolo):
         
     @staticmethod    
     def letterbox(
-            img: np.ndarray,
-            target_shape: Tuple[int, int], 
-            shape_override: Optional[Tuple[int, int]] = None,
-            auto: bool = False,
-            scale_fill: bool = False,
-            scale_up: bool = True,
-            center: bool = False,
-            stride: int = 32
-        ) -> Tuple[np.ndarray, Dict]:
+        img: np.ndarray,
+        target_shape: Tuple[int, int],
+        shape_override: Optional[Tuple[int, int]] = None,
+        auto: bool = False,
+        scale_fill: bool = False,
+        scale_up: bool = True,
+        center: bool = False,
+        stride: int = 32,
+    ) -> np.ndarray:
         """Resize image to target shape and adds padding if needed while preserving aspect ratio.
 
         Args:
@@ -57,9 +53,7 @@ class YoloUltralytics(BaseYolo):
             stride: Stride of the model (e.g., 32 for YOLOv5).
 
         Returns:
-            Tuple containing:
-                - Processed image array
-                - Dict with transformation parameters (ratio, padding)
+            Processed (resized and padded) image array.
         """
         shape = img.shape[:2]  # Current shape [height, width]
         new_shape = shape_override or target_shape
@@ -102,11 +96,11 @@ class YoloUltralytics(BaseYolo):
     @staticmethod
     def preprocess(
         image: Image,
-        target_height:int, 
-        target_width:int,        
-        normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+        target_height: int,
+        target_width: int,
+        normalize_method: Callable[[np.ndarray], np.ndarray] = lambda x: x.astype(np.float32) / 255.0,
         apply_padding: bool = True,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> np.ndarray:
         """
         Execute complete preprocessing pipeline.
@@ -169,19 +163,19 @@ class YoloUltralytics(BaseYolo):
         #     if original_params:
         #         self.__dict__.update(original_params)
 
-    def postprocess(
-        self, 
-        raw_output: np.ndarray,
-        image_height:int, 
-        image_width:int, 
-        confidence_thr:float=0.5, 
-        iou_threshold:float=0.5
+    def postprocess(  # pyright: ignore[reportIncompatibleMethodOverride]  # BaseYolo annotates BBoxClassIdScore, but every implementation returns plain tuples
+        self,
+        raw_output: Union[np.ndarray, List[np.ndarray]],
+        image_height: int,
+        image_width: int,
+        confidence_thr: float = 0.5,
+        iou_threshold: float = 0.5,
     ) -> List[Tuple[BBox, int, float]]:
         """
         Postprocess the output from the Ultralytics-yolo model.
 
         Args:
-            raw_output (np.ndarray): output matrix of the model
+            raw_output (np.ndarray | List[np.ndarray]): output matrix of the model, or the list of model outputs
             image_height (int): input height of the current inferenced image
             image_width (int): input width of the current inferenced image
             confidence_thr (float): the threshold of the confidence score
@@ -190,8 +184,8 @@ class YoloUltralytics(BaseYolo):
         Returns:
             List[Tuple[BBox, int, float]]: List of predicted bounding boxes in the image with their respective score and class_id.
         """
-        raw_output = raw_output[0].astype(float)
-        raw_output = raw_output.transpose()
+        # First output (list) or first batch item (array), one row per candidate
+        predictions = np.asarray(raw_output[0], dtype=float).transpose()
 
         boxes = []
         probs = []
@@ -199,7 +193,7 @@ class YoloUltralytics(BaseYolo):
         x_factor = image_width / self._input_model_width
         y_factor = image_height / self._input_model_height
         
-        for row in raw_output:
+        for row in predictions:
             prob = row[4:].max()
             if prob < confidence_thr:  # Use the confidence threshold set in the class
                 continue

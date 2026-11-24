@@ -1,19 +1,18 @@
 import pytest
 import numpy as np
 import os
+from typing import Iterator
 os.environ["SALTUP_BACKEND"] = "keras_tensorflow"
 import onnx
-import onnxruntime as ort
 from onnx import helper, TensorProto
 import tempfile
-from saltup.ai.object_detection.yolo.yolo import YoloType
-from saltup.ai.object_detection.utils.bbox import BBox, BBoxFormat
+from saltup.ai.object_detection.utils.bbox import BBox
 from saltup.utils.data.image.image_utils import Image
 from saltup.ai.object_detection.yolo.impl.yolo_anchors_based import YoloAnchorsBased
 from saltup.ai.nn_model import NeuralNetworkModel
 
 # Function to create a simple ONNX model (mimicking YOLO output)
-def create_simple_yolo_onnx_model(output_path):
+def create_simple_yolo_onnx_model(output_path: str) -> None:
     input_shape = [1, 120, 160, 1]
     output_shape = [1, 1, 15, 20, 5, 9]
 
@@ -39,7 +38,7 @@ def create_simple_yolo_onnx_model(output_path):
 
 # Fixture for creating a YoloAnchorsBased instance with a temporary ONNX model
 @pytest.fixture
-def yolo_anchors_based_with_temp_model():
+def yolo_anchors_based_with_temp_model() -> Iterator[YoloAnchorsBased]:
     # Create a temporary file for the ONNX model
     with tempfile.NamedTemporaryFile(suffix='.onnx', delete=False) as temp_file:
         temp_file_path = temp_file.name
@@ -63,7 +62,7 @@ def yolo_anchors_based_with_temp_model():
             os.remove(temp_file_path)
 
 # Test preprocess method
-def test_preprocess(yolo_anchors_based_with_temp_model):
+def test_preprocess(yolo_anchors_based_with_temp_model: YoloAnchorsBased) -> None:
     # Generate a random image tensor
     image = np.random.randint(0, 256, (480, 640, 1), dtype=np.uint8)
     image = Image(image)
@@ -80,7 +79,7 @@ def test_preprocess(yolo_anchors_based_with_temp_model):
     assert processed_image.dtype == np.float32
 
 # Test postprocess method
-def test_postprocess(yolo_anchors_based_with_temp_model):
+def test_postprocess(yolo_anchors_based_with_temp_model: YoloAnchorsBased) -> None:
     # Generate a random raw output tensor
     raw_output = np.random.uniform(-2, 12, (1, 1, 15, 20, 5, 9))
     
