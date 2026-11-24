@@ -30,6 +30,8 @@ class YoloFactory:
             The number of classes for object detection.
         **kwargs
             Additional keyword arguments required for specific YOLO types (e.g., 'anchors' for ANCHORS_BASED).
+            'class_agnostic_nms' (bool) selects class-agnostic (True) or per-class (False, default)
+            NMS for ANCHORS_BASED and ULTRALYTICS.
 
         Returns
         -------
@@ -62,7 +64,10 @@ class YoloFactory:
                 raise ValueError("anchors must be a file path, a list/tuple, or a numpy.ndarray")
             # YoloAnchorsBased reads anchors.shape: lists and tuples must become an (N, 2) array
             anchors = np.asarray(anchors).reshape(-1, 2)
-            return YoloAnchorsBased(model, number_class, anchors)
+            return YoloAnchorsBased(
+                model, number_class, anchors,
+                class_agnostic_nms=kwargs.get('class_agnostic_nms', False),
+            )
         elif yolo_type == YoloType.ULTRALYTICS:
             return YoloUltralytics(model, number_class, **kwargs)
         elif yolo_type == YoloType.SUPERGRAD:

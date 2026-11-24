@@ -189,6 +189,26 @@ def test_nms() -> None:
     assert isinstance(selected_bboxes, list)
 
 
+def test_nms_per_class_vs_agnostic() -> None:
+    # Two overlapping boxes with different classes, plus a weaker duplicate of class 0
+    bboxes = [
+        BBox(coordinates=[100, 100, 200, 200], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH),
+        BBox(coordinates=[105, 105, 205, 205], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH),
+        BBox(coordinates=[102, 102, 202, 202], fmt=BBoxFormat.CORNERS_ABSOLUTE, img_height=TEST_IMAGE_HEIGHT, img_width=TEST_IMAGE_WIDTH),
+    ]
+    scores = [0.9, 0.8, 0.7]
+    class_ids = [0, 1, 0]
+
+    agnostic = nms(bboxes, scores, 0.5)
+    assert agnostic == [bboxes[0]]
+
+    per_class = nms(bboxes, scores, 0.5, class_ids=class_ids)
+    assert per_class == [bboxes[0], bboxes[1]]
+
+    # max_boxes caps the total in both modes
+    assert nms(bboxes, scores, 0.5, max_boxes=1, class_ids=class_ids) == [bboxes[0]]
+
+
 class TestBBoxFromFile:
     def test_from_yolo_file(self, tmp_path: Path) -> None:
         # Setup test file

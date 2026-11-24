@@ -104,6 +104,23 @@ def test_postprocess(yolo_ultralytics_with_temp_model: YoloUltralytics) -> None:
         assert isinstance(class_id, int)
         assert 0 <= score <= 1
 
+def test_postprocess_class_agnostic_nms(yolo_ultralytics_with_temp_model: YoloUltralytics) -> None:
+    # Two identical boxes: class 0 scores 0.9, class 1 scores 0.8; every other column is empty
+    raw = np.zeros((8, 100))
+    raw[:4, 0] = raw[:4, 1] = [160, 128, 50, 50]
+    raw[4, 0] = 0.9
+    raw[5, 1] = 0.8
+
+    yolo = yolo_ultralytics_with_temp_model
+    assert yolo.class_agnostic_nms is False
+    per_class = yolo.postprocess([raw], 480, 640)
+    assert sorted(c for _, c, _ in per_class) == [0, 1]
+
+    yolo.class_agnostic_nms = True
+    agnostic = yolo.postprocess([raw], 480, 640)
+    assert [c for _, c, _ in agnostic] == [0]
+
+
 # Run the tests
 if __name__ == "__main__":
     pytest.main()

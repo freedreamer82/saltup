@@ -1445,6 +1445,7 @@ def nms(
     scores: Union[Sequence[float], np.ndarray],
     iou_threshold: float,
     max_boxes: Optional[int] = None,
+    class_ids: Optional[Union[Sequence[int], np.ndarray]] = None,
 ) -> List[BBox]:
     """
     Perform Non-Maximum Suppression (NMS) on a list of BBox objects.
@@ -1453,29 +1454,31 @@ def nms(
         bboxes: List of BBox objects.
         scores: List of confidence scores corresponding to the bounding boxes.
         iou_threshold: IoU threshold for suppression.
-        max_boxes: Maximum number of boxes to keep (optional).
+        max_boxes: Maximum number of boxes to keep in total (optional).
+        class_ids: Class ID of each box (optional). When given, a box only suppresses
+            boxes of the same class (per-class NMS). When None, boxes suppress each
+            other regardless of class (class-agnostic NMS).
 
     Returns:
         List of BBox objects after applying NMS.
     """
+    groups: List[Optional[int]] = list(class_ids) if class_ids is not None else [None] * len(bboxes)
 
-    # Pair bounding boxes with their scores and sort them by scores in descending order
-    boxes_with_scores = sorted(zip(bboxes, scores), key=lambda x: x[1], reverse=True)
+    # Sort by score, highest first
+    candidates = sorted(zip(bboxes, scores, groups), key=lambda x: x[1], reverse=True)
 
     selected_bboxes = []
-    while boxes_with_scores:
+    while candidates:
         # Select the box with the highest score
-        current_box, current_score = boxes_with_scores.pop(0)
+        current_box, _, current_class = candidates.pop(0)
         selected_bboxes.append(current_box)
 
-        # Remove boxes that have IoU greater than the threshold with the current box
-        remaining_boxes = []
-        for other_box, other_score in boxes_with_scores:
-            iou = current_box.compute_iou(other_box)
-            if iou <= iou_threshold:
-                remaining_boxes.append((other_box, other_score))
-
-        boxes_with_scores = remaining_boxes
+        # Remove boxes of the same class (any class when agnostic) that overlap too much
+        candidates = [
+            (other_box, other_score, other_class)
+            for other_box, other_score, other_class in candidates
+            if other_class != current_class or current_box.compute_iou(other_box) <= iou_threshold
+        ]
 
         # Stop if we've reached the max number of boxes
         if max_boxes is not None and len(selected_bboxes) >= max_boxes:

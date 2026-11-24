@@ -306,6 +306,7 @@ def tiny_anchors_based_nms(
     score_threshold: float = 0.5,
     iou_threshold: float = 0.3,
     classes_ids: List[int] = [0],
+    class_agnostic: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Applies non-max suppression to the output of Tiny YOLO v2 model.
@@ -317,6 +318,10 @@ def tiny_anchors_based_nms(
         score_threshold (float): Threshold for box score to be considered as a detection.
         iou_threshold (float): Threshold for intersection over union to be considered as a duplicate detection.
         classes_ids (list): List of class IDs to perform non-max suppression on.
+        class_agnostic (bool): If False (default), NMS runs separately for each class and
+            max_boxes applies per class. If True, a single NMS runs over all classes, so
+            overlapping boxes of different classes suppress each other, and max_boxes
+            applies to the total.
 
     Returns:
         List of selected boxes, scores, and classes.
@@ -343,11 +348,15 @@ def tiny_anchors_based_nms(
 
     total_boxes, total_scores, total_classes = [], [], []
 
-    for c in classes_ids:
+    # One NMS group per class, or a single group with every class when agnostic
+    groups = [list(classes_ids)] if class_agnostic else [[c] for c in classes_ids]
+
+    for group in groups:
         # Filter by class ID
-        mask = (classes == c)
+        mask = np.isin(classes, group)
         class_boxes = [bboxes[i] for i in np.where(mask)[0]]
         class_scores = scores[mask]
+        group_classes = classes[mask]
 
         if not class_boxes:
             continue
@@ -360,7 +369,7 @@ def tiny_anchors_based_nms(
         # Collect results
         total_boxes.extend(selected_boxes)
         total_scores.extend(class_scores[selected_indices])
-        total_classes.extend([c] * len(selected_boxes))
+        total_classes.extend(group_classes[selected_indices])
 
     # Convert results to numpy arrays
     if total_boxes:

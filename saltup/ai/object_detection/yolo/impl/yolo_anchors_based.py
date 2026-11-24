@@ -24,6 +24,7 @@ class YoloAnchorsBased(BaseYolo):
         number_class: int,
         anchors: np.ndarray,
         max_output_boxes: int = 10,
+        class_agnostic_nms: bool = False,
     ) -> None:
         """
         Initialize the AnchorsBased YOLO model.
@@ -32,11 +33,16 @@ class YoloAnchorsBased(BaseYolo):
         :param model_path: Path to the model file.
         :param anchors: A numpy array of anchor boxes with shape (N, 2), where N is the number of anchors.
                        Each anchor is represented as (width, height).
+        :param max_output_boxes: Maximum number of boxes kept by NMS (per class, or in total when class-agnostic).
+        :param class_agnostic_nms: If False (default), NMS runs per class: overlapping boxes of
+                                   different classes are all kept. If True, NMS runs once over
+                                   all classes and keeps only the highest-scoring box.
         """
         super().__init__(YoloType.ANCHORS_BASED, model, number_class)  # Initialize the BaseYolo class
         self.anchors = anchors  # Store the anchor boxes
         self.num_anchors = anchors.shape[0]  # Number of anchor boxes
         self.max_output_boxes = max_output_boxes
+        self.class_agnostic_nms = class_agnostic_nms
 
     def get_input_info(self) -> Tuple[tuple, ColorMode, ImageFormat]:
         input_shape = self._model_input_shape[1:]
@@ -168,6 +174,7 @@ class YoloAnchorsBased(BaseYolo):
             score_threshold=confidence_thr,
             iou_threshold=iou_threshold,
             classes_ids=list(range(0, self._number_class)),
+            class_agnostic=self.class_agnostic_nms,
         )
 
         result = []

@@ -99,6 +99,27 @@ def test_postprocess(yolo_anchors_based_with_temp_model: YoloAnchorsBased) -> No
         assert isinstance(class_id, int)
         assert 0 <= score <= 1
 
+def test_postprocess_class_agnostic_nms(
+    yolo_anchors_based_with_temp_model: YoloAnchorsBased,
+) -> None:
+    # Two anchors in the same cell decode to the same box with different classes
+    raw_output = np.full((1, 15, 20, 5, 9), -20.0)
+    cell = raw_output[0, 7, 10]
+    cell[0, :5] = [0, 0, np.log(3), np.log(2), 10]   # anchor (0.1, 0.2) scaled to (0.3, 0.4)
+    cell[0, 5:] = [10, 0, 0, 0]                       # class 0
+    cell[1, :5] = [0, 0, 0, 0, 10]                    # anchor (0.3, 0.4) as is
+    cell[1, 5:] = [0, 5, 0, 0]                        # class 1, lower score
+
+    yolo = yolo_anchors_based_with_temp_model
+    assert yolo.class_agnostic_nms is False
+    per_class = yolo.postprocess(raw_output, 480, 640)
+    assert sorted(c for _, c, _ in per_class) == [0, 1]
+
+    yolo.class_agnostic_nms = True
+    agnostic = yolo.postprocess(raw_output, 480, 640)
+    assert [c for _, c, _ in agnostic] == [0]
+
+
 # Run the tests
 if __name__ == "__main__":
     pytest.main()
