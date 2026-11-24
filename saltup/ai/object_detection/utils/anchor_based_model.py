@@ -104,36 +104,55 @@ def convert_to_grid_format(
     num_classes: int,
 ) -> np.ndarray:
     """
-    Convert bounding boxes to YOLO grid format.
-    
+    Encode ground-truth boxes into the anchor grid used as training target.
+
+    This is the inverse of `postprocess_decode`. Each box is assigned to exactly
+    one slot (cell, anchor), called the responsible slot:
+
+    - cell: the grid cell that contains the box center,
+      `cell_x = floor(x_center * grid_w)`, `cell_y = floor(y_center * grid_h)`.
+    - anchor: the anchor with the highest shape IoU against the box
+      (width and height only, both centered at the same point).
+
+    The responsible slot stores:
+
+    - `[0:2]` center offset inside the cell, in [0, 1):
+      `x_center * grid_w - cell_x`, `y_center * grid_h - cell_y`.
+    - `[2:4]` log size ratio to the anchor:
+      `log(width / anchor_w)`, `log(height / anchor_h)`.
+    - `[4]` objectness target, always 1.0.
+    - `[5 + class_id]` one-hot class target, 1.0.
+
+    Every other slot stays all zeros, i.e. objectness target 0. Two boxes that
+    fall in the same cell and pick the same anchor overwrite each other: only
+    the last one is kept.
+
     Args:
-        boxes: array of shape (N, 4) containing bounding boxes in format 
-              [x_center, y_center, width, height] normalized to [0,1]
-        class_labels: list of class indices for each box
-        grid_size: tuple of (height, width) for the grid
-        anchors: list of tuples [(width, height), ...] for anchor boxes
-        num_classes: number of classes
-        
+        boxes: array of shape (N, 4), boxes as [x_center, y_center, width, height]
+            normalized to [0, 1] of the image.
+        class_labels: class index of each box.
+        grid_size: grid shape as (grid_h, grid_w).
+        anchors: anchor sizes as [(width, height), ...], normalized to [0, 1]
+            of the image.
+        num_classes: number of classes.
+
     Returns:
-        np.ndarray: grid labels of shape (1, grid_h, grid_w, num_anchors, 5 + num_classes)
-                   where 5 represents [x, y, w, h, objectness]
+        np.ndarray: targets of shape (1, grid_h, grid_w, num_anchors, 5 + num_classes).
     """
     grid_labels = np.zeros((1, grid_size[0], grid_size[1],
                         len(anchors), 5 + num_classes), dtype=np.float32)
     
     for box, class_label in zip(boxes, class_labels):
-        # Extract box coordinates
         x_center, y_center, width, height = box
-        
-        # Calculate grid cell location
+
+        # Cell that contains the box center; a center exactly on the right or
+        # bottom edge (1.0) would index past the grid, hence the clip.
         grid_x = int(x_center * grid_size[1])
         grid_y = int(y_center * grid_size[0])
-        
-        # Clip to ensure valid grid indices
         grid_x = np.clip(grid_x, 0, grid_size[1] - 1)
         grid_y = np.clip(grid_y, 0, grid_size[0] - 1)
-        
-        # Find best matching anchor box
+
+        # Anchor whose shape overlaps the box best (position ignored)
         box_wh = np.array([width, height])
         best_iou = 0
         best_anchor = -1
@@ -144,19 +163,19 @@ def convert_to_grid_format(
                 best_iou = iou
                 best_anchor = i
         
+        # A zero-size box overlaps no anchor and is skipped
         if best_iou > 0:
-            # Store box coordinates relative to grid cell
+            # Center offset inside the cell, in [0, 1)
             grid_labels[0, grid_y, grid_x, best_anchor, 0] = x_center * grid_size[1] - grid_x
             grid_labels[0, grid_y, grid_x, best_anchor, 1] = y_center * grid_size[0] - grid_y
-            
-            # Store width and height as log scale relative to anchor box
+
+            # Log size ratio to the anchor: 0 when the box has the anchor's size
             grid_labels[0, grid_y, grid_x, best_anchor, 2] = np.log(width / anchors[best_anchor][0])
             grid_labels[0, grid_y, grid_x, best_anchor, 3] = np.log(height / anchors[best_anchor][1])
-            
-            # Set objectness score
+
+            # Objectness target: 1 only in the responsible slot
             grid_labels[0, grid_y, grid_x, best_anchor, 4] = 1.0
-            
-            # Set class one-hot encoding
+
             grid_labels[0, grid_y, grid_x, best_anchor, 5 + int(class_label)] = 1.0
     
     return grid_labels
@@ -217,47 +236,67 @@ def postprocess_decode(
     input_shape: tuple[int, int],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Decode YOLO output derived from loss function logic.
+    Decode the raw model output into boxes, objectness and class probabilities.
+
+    The model predicts one vector of 5 + num_classes raw values (logits) for
+    every slot, where a slot is one anchor in one grid cell:
+
+        [t_x, t_y, t_w, t_h, t_obj, t_class_0, ..., t_class_{C-1}]
+
+    Each slot is decoded as:
+
+    - center: `cx = (sigmoid(t_x) + cell_x) / grid_w`,
+      `cy = (sigmoid(t_y) + cell_y) / grid_h`.
+      The sigmoid keeps the center inside the cell that predicted it.
+    - size: `w = anchor_w * exp(t_w)`, `h = anchor_h * exp(t_h)`.
+      A raw value of 0 gives exactly the anchor's size.
+    - objectness: `sigmoid(t_obj)`, the score that the slot holds an object
+      of any class. Training (see `convert_to_grid_format`) pushes it to 1 in
+      the responsible slot of each box and to 0 everywhere else.
+    - class probabilities: `softmax(t_class)`, the class distribution given
+      that an object is there; it sums to 1 over the classes.
+
+    Centers and sizes are normalized to [0, 1] of the model input, the same
+    unit as the anchors.
 
     Args:
-        yolo_output (np.ndarray): Raw output from the YOLO model.
-        anchors (list[tuple[float, float]]): List of anchor box dimensions.
-        num_classes (int): Number of classes.
-        input_shape (tuple[int, int]): Input image shape (height, width)
-    
+        yolo_output: raw model output. Axis 1 must be grid_h and the total size
+            must reshape to (batch, grid_h, grid_w, num_anchors, 5 + num_classes).
+        anchors: anchor sizes as [(width, height), ...], normalized to [0, 1]
+            of the model input.
+        num_classes: number of classes.
+        input_shape: model input size as (height, width) in pixels.
+
     Returns:
-        If calc_loss is True:
-            tuple: (grid, yolo_output, box_xy, box_wh)
-        Else:
-            tuple: (box_xy, box_wh, box_confidence, box_class_probs)
+        tuple: (centers, sizes, objectness, class_probs), arrays of shape
+        (batch, grid_h, grid_w, num_anchors, K) with K equal to 2, 2, 1 and
+        num_classes respectively.
     """
+    # Same stride (pixels per cell) on both axes, derived from the height
     stride = input_shape[0] / yolo_output.shape[1]
     grid_h = int(input_shape[0] // stride)
     grid_w = int(input_shape[1] // stride)
     num_anchors = len(anchors)
 
-    yolo_output = yolo_output.reshape(-1, grid_h, grid_w, num_anchors, 5 + num_classes).astype(np.float32)
+    raw = yolo_output.reshape(-1, grid_h, grid_w, num_anchors, 5 + num_classes).astype(np.float32)
 
-    box_xy = 1 / (1 + np.exp(-yolo_output[..., 0:2]))
-    box_wh = np.exp(yolo_output[..., 2:4])
-    box_confidence = 1 / (1 + np.exp(-yolo_output[..., 4:5]))
-    #box_class_probs = 1 / (1 + np.exp(-yolo_output[..., 5:]))
-    exp_class = np.exp(yolo_output[..., 5:])
-    box_class_probs = exp_class / np.sum(exp_class, axis=-1, keepdims=True)
+    offsets_in_cell = 1 / (1 + np.exp(-raw[..., 0:2]))
+    size_ratios = np.exp(raw[..., 2:4])
+    objectness = 1 / (1 + np.exp(-raw[..., 4:5]))
+    exp_class = np.exp(raw[..., 5:])
+    class_probs = exp_class / np.sum(exp_class, axis=-1, keepdims=True)
 
-    grid_y = np.arange(grid_h).reshape(-1, 1, 1, 1)
-    grid_x = np.arange(grid_w).reshape(1, -1, 1, 1)
-    grid_y = np.tile(grid_y, (1, grid_w, 1, 1))
-    grid_x = np.tile(grid_x, (grid_h, 1, 1, 1))
-    grid = np.concatenate([grid_x, grid_y], axis=-1)
-    grid = np.tile(grid, (1, 1, num_anchors, 1))
+    # (grid_h, grid_w, num_anchors, 2) array of (cell_x, cell_y) indices
+    cell_y = np.tile(np.arange(grid_h).reshape(-1, 1, 1, 1), (1, grid_w, 1, 1))
+    cell_x = np.tile(np.arange(grid_w).reshape(1, -1, 1, 1), (grid_h, 1, 1, 1))
+    cell_xy = np.tile(np.concatenate([cell_x, cell_y], axis=-1), (1, 1, num_anchors, 1))
 
-    box_xy = (box_xy + grid) / np.array([grid_w, grid_h], dtype=np.float32)
+    centers = (offsets_in_cell + cell_xy) / np.array([grid_w, grid_h], dtype=np.float32)
 
-    anchors_tensor = np.array(anchors, dtype=np.float32).reshape(1, 1, 1, num_anchors, 2)
-    box_wh = box_wh * anchors_tensor
+    anchor_sizes = np.array(anchors, dtype=np.float32).reshape(1, 1, 1, num_anchors, 2)
+    sizes = size_ratios * anchor_sizes
 
-    return box_xy, box_wh, box_confidence, box_class_probs
+    return centers, sizes, objectness, class_probs
 
 
 def postprocess_filter_boxes(
@@ -268,33 +307,34 @@ def postprocess_filter_boxes(
     threshold: float = 0.5,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Filters YOLO boxes based on object and class confidence.
+    Keep the slots whose best class score reaches the threshold.
+
+    The class score of a slot for class c is `objectness * class_probs[c]`:
+    the score that the slot holds an object and that the object is of class c.
+    Each slot is labelled with the class of its highest score, and kept when
+    that score is >= threshold.
 
     Args:
-        my_boxes (numpy.ndarray): containing the coordinates of the boxes in the original image dimensions.
-        boxes (numpy.ndarray): containing the coordinates of the boxes.
-        box_confidence (numpy.ndarray): containing the object confidence scores.
-        box_class_probs (numpy.ndarray): containing the class probabilities.
-        threshold (float): threshold for box score to be considered as a detection.
+        centers_boxes (numpy.ndarray): boxes as (cx, cy, w, h), shape (..., 4).
+        corners_boxes (numpy.ndarray): the same boxes as (x1, y1, x2, y2), shape (..., 4).
+        box_confidence (numpy.ndarray): objectness, shape (..., 1).
+        box_class_probs (numpy.ndarray): class probabilities, shape (..., num_classes).
+        threshold (float): minimum class score to keep a slot.
 
     Returns:
-        boxes (numpy.ndarray): containing the coordinates of the filtered boxes in corners format.
-        scores (numpy.ndarray): containing the scores of the filtered boxes.
-        classes (numpy.ndarray): containing the class IDs of the filtered boxes.
-        my_boxes (numpy.ndarray): containing the coordinates of the filtered boxes in centroids format.
+        tuple: (corners_boxes, scores, classes, centers_boxes) of the kept slots,
+        flattened to shape (N, 4), (N,), (N,) and (N, 4).
     """
-    box_scores = box_confidence * box_class_probs
-    box_classes = np.argmax(box_scores, axis=-1)  # Shape: (N, ...)
-    box_class_scores = np.max(box_scores, axis=-1)  # Shape: (N, ...)
+    class_scores = box_confidence * box_class_probs
+    best_class = np.argmax(class_scores, axis=-1)
+    best_score = np.max(class_scores, axis=-1)
 
-    # Create prediction mask
-    prediction_mask = box_class_scores >= threshold
-    
-    # Apply boolean mask to filter boxes
-    corners_boxes = corners_boxes[prediction_mask]
-    centers_boxes = centers_boxes[prediction_mask]
-    scores = box_class_scores[prediction_mask]
-    classes = box_classes[prediction_mask]
+    keep = best_score >= threshold
+
+    corners_boxes = corners_boxes[keep]
+    centers_boxes = centers_boxes[keep]
+    scores = best_score[keep]
+    classes = best_class[keep]
 
     return corners_boxes, scores, classes, centers_boxes
 
