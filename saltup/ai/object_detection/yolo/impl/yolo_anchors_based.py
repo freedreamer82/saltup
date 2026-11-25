@@ -137,7 +137,7 @@ class YoloAnchorsBased(BaseYolo):
 
         return raw_img.astype(np.float32)
 
-    def postprocess(  # pyright: ignore[reportIncompatibleMethodOverride]  # BaseYolo annotates BBoxClassIdScore, but every implementation returns plain tuples
+    def postprocess(
         self,
         raw_output: Union[np.ndarray, List[np.ndarray]],
         image_height: int,

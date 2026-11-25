@@ -174,7 +174,7 @@ class YoloUltralytics(BaseYolo):
         #     if original_params:
         #         self.__dict__.update(original_params)
 
-    def postprocess(  # pyright: ignore[reportIncompatibleMethodOverride]  # BaseYolo annotates BBoxClassIdScore, but every implementation returns plain tuples
+    def postprocess(
         self,
         raw_output: Union[np.ndarray, List[np.ndarray]],
         image_height: int,

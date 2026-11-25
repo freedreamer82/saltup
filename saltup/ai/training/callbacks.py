@@ -18,7 +18,8 @@ class CallbackContext:
         The `epochs` and `best_epoch` attributes are 1-based (i.e., the first epoch is 1).
 
     Attributes:
-        model (Union[keras.Model, torch.nn.Module]): The model being trained.
+        model (Union[keras.Model, torch.nn.Module], optional): The model being trained
+            (None if the framework has not attached it yet).
         epochs (int, optional): The total number of epochs for training (1-based).
         batch_size (int, optional): The batch size used during training.
         loss (float, optional): The latest training loss value.
@@ -33,16 +34,16 @@ class CallbackContext:
         to_dict():
             Returns a dictionary representation of the context, including model types, training statistics, and any additional metrics.
     """
-    model: Union[keras.Model, torch.nn.Module]
-    epochs: int = None
-    batch_size: int = None
-    loss: float = None
-    val_loss: float = None
-    other_metrics: dict = None
-    best_model: Union[keras.Model, torch.nn.Module] = None
-    best_epoch: int = None
-    best_loss: float = None
-    best_val_loss: float = None
+    model: Optional[Union[keras.Model, torch.nn.Module]]
+    epochs: Optional[int] = None
+    batch_size: Optional[int] = None
+    loss: Optional[float] = None
+    val_loss: Optional[float] = None
+    other_metrics: Optional[dict] = None
+    best_model: Optional[Union[keras.Model, torch.nn.Module]] = None
+    best_epoch: Optional[int] = None
+    best_loss: Optional[float] = None
+    best_val_loss: Optional[float] = None
 
     def to_dict(self):
         tmp = {
@@ -187,6 +188,33 @@ class _KerasCallbackAdapter(keras.callbacks.Callback):
         self.best_epoch = None
         self.best_logs = None 
 
+    def _require_model(self) -> keras.Model:
+        """The model being trained; Keras attaches it before calling fit's events."""
+        if self.model is None:
+            raise RuntimeError("callback used before Keras attached a model")
+        return self.model
+
+    def _build_context(
+        self,
+        logs: dict,
+        best_loss: Optional[float],
+        best_val_loss: Optional[float],
+    ) -> CallbackContext:
+        """Training context passed to the wrapped BaseCallback."""
+        params = self.params or {}
+        return CallbackContext(
+            model=self.model,
+            epochs=params.get('epochs', None),
+            batch_size=params.get('batch_size', None),
+            loss=logs.get('loss', None),
+            val_loss=logs.get('val_loss', None),
+            other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
+            best_model=self.best_model,
+            best_epoch=self.best_epoch,
+            best_loss=best_loss,
+            best_val_loss=best_val_loss,
+        )
+
     def _implements_train_batch_hooks(self):
         return False
 
@@ -200,18 +228,8 @@ class _KerasCallbackAdapter(keras.callbacks.Callback):
         """Automatically retrieve the total number of epochs."""
         logs = logs or {}
         if isinstance(self.cb, BaseCallback):
-            context = CallbackContext(
-                model=self.model,
-                epochs=self.params.get('epochs', None),
-                batch_size=self.params.get('batch_size', None),
-                loss=logs.get('loss', None),
-                val_loss=logs.get('val_loss', None),
-                other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
-                best_model=self.best_model,
-                best_epoch=self.best_epoch,
-                best_loss=self.best_value if self.mode == "min" else None,
-                best_val_loss=self.best_value if self.mode == "min" else None
-            )
+            best_value = self.best_value if self.mode == "min" else None
+            context = self._build_context(logs, best_loss=best_value, best_val_loss=best_value)
             if hasattr(self.cb, 'on_train_begin'):
                 self.cb.on_train_begin(context)
         elif isinstance(self.cb, keras.callbacks.Callback):
@@ -242,18 +260,8 @@ class _KerasCallbackAdapter(keras.callbacks.Callback):
     def on_train_end(self, logs=None):
         logs = logs or {}
         if isinstance(self.cb, BaseCallback):
-            context = CallbackContext(
-                model=self.model,
-                epochs=self.params.get('epochs', None),
-                batch_size=self.params.get('batch_size', None),
-                loss=logs.get('loss', None),
-                val_loss=logs.get('val_loss', None),
-                other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
-                best_model=self.best_model,
-                best_epoch=self.best_epoch,
-                best_loss=self.best_value if self.mode == "min" else None,
-                best_val_loss=self.best_value if self.mode == "min" else None
-            )
+            best_value = self.best_value if self.mode == "min" else None
+            context = self._build_context(logs, best_loss=best_value, best_val_loss=best_value)
             self._update_metrics_and_metadata(context)
             if hasattr(self.cb, 'on_train_end'):
                 self.cb.on_train_end(context)
@@ -273,8 +281,9 @@ class _KerasCallbackAdapter(keras.callbacks.Callback):
                     is_better = True
             if is_better:
                 self.best_value = current
-                self.best_model = keras.models.clone_model(self.model)
-                self.best_model.set_weights(self.model.get_weights())
+                model = self._require_model()
+                self.best_model = keras.models.clone_model(model)
+                self.best_model.set_weights(model.get_weights())
                 self.best_epoch = epoch + 1
                 self.best_logs = logs.copy()  # <--- save the best
 
@@ -282,18 +291,7 @@ class _KerasCallbackAdapter(keras.callbacks.Callback):
             best_loss = self.best_logs.get('loss') if self.best_logs else None
             best_val_loss = self.best_logs.get('val_loss') if self.best_logs else None
 
-            context = CallbackContext(
-                model=self.model,
-                epochs=self.params.get('epochs', None),
-                batch_size=self.params.get('batch_size', None),
-                loss=logs.get('loss', None),
-                val_loss=logs.get('val_loss', None),
-                other_metrics={k: v for k, v in logs.items() if k not in ['loss', 'val_loss']},
-                best_model=self.best_model,
-                best_epoch=self.best_epoch,
-                best_loss=best_loss,
-                best_val_loss=best_val_loss
-            )
+            context = self._build_context(logs, best_loss=best_loss, best_val_loss=best_val_loss)
 
             self._update_metrics_and_metadata(context)
             if hasattr(self.cb, 'update_metrics'):

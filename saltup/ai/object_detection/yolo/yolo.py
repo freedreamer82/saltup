@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import sys, io
 from tqdm import tqdm
 
-from saltup.ai.object_detection.utils.bbox import BBoxFormat, BBox, BBoxClassId, BBoxClassIdScore
+from saltup.ai.object_detection.utils.bbox import BBoxFormat, BBox, BBoxClassId
 from saltup.ai.object_detection.utils.metrics import compute_ap, compute_map_50_95, compute_ap_for_threshold
 from saltup.ai.object_detection.yolo.yolo_type import YoloType
 from saltup.ai.object_detection.utils.metrics import Metric
@@ -41,7 +41,7 @@ class YoloOutput:
 
     tprocessing_time_ms = 0.0 
 
-    def get_boxes(self) -> List[BBoxClassIdScore]:
+    def get_boxes(self) -> List[Tuple[BBox, int, float]]:
         """
         Get the list of bounding boxes.
 
@@ -53,7 +53,7 @@ class YoloOutput:
         """
         return self._boxes
     
-    def set_boxes(self, boxes: List[BBoxClassIdScore]):
+    def set_boxes(self, boxes: List[Tuple[BBox, int, float]]):
         """
         Set the list of bounding boxes.
 
@@ -62,7 +62,7 @@ class YoloOutput:
         """
         self._boxes = boxes
         
-    def get_image(self) -> Optional[np.ndarray]:
+    def get_image(self) -> Optional[Image]:
         """Get the associated image."""
         return self._image
 
@@ -315,6 +315,7 @@ class BaseYolo():
 
         # Measure postprocessing time
         start_postprocess = time.time()
+        postprocessed_output: Any
         if postprocess is False:
             # Skip postprocessing entirely
             postprocessed_output = raw_output
@@ -331,11 +332,10 @@ class BaseYolo():
         end_postprocess = time.time()
         postprocessing_time_ms = (end_postprocess - start_postprocess) * 1000
         
-        yoloOut = YoloOutput(postprocessed_output, image=preprocessed_image)
+        yoloOut = YoloOutput(postprocessed_output, image=image)  # input image
         yoloOut.set_preprocessing_time(preprocessing_time_ms)
         yoloOut.set_inference_time(inference_time_ms)
         yoloOut.set_postprocessing_time(postprocessing_time_ms)
-        yoloOut.set_image(image=image) # input image
         
         return yoloOut
     
@@ -344,7 +344,7 @@ class BaseYolo():
     def preprocess(image: Image,
                    target_height:int, 
                    target_width:int,        
-                   normalize_method: callable = lambda x: x.astype(np.float32) / 255.0,
+                   normalize_method: Callable = lambda x: x.astype(np.float32) / 255.0,
                    apply_padding: bool = True,
                    **kwargs: Any
                    ) -> np.ndarray:
@@ -361,7 +361,7 @@ class BaseYolo():
         raw_output: np.ndarray,
         image_height:int, image_width:int, confidence_thr:float=0.5, 
         iou_threshold:float=0.5
-    ) -> List[BBoxClassIdScore]:
+    ) -> List[Tuple[BBox, int, float]]:
         """
         Postprocess the raw output from the model to produce structured results.
 
@@ -506,7 +506,7 @@ def evaluate(
             "f1": overall_metric.getF1Score()
         }
 
-        pbar.set_postfix(**dict_tqdm)
+        pbar.set_postfix(dict_tqdm)
         
     end_time = time.time()
     total_time = end_time - start_time
@@ -514,6 +514,7 @@ def evaluate(
 
     overall_metric = sum(metrics_per_class.values(), start=Metric())
     # Calculate mAP@50-95 across all images at once
+    overall_map_50_95 = 0.0
     if mAP:
         overall_map_50_95 = compute_map_50_95(all_gt_boxes, all_pred_boxes) if all_gt_boxes and all_pred_boxes else 0.0
     # Optional: print to all provided streams
@@ -565,7 +566,4 @@ def evaluate(
                 stream.write(output_str)
                 if hasattr(stream, "flush"):
                     stream.flush()
-    if mAP:
-        return metrics_per_class, overall_metric, overall_map_50_95
-    else:
-        return metrics_per_class, overall_metric, 0.0
+    return metrics_per_class, overall_metric, overall_map_50_95
