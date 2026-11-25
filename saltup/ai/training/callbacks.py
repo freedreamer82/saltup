@@ -68,6 +68,10 @@ class BaseCallback:
     training events such as the beginning and end of training, as well as the end of each epoch.
     Subclasses can override the event methods to implement custom behavior.
 
+    Callbacks follow the training loop from the outside. To observe the values computed
+    inside a model's processing stages (e.g. the post-process), use hooks instead:
+    see `saltup.ai.hooks` and docs/hooks.md.
+
     Attributes:
         metrics (dict): A dictionary to store callback-specific metrics.
         metadata (dict): A dictionary to store callback-specific metadata.

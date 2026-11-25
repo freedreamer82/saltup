@@ -166,6 +166,17 @@ result = nas_yolo.run(image)          # NAS-optimized transforms + confidence ha
 result = anchors_yolo.run(image)      # Anchor box decoding + grid cell processing
 ```
 
+Look inside the post-process with hooks, without changing the boxes it returns:
+```python
+from saltup.ai.object_detection.yolo.yolo import YoloHookEvent
+
+with yolo_anchors.register_hook(YoloHookEvent.POSTPROCESS_END,
+                                lambda model, raw, boxes, extras: {"box_count": len(boxes)}):
+    result = yolo_anchors.run(image)
+result.get_metadata()                 # {"box_count": ...}
+```
+Hooks watch a model's processing stages from the inside; callbacks watch the training loop from the outside. See [docs/hooks.md](docs/hooks.md).
+
 Train across frameworks with production-ready callbacks:
 ```python
 from saltup.ai.training.train import training

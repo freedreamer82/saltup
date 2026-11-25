@@ -1,11 +1,13 @@
 import numpy as np
 from typing import (
     Optional, Callable, Union,
-    Any, Dict, List, Tuple,
+    Any, Dict, List, Mapping, Tuple,
 )
 import time
 from collections import defaultdict
 from abc import ABC, abstractmethod
+from enum import Enum
+from types import MappingProxyType
 import sys, io
 from tqdm import tqdm
 
@@ -16,6 +18,28 @@ from saltup.ai.object_detection.utils.metrics import Metric
 from saltup.utils.data.image.image_utils import ColorMode, ImageFormat, Image
 from saltup.ai.nn_model import NeuralNetworkModel
 from saltup.ai.base_dataformat.base_dataloader import BaseDataloader
+from saltup.ai.hooks import HookHandle, HookRegistry, merge_hook_results
+
+
+class YoloHookEvent(str, Enum):
+    """Points of `BaseYolo.run` where registered hooks are called.
+
+    Every event calls `hook(model, inputs, outputs, extras)` with the input and
+    output of the stage that just ended (see `YoloHook`).
+    """
+    POSTPROCESS_END = "postprocess_end"
+    """After the post-process: inputs = raw model output, outputs = final boxes."""
+
+
+YoloHook = Callable[["BaseYolo", Any, Any, Mapping[str, Any]], Optional[Dict[str, Any]]]
+"""Signature of a YOLO hook: `hook(model, inputs, outputs, extras) -> dict | None`.
+
+- model: the `BaseYolo` running the stage.
+- inputs, outputs: the stage input and output (see `YoloHookEvent`). Read only.
+- extras: internal values the stage exposed, read only. For POSTPROCESS_END they are
+  the dict a post-process returns as `(boxes, extras)`; empty for one returning `boxes`.
+- return: a dict of named values to add to `YoloOutput.get_metadata()`, or None.
+"""
 
 
 class YoloOutput:
@@ -24,6 +48,7 @@ class YoloOutput:
         self,
         boxes: List[Tuple[BBox, int, float]],
         image: Optional[Image] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize YoloOutput with bounding boxes and an optional image.
@@ -31,9 +56,11 @@ class YoloOutput:
         Args:
             boxes: List of tuples (BBox, class_id, score) representing the bounding boxes, class IDs, and confidence scores.
             image: Optional image associated with the results.
+            metadata: Named values returned by the hooks of the run (empty dict if None).
         """
         self._boxes = boxes  # List of BBox objects
         self._image = image  # Optional image associated with the results
+        self._metadata: Dict[str, Any] = metadata if metadata is not None else {}
 
         self._inference_time_ms = 0.0  
         self._preprocessing_time_ms = 0.0 
@@ -62,6 +89,14 @@ class YoloOutput:
         """
         self._boxes = boxes
         
+    def get_metadata(self) -> Dict[str, Any]:
+        """Named values returned by the hooks of the run; empty when no hook is registered."""
+        return self._metadata
+
+    def set_metadata(self, metadata: Dict[str, Any]):
+        """Set the metadata dictionary."""
+        self._metadata = metadata
+
     def get_image(self) -> Optional[Image]:
         """Get the associated image."""
         return self._image
@@ -112,7 +147,7 @@ class YoloOutput:
         Get a property by name.
 
         Args:
-            property_name: Name of the property ("boxes", "image",
+            property_name: Name of the property ("boxes", "image", "metadata",
                           "inference_time", "preprocessing_time", "postprocessing_time").
 
         Returns:
@@ -125,6 +160,8 @@ class YoloOutput:
             return self._boxes
         elif property_name == "image":
             return self._image
+        elif property_name == "metadata":
+            return self._metadata
         elif property_name == "inference_time":
             return self._inference_time_ms
         elif property_name == "preprocessing_time":
@@ -139,7 +176,7 @@ class YoloOutput:
         Set a property by name.
 
         Args:
-            property_name: Name of the property ("boxes", "image",
+            property_name: Name of the property ("boxes", "image", "metadata",
                           "inference_time", "preprocessing_time", "postprocessing_time").
             value: The new value for the property.
 
@@ -150,6 +187,8 @@ class YoloOutput:
             self._boxes = value
         elif property_name == "image":
             self._image = value
+        elif property_name == "metadata":
+            self._metadata = value
         elif property_name == "inference_time":
             self._inference_time_ms = value
         elif property_name == "preprocessing_time":
@@ -174,6 +213,7 @@ class BaseYolo():
 
         self._number_class = number_class
         self._model = model
+        self._hooks = HookRegistry()
         self._model_input_shape = self._model.get_input_shape()
         self._model_output_shape = self._model.get_output_shape()
         
@@ -288,8 +328,10 @@ class BaseYolo():
         :param preprocess: Optional custom preprocessing function. If None, uses the native `preprocess` method.
                            If False, skips preprocessing entirely.
         :param postprocess: Optional custom postprocessing function. If None, uses the native `postprocess` method.
-                            If False, skips postprocessing entirely.
-        :return: A YoloOutput object containing the results and timing information.
+                            If False, skips postprocessing entirely (and no POSTPROCESS_END hook runs).
+                            A post-process returns `boxes`, or `(boxes, extras)` where `extras` is a dict
+                            of internal values passed to the POSTPROCESS_END hooks.
+        :return: A YoloOutput object containing the results, the hooks metadata and timing information.
         """
 
         img = self._convert_image_color_for_input_model(image)
@@ -331,14 +373,68 @@ class BaseYolo():
                                                         iou_threshold)
         end_postprocess = time.time()
         postprocessing_time_ms = (end_postprocess - start_postprocess) * 1000
-        
-        yoloOut = YoloOutput(postprocessed_output, image=image)  # input image
+
+        metadata: Dict[str, Any] = {}
+        if postprocess is not False:
+            postprocessed_output, extras = _split_postprocess_result(postprocessed_output)
+            # Hooks run outside the measured post-processing time
+            metadata = self._run_hooks(
+                YoloHookEvent.POSTPROCESS_END, raw_output, postprocessed_output, extras
+            )
+
+        yoloOut = YoloOutput(postprocessed_output, image=image, metadata=metadata)  # input image
         yoloOut.set_preprocessing_time(preprocessing_time_ms)
         yoloOut.set_inference_time(inference_time_ms)
         yoloOut.set_postprocessing_time(postprocessing_time_ms)
         
         return yoloOut
     
+    def register_hook(
+        self,
+        event: Union[YoloHookEvent, str],
+        hook: YoloHook,
+        *,
+        prepend: bool = False,
+    ) -> HookHandle:
+        """
+        Attach `hook` to `event`; it is called on every `run()` that reaches the event.
+
+        Hooks of the same event run in registration order; `prepend=True` puts this one
+        first. Each hook may return a dict of named values: the dicts of all hooks are
+        merged into `YoloOutput.get_metadata()`. Hooks observe, they cannot change the
+        boxes. See `saltup.ai.hooks` for how hooks differ from training callbacks.
+
+        Example, exposing a value that a custom post-process returns in its extras:
+
+            def objectness_hook(model, raw_output, boxes, extras):
+                return {"objectness": extras["objectness"]}
+
+            with yolo.register_hook(YoloHookEvent.POSTPROCESS_END, objectness_hook):
+                out = yolo.run(image, postprocess=my_postprocess)
+            out.get_metadata()["objectness"]
+
+        :param event: A `YoloHookEvent` or its string value, e.g. "postprocess_end".
+        :param hook: Callable with the `YoloHook` signature.
+        :param prepend: If True, call this hook before the ones already registered.
+        :return: A `HookHandle`; `handle.remove()` detaches the hook.
+        :raises ValueError: If `event` is not a `YoloHookEvent`.
+        """
+        return self._hooks.register(YoloHookEvent(event), hook, prepend=prepend)
+
+    def _run_hooks(
+        self,
+        event: YoloHookEvent,
+        inputs: Any,
+        outputs: Any,
+        extras: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Call the hooks of `event` in order and merge the dicts they return."""
+        hooks = self._hooks.get(event)
+        if not hooks:
+            return {}
+        read_only_extras = MappingProxyType(extras)
+        return merge_hook_results([hook(self, inputs, outputs, read_only_extras) for hook in hooks])
+
     @staticmethod
     @abstractmethod
     def preprocess(image: Image,
@@ -369,6 +465,18 @@ class BaseYolo():
         :return: A YoloOutput object.
         """
         raise NotImplementedError("The postprocess method must be overridden in the derived class.")
+
+
+def _split_postprocess_result(result: Any) -> Tuple[Any, Dict[str, Any]]:
+    """Split a post-process result into `(boxes, extras)`.
+
+    A post-process returns either `boxes` (a list) or the tuple `(boxes, extras)` with
+    `extras` a dict of internal values for the hooks. A list of boxes is never a
+    2-tuple ending in a dict, so the two forms cannot be confused.
+    """
+    if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
+        return result[0], result[1]
+    return result, {}
 
 
 def evaluate_image(
@@ -442,7 +550,9 @@ def evaluate(
     iou_threshold: float = 0.5,
     confidence_threshold: float = 0.5,
     output_streams: Optional[List[io.IOBase]] = None,
-    mAP: bool = False
+    mAP: bool = False,
+    preprocess: Optional[Union[Callable, bool]] = None,
+    postprocess: Optional[Union[Callable, bool]] = None,
 ) -> Tuple[Dict[int, Metric], Metric, float]:
     """
     Evaluate a YOLO model on a dataset using a dataloader.
@@ -453,6 +563,9 @@ def evaluate(
         iou_threshold (float, optional): IoU threshold for matching. Defaults to 0.5.
         confidence_threshold (float, optional): Confidence threshold for predictions. Defaults to 0.5.
         stdout (Optional[List[io.IOBase]]): List of output streams (e.g., [sys.stdout, file]).
+        mAP (bool, optional): Also compute mAP@50-95. Defaults to False.
+        preprocess, postprocess (optional): Forwarded to `yolo.run()`: a custom callable,
+            False to skip the stage, or None (default) for the model's native method.
 
     Returns:
         Tuple[Dict[int, Metric], Metric, float]: 
@@ -474,7 +587,9 @@ def evaluate(
         yolo_out = yolo.run(
             image,
             confidence_thr=confidence_threshold,
-            iou_threshold=iou_threshold
+            iou_threshold=iou_threshold,
+            preprocess=preprocess,
+            postprocess=postprocess,
         )
         
         one_shot_metric = evaluate_image(
